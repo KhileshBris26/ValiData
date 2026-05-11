@@ -1,11 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 
 import { 
-  ChevronRight, ShieldCheck, Clock, ExternalLink, Filter, ChevronDown, HelpCircle, Plus, Power, X, MoreVertical,
-  Shield, Activity, Database, Table as TableIcon, FileText, Settings, BarChart3, Search, ChevronDown as ChevronDownIcon,
-  ShieldCheck as ShieldCheckIcon, X as XIcon, MoreVertical as MoreVerticalIcon, HelpCircle as HelpCircleIcon,
-  ChevronDown as ChevronDownSmall
+  ChevronRight, ShieldCheck, Clock, ExternalLink, Filter, ChevronDown, HelpCircle, Plus, Power, X
 } from 'lucide-react';
 import axios from 'axios';
 import { usePlatform } from '../context/PlatformContext';
@@ -77,7 +74,6 @@ const getRuleHoverDetails = (ruleName: string) => {
 const DataQualityDetail: React.FC = () => {
   const { database, schema, table } = useParams<{ database: string; schema: string; table: string }>();
   const { platform } = usePlatform();
-  const navigate = useNavigate();
 
   useEffect(() => {
     if (table) {
@@ -100,7 +96,6 @@ const DataQualityDetail: React.FC = () => {
   const [rowCount, setRowCount] = useState<number | string>('...');
   const [tablePreview, setTablePreview] = useState<any[]>([]);
   const [openAddRule, setOpenAddRule] = useState<string | null>(null);
-  const [ruleSearch, setRuleSearch] = useState('');
   const [lastScanDate] = useState(new Date().toLocaleString('en-US', { 
     month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true 
   }));
@@ -248,18 +243,6 @@ const DataQualityDetail: React.FC = () => {
 
   const handleAddRuleClick = (attr: string) => {
     setOpenAddRule(openAddRule === attr ? null : attr);
-    setRuleSearch('');
-  };
-
-  const handleApplyRule = (attr: string, ruleName: string) => {
-    const newRule = { label: ruleName, score: '100%', status: 'valid' as const };
-    const storageKey = `robin_rules_${database}_${schema}_${table}_${attr}`;
-    const existingRules = JSON.parse(sessionStorage.getItem(storageKey) || '[]');
-    if (!existingRules.some((r: any) => r.label === ruleName)) {
-      existingRules.push(newRule);
-      sessionStorage.setItem(storageKey, JSON.stringify(existingRules));
-    }
-    setOpenAddRule(null);
   };
 
   const getOverallScore = () => {
@@ -383,7 +366,7 @@ const DataQualityDetail: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {activeColumnsList.flatMap((col, ci) => col.appliedRules.map((rule, ri) => (
+                    {activeColumnsList.flatMap((col) => col.appliedRules.map((rule, ri) => (
                       <tr key={`${col.attribute}-${ri}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '10px 16px', fontWeight: 500 }}>{ri === 0 ? col.attribute : ''}</td>
                         <td style={{ padding: '10px 16px' }}>{rule.label}</td>
