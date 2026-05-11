@@ -125,7 +125,7 @@ const Dashboard: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontWeight: 700, color: '#f8fafc' }}>H_AIRCRAFT</div>
               <button 
-                onClick={() => navigate('/usage-analytics')}
+                onClick={() => navigate('/analytics')}
                 style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#3b82f6', fontSize: '0.75rem', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}
               >
                 Go to Page
