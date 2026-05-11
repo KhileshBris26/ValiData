@@ -78,6 +78,8 @@ const AIAgent: React.FC = () => {
   });
   const [showPromptLibrary, setShowPromptLibrary] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showSteps, setShowSteps] = useState(false);
+  const [showReasoning, setShowReasoning] = useState(false);
 
   const activeTopic = topics.find(t => t.id === activeTopicId) || topics[0];
 
@@ -1182,7 +1184,7 @@ const AIAgent: React.FC = () => {
         </div>
       </div>
       {/* Prompt Library Overlay */}
-      <PromptLibrary isOpen={showPromptLibrary} onClose={() => setShowPromptLibrary(false)} onSelect={(p) => setInputText(p)} />
+      <PromptLibrary isOpen={showPromptLibrary} onClose={() => setShowPromptLibrary(false)} onSelect={(p: string) => setInputText(p)} />
       
       {/* Settings Overlay */}
       <AgentSettings isOpen={showSettings} onClose={() => setShowSettings(false)} />
