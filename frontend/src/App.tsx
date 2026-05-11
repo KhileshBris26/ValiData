@@ -1,5 +1,6 @@
 
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { PlatformProvider } from './context/PlatformContext';
 import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
@@ -17,38 +18,65 @@ import RuleDetail from './pages/RuleDetail';
 import ObservabilityConnections from './pages/ObservabilityConnections';
 import ObservabilityConnectionDetail from './pages/ObservabilityConnectionDetail';
 import ObservabilityAlerts from './pages/ObservabilityAlerts';
+import LoginPage from './pages/LoginPage';
+
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const token = sessionStorage.getItem('robin_auth_token');
+  const location = useLocation();
+
+  if (!token) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return <>{children}</>;
+};
 
 function App() {
   return (
     <PlatformProvider>
       <Router>
-        <div className="app-root">
-          <TopBar />
-          <div className="app-container">
-            <Sidebar />
-            <main className="main-content">
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/ai-agent" element={<AIAgent />} />
-                <Route path="/studio" element={<RuleStudio />} />
-                <Route path="/lineage" element={<LineageStudio />} />
-                <Route path="/analytics" element={<UsageAnalytics />} />
-                <Route path="/connections" element={<Connections />} />
-                <Route path="/observability/connections" element={<ObservabilityConnections />} />
-                <Route path="/observability/connections/:id" element={<ObservabilityConnectionDetail />} />
-                <Route path="/observability/alerts" element={<ObservabilityAlerts />} />
-                <Route path="/catalog" element={<DataCatalog />} />
-                <Route path="/catalog/:database/:schema/:table" element={<TableDetail />} />
-                <Route path="/catalog/:database/:schema/:table/dq/primary" element={<DataQualityDetail />} />
-                <Route path="/catalog/:database/:schema/:table/dq/primary/create-rule/:column" element={<CreateRule />} />
-                <Route path="/rule/:ruleName" element={<RuleDetail />} />
-              </Routes>
-
-            </main>
-          </div>
-        </div>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route 
+            path="/*" 
+            element={
+              <ProtectedRoute>
+                <AuthenticatedApp />
+              </ProtectedRoute>
+            } 
+          />
+        </Routes>
       </Router>
     </PlatformProvider>
+  );
+}
+
+function AuthenticatedApp() {
+  return (
+    <div className="app-root">
+      <TopBar />
+      <div className="app-container">
+        <Sidebar />
+        <main className="main-content">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/ai-agent" element={<AIAgent />} />
+            <Route path="/studio" element={<RuleStudio />} />
+            <Route path="/lineage" element={<LineageStudio />} />
+            <Route path="/analytics" element={<UsageAnalytics />} />
+            <Route path="/connections" element={<Connections />} />
+            <Route path="/observability/connections" element={<ObservabilityConnections />} />
+            <Route path="/observability/connections/:id" element={<ObservabilityConnectionDetail />} />
+            <Route path="/observability/alerts" element={<ObservabilityAlerts />} />
+            <Route path="/catalog" element={<DataCatalog />} />
+            <Route path="/catalog/:database/:schema/:table" element={<TableDetail />} />
+            <Route path="/catalog/:database/:schema/:table/dq/primary" element={<DataQualityDetail />} />
+            <Route path="/catalog/:database/:schema/:table/dq/primary/create-rule/:column" element={<CreateRule />} />
+            <Route path="/rule/:ruleName" element={<RuleDetail />} />
+          </Routes>
+        </main>
+      </div>
+    </div>
   );
 }
 
