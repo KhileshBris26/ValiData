@@ -1007,72 +1007,61 @@ const DataQualityDetail: React.FC = () => {
 
                           <span style={{ 
                             padding: '0.2rem 0.5rem', 
-                            fontWeight: 600, 
-                            color: isShut ? '#64748b' : '#38bdf8',
-                            borderRight: '1px solid rgba(255, 255, 255, 0.08)'
-                          }}>
-                            {rule.score}
-                          </span>
-                          <span style={{ 
-                            padding: '0.2rem 0.55rem', 
-                            color: isShut ? '#64748b' : '#f8fafc',
+                        <span style={{ 
+                          padding: '0.2rem 0.5rem', 
+                          fontWeight: 600, 
+                          color: isShut ? '#64748b' : '#38bdf8',
+                          borderRight: '1px solid rgba(255, 255, 255, 0.08)'
+                        }}>
+                          {rule.score}
+                        </span>
+                        <span style={{ 
+                          padding: '0.2rem 0.55rem', 
+                          color: isShut ? '#64748b' : '#f8fafc',
+                          borderRight: '1px solid rgba(255, 255, 255, 0.08)',
+                          textDecoration: isShut ? 'line-through' : 'none'
+                        }}>
+                          {rule.label}
+                        </span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (isShut) { setShutDownRules(shutDownRules.filter(r => r !== rule.label)); } else { setShutDownRules([...shutDownRules, rule.label]); } }}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
                             borderRight: '1px solid rgba(255, 255, 255, 0.08)',
-                            textDecoration: isShut ? 'line-through' : 'none'
-                          }}>
-                            {rule.label}
-                          </span>
-                          
-                          {/* Toggle active / shut down button */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (isShut) {
-                                setShutDownRules(shutDownRules.filter(r => r !== rule.label));
-                              } else {
-                                setShutDownRules([...shutDownRules, rule.label]);
-                              }
-                            }}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              borderRight: '1px solid rgba(255, 255, 255, 0.08)',
-                              color: isShut ? '#f43f5e' : '#94a3b8',
-                              padding: '0.2rem 0.45rem',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              height: '100%'
-                            }}
-                            title={isShut ? "Turn On" : "Turn Off"}
-                          >
-                            <Power size={14} />
-                          </button>
+                            color: isShut ? '#f43f5e' : '#94a3b8',
+                            padding: '0.2rem 0.45rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            height: '100%'
+                          }}
+                          title={isShut ? "Turn On" : "Turn Off"}
+                        >
+                          <Power size={14} />
+                        </button>
 
-                          {/* Delete rule button */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeletedRules([...deletedRules, rule.label]);
-                            }}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: '#ef4444',
-                              padding: '0.2rem 0.45rem',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              height: '100%'
-                            }}
-                            title="Delete"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      );
-                    })}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeletedRules([...deletedRules, rule.label]); }}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#ef4444',
+                            padding: '0.2rem 0.45rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            height: '100%'
+                          }}
+                          title="Delete"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    );
+                  })}
                   </td>
                 </tr>
               ))
