@@ -19,6 +19,8 @@ const Connections: React.FC = () => {
   const [sfWarehouse, setSfWarehouse] = useState('');
 
   const [savedMessage, setSavedMessage] = useState('');
+  const [testStatus, setTestStatus] = useState<{type: 'success' | 'error', msg: string} | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
 
   useEffect(() => {
     // Load existing credentials from sessionStorage on mount
@@ -69,6 +71,38 @@ const Connections: React.FC = () => {
     setSfWarehouse('');
     setSavedMessage('Credentials cleared from session.');
     setTimeout(() => setSavedMessage(''), 3000);
+  };
+
+  const handleTest = async () => {
+    const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api/v1';
+    const credentials = platform === 'snowflake' ? {
+      account: sfAccount,
+      user: sfUser,
+      password: sfPassword,
+      role: sfRole,
+      warehouse: sfWarehouse
+    } : {
+      server_hostname: dbHostname,
+      http_path: dbHttpPath,
+      access_token: dbToken
+    };
+
+    setIsTesting(true);
+    setTestStatus(null);
+    try {
+      const res = await axios.post(`${API_BASE}/auth/test-connection`, {
+        platform,
+        entity_type: 'databases',
+        credentials
+      });
+      setTestStatus({ type: 'success', msg: res.data.message });
+    } catch (err: any) {
+      setTestStatus({ 
+        type: 'error', 
+        msg: err.response?.data?.detail || err.message || 'Connection failed' 
+      });
+    }
+    setIsTesting(false);
   };
 
   return (
@@ -125,9 +159,28 @@ const Connections: React.FC = () => {
 
         <div className="conn-actions">
           <button className="btn btn-secondary" onClick={handleClear}>Clear Session</button>
+          <button className="btn btn-secondary" onClick={handleTest} disabled={isTesting}>
+            {isTesting ? 'Testing...' : 'Test Connection'}
+          </button>
           <button className="btn btn-primary" onClick={handleSave}>Save Credentials</button>
         </div>
         
+        {testStatus && (
+          <div className={`test-result ${testStatus.type}`} style={{
+            marginTop: '1rem',
+            padding: '1rem',
+            borderRadius: '8px',
+            background: testStatus.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+            border: `1px solid ${testStatus.type === 'success' ? '#10b981' : '#ef4444'}`,
+            color: testStatus.type === 'success' ? '#10b981' : '#ef4444',
+            fontSize: '0.9rem',
+            wordBreak: 'break-word'
+          }}>
+            <strong>{testStatus.type === 'success' ? '✅ Success' : '❌ Connection Error'}:</strong><br/>
+            {testStatus.msg}
+          </div>
+        )}
+
         {savedMessage && <div className="saved-message">{savedMessage}</div>}
       </div>
     </div>
