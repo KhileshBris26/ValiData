@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Activity, Database, CheckCircle, AlertTriangle } from 'lucide-react';
 import './Dashboard.css';
 
