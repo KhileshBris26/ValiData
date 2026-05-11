@@ -107,7 +107,7 @@ const Dashboard: React.FC = () => {
                 style={{ width: '100%', background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', cursor: 'pointer', fontWeight: 600 }}
               >
                 <Activity size={18} />
-                Ask Robin AI Anything
+                Ask AI Anything
               </button>
             </div>
           </div>
@@ -125,7 +125,7 @@ const Dashboard: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontWeight: 700, color: '#f8fafc' }}>H_AIRCRAFT</div>
               <button 
-                onClick={() => navigate('/catalog/analytical data warehouse/UNICORN/DEV/H_AIRCRAFT')}
+                onClick={() => navigate('/usage-analytics')}
                 style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#3b82f6', fontSize: '0.75rem', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}
               >
                 Go to Page
