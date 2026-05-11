@@ -270,7 +270,7 @@ const DataQualityDetail: React.FC = () => {
     const accRules = allRules.filter(r => accuracyLabels.some(lbl => r.label.includes(lbl)));
 
     const getScore = (rules: any[]) => {
-      if (rules.length === 0) return hasEvaluated ? 100 : 28;
+      if (rules.length === 0) return 100;
       const total = rules.reduce((acc, r) => acc + parseInt(r.score), 0);
       return Math.round(total / rules.length);
     };
@@ -279,7 +279,7 @@ const DataQualityDetail: React.FC = () => {
     const accScore = getScore(accRules);
     const overall = allRules.length > 0 
       ? Math.round(allRules.reduce((acc, r) => acc + parseInt(r.score), 0) / allRules.length)
-      : (hasEvaluated ? 82 : 28);
+      : 100;
 
     return { valScore, accScore, overallScore: overall };
   };
