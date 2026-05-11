@@ -94,59 +94,63 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          <div style={{ flex: 1, padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Lineage Flow (Data Vault 2.0)</div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '10px 0' }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem' }}>🏛️</div>
-                <div style={{ fontSize: '0.7rem', color: '#f8fafc', marginTop: '4px' }}>Hubs</div>
-              </div>
-              <div style={{ color: '#3b82f6' }}>→</div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem' }}>🔗</div>
-                <div style={{ fontSize: '0.7rem', color: '#f8fafc', marginTop: '4px' }}>Links</div>
-              </div>
-              <div style={{ color: '#3b82f6' }}>→</div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '1.5rem' }}>📋</div>
-                <div style={{ fontSize: '0.7rem', color: '#f8fafc', marginTop: '4px' }}>Sats</div>
+          <div style={{ flex: 1, padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div>
+              <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Lineage Flow</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '10px 0' }}>
+                <div style={{ textAlign: 'center' }}>Hubs</div>
+                <div style={{ color: '#3b82f6' }}>→</div>
+                <div style={{ textAlign: 'center' }}>Links</div>
+                <div style={{ color: '#3b82f6' }}>→</div>
+                <div style={{ textAlign: 'center' }}>Sats</div>
               </div>
             </div>
-            <p style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '16px', textAlign: 'center' }}>14 active relationships inferred from query history in UNICORN.DEV</p>
+            
+            <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '12px', fontWeight: 600 }}>Talk to AI Architect</div>
+              <button 
+                onClick={() => navigate('/ai-agent')}
+                style={{ width: '100%', background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', color: 'white', border: 'none', padding: '12px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', cursor: 'pointer', fontWeight: 600 }}
+              >
+                <Activity size={18} />
+                Ask Robin AI Anything
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Query History & Recent Activity */}
-        <div className="dashboard-content glass-panel" style={{ margin: 0 }}>
+        {/* Query History & Usage Analytics */}
+        <div className="dashboard-content glass-panel" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h2 style={{ margin: 0 }}>Query History</h2>
-            <div style={{ fontSize: '0.75rem', color: '#3b82f6', cursor: 'pointer' }}>View All History</div>
+            <h2 style={{ margin: 0 }}>Warehouse Analytics</h2>
+            <div style={{ fontSize: '0.75rem', color: '#3b82f6', cursor: 'pointer' }}>Usage Reports</div>
           </div>
           
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {[
-              { query: 'SELECT * FROM H_AIRCRAFT...', duration: '45ms', status: 'SUCCESS' },
-              { query: 'INSERT INTO L_FLIGHT_AIR...', duration: '822ms', status: 'SUCCESS' },
-              { query: 'CALL SP_DQ_VALIDATE...', duration: '1.2s', status: 'SUCCESS' },
-              { query: 'DROP TABLE TEMP_RECO...', duration: '12ms', status: 'SUCCESS' }
-            ].map((q, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)', fontSize: '0.8rem' }}>
-                <code style={{ color: '#e2e8f0', fontSize: '0.75rem' }}>{q.query}</code>
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  <span style={{ color: '#64748b', fontSize: '0.7rem' }}>{q.duration}</span>
-                  <span style={{ color: '#10b981', fontWeight: 700, fontSize: '0.65rem' }}>{q.status}</span>
-                </div>
-              </div>
-            ))}
+          <div style={{ padding: '14px', background: 'rgba(59, 130, 246, 0.05)', borderRadius: '10px', border: '1px solid rgba(59, 130, 246, 0.1)', marginBottom: '16px' }}>
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '4px' }}>Most Queried Asset</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontWeight: 700, color: '#f8fafc' }}>H_AIRCRAFT</div>
+              <button 
+                onClick={() => navigate('/catalog/analytical data warehouse/UNICORN/DEV/H_AIRCRAFT')}
+                style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#3b82f6', fontSize: '0.75rem', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                Go to Page
+              </button>
+            </div>
+            <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px' }}>1.2k reads in last 24h · 98% DQ score</div>
           </div>
 
-          <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '10px', fontWeight: 600 }}>System Events</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '10px', fontWeight: 600 }}>Recent Query Log</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {activities.slice(0, 2).map((a, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: a.type === 'success' ? '#10b981' : '#3b82f6' }} />
-                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{a.msg}</span>
+              {[
+                { query: 'SELECT * FROM H_AIRCRAFT...', duration: '45ms' },
+                { query: 'INSERT INTO L_FLIGHT_AIR...', duration: '822ms' },
+                { query: 'CALL SP_DQ_VALIDATE...', duration: '1.2s' }
+              ].map((q, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', fontSize: '0.75rem' }}>
+                  <code style={{ color: '#94a3b8' }}>{q.query}</code>
+                  <span style={{ color: '#64748b' }}>{q.duration}</span>
                 </div>
               ))}
             </div>
@@ -157,7 +161,7 @@ const Dashboard: React.FC = () => {
       {/* Rules Overlay */}
       {showRulesOverlay && (
         <div className="overlay-backdrop" onClick={() => setShowRulesOverlay(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000 }}>
-          <div className="glass-panel" onClick={e => e.stopPropagation()} style={{ width: '600px', maxHeight: '500px', display: 'flex', flexDirection: 'column', background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', padding: '24px' }}>
+          <div className="glass-panel" onClick={e => e.stopPropagation()} style={{ width: '600px', height: '500px', display: 'flex', flexDirection: 'column', background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', position: 'sticky', top: 0, background: '#1e293b', zIndex: 10 }}>
               <h3 style={{ margin: 0 }}>Active DQ Rules by Table</h3>
               <button onClick={() => setShowRulesOverlay(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
@@ -182,7 +186,9 @@ const Dashboard: React.FC = () => {
                     { name: 'L_ORDER_ITEM', type: 'Calc Logic', status: 'Active' },
                     { name: 'S_ORDER_DETAILS', type: 'Range Check', status: 'Active' },
                     { name: 'H_PRODUCT', type: 'Master Sync', status: 'Active' },
-                    { name: 'L_SHIPMENT', type: 'Delay Logic', status: 'Active' }
+                    { name: 'L_SHIPMENT', type: 'Delay Logic', status: 'Active' },
+                    { name: 'H_SUPPLIER', type: 'Credit Check', status: 'Active' },
+                    { name: 'S_SALES_DAILY', type: 'Agg Validation', status: 'Active' }
                   ].map((r, i) => (
                     <tr key={i} className="hover-row" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }} onClick={() => setSelectedFinding(r)}>
                       <td style={{ padding: '10px' }}>{r.name}</td>
@@ -206,13 +212,13 @@ const Dashboard: React.FC = () => {
 
       {/* Anomalies Overlay */}
       {showAnomaliesOverlay && (
-        <div className="overlay-backdrop" onClick={() => setShowAnomaliesOverlay(false)}>
-          <div className="glass-panel overlay-content" onClick={e => e.stopPropagation()} style={{ width: '600px', maxHeight: '80vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', position: 'sticky', top: 0, background: '#1e293b', zIndex: 10, paddingBottom: '10px' }}>
-              <h3>Detailed Anomaly Findings</h3>
-              <button onClick={() => setShowAnomaliesOverlay(false)} className="btn-icon">×</button>
+        <div className="overlay-backdrop" onClick={() => setShowAnomaliesOverlay(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000 }}>
+          <div className="glass-panel" onClick={e => e.stopPropagation()} style={{ width: '600px', height: '500px', display: 'flex', flexDirection: 'column', background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', position: 'sticky', top: 0, background: '#1e293b', zIndex: 10 }}>
+              <h3 style={{ margin: 0 }}>Detailed Anomaly Findings</h3>
+              <button onClick={() => setShowAnomaliesOverlay(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px', paddingRight: '8px' }}>
               {[
                 { title: "Schema Drift Detected", msg: "Table H_FLIGHT in UNICORN.DEV has 2 new columns detected during last metadata sync.", type: "drift" },
                 { title: "Volume Spike", msg: "Ingestion volume for S_AIRPORT_LOGS increased by 400% compared to the 7-day average.", type: "volume" },
@@ -223,7 +229,7 @@ const Dashboard: React.FC = () => {
                   <div style={{ fontSize: '0.85rem', color: '#fca5a5', marginTop: '4px' }}>{a.msg}</div>
                   {selectedFinding?.title === a.title && (
                     <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(239, 68, 68, 0.2)', fontSize: '0.8rem', color: '#fecaca' }}>
-                      <strong>Root Cause Analysis:</strong> Pipeline refresh at 04:00 AM triggered an unvalidated DDL change. Recommendation: Rollback to previous schema version or update DQ manifest.
+                      <strong>Root Cause Analysis:</strong> Pipeline refresh at 04:00 AM triggered an unvalidated DDL change. Recommendation: Rollback or update DQ manifest.
                     </div>
                   )}
                 </div>
