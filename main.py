@@ -290,10 +290,22 @@ async def get_catalog_tables(request: CatalogRequest):
 async def get_table_preview(request: LineageRequest):
     try:
         sql_query = QueryGenerator.generate_preview_sql(request.platform, request.database_name, request.schema_name, request.table_name)
-        result = snowflake_engine.execute_query(sql_query) if request.platform == "snowflake" else databricks_engine.execute_query(sql_query)
+        print(f"Executing preview query on {request.platform}: {sql_query}")
+        result = None
+        if request.platform == "snowflake":
+            snowflake_engine.connect(request.credentials)
+            result = snowflake_engine.execute_query(sql_query)
+            snowflake_engine.disconnect()
+        elif request.platform == "databricks":
+            databricks_engine.connect(request.credentials)
+            result = databricks_engine.execute_query(sql_query)
+            databricks_engine.disconnect()
+        
         serialized_rows = [{str(k): str(v) for k, v in row.items()} for row in result] if result else []
         return {"status": "success", "rows": serialized_rows}
     except Exception as e:
+        import traceback
+        print(f"Preview failed: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
