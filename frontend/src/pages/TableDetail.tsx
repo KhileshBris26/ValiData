@@ -155,7 +155,7 @@ const TableDetail: React.FC = () => {
   const [lineageError, setLineageError] = useState<string | null>(null);
 
   const [dynamicColumns, setDynamicColumns] = useState<any[]>([]);
-  const [isLoadingCols, setIsLoadingCols] = useState(false);
+  const [_isLoadingCols, setIsLoadingCols] = useState(false);
   const [previewRows, setPreviewRows] = useState<any[]>([]);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
@@ -962,14 +962,14 @@ const TableDetail: React.FC = () => {
                             {renderTableNode(d.node.id, d.node.title, d.node.icon, d.node.completeness, d.node.completenessColor, d.node.attrs, false, d.node.tags || [], hc(d.node.id), mkColClick(d.node.id))}
                             {d.farNode && (
                               <>
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer' }} onClick={() => openEdge(d.node.id, d.farNode.id)} title="Click to view column transformations">
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer' }} onClick={() => openEdge(d.node.id, d.farNode!.id)} title="Click to view column transformations">
                                   <svg style={{ width: '40px', height: '12px', overflow: 'visible', flexShrink: 0 }}>
-                                    <path d="M 0 6 L 40 6" stroke={arrowColor(d.node.id, d.farNode.id)} strokeWidth={arrowWidth(d.node.id, d.farNode.id)} strokeDasharray={arrowDash(d.node.id, d.farNode.id)} fill="none" />
-                                    <polygon points="40,6 34,3 34,9" fill={arrowColor(d.node.id, d.farNode.id)} />
+                                    <path d="M 0 6 L 40 6" stroke={arrowColor(d.node.id, d.farNode!.id)} strokeWidth={arrowWidth(d.node.id, d.farNode!.id)} strokeDasharray={arrowDash(d.node.id, d.farNode!.id)} fill="none" />
+                                    <polygon points="40,6 34,3 34,9" fill={arrowColor(d.node.id, d.farNode!.id)} />
                                   </svg>
-                                  <span style={{ fontSize: '0.6rem', color: arrowColor(d.node.id, d.farNode.id), fontWeight: 600, letterSpacing: '0.3px' }}>TRANSFORM</span>
+                                  <span style={{ fontSize: '0.6rem', color: arrowColor(d.node.id, d.farNode!.id), fontWeight: 600, letterSpacing: '0.3px' }}>TRANSFORM</span>
                                 </div>
-                                {renderTableNode(d.farNode.id, d.farNode.title, d.farNode.icon, d.farNode.completeness, d.farNode.completenessColor, d.farNode.attrs, false, d.farNode.tags || [], hc(d.farNode.id), mkColClick(d.farNode.id))}
+                                {renderTableNode(d.farNode!.id, d.farNode!.title, d.farNode!.icon, d.farNode!.completeness, d.farNode!.completenessColor, d.farNode!.attrs, false, d.farNode!.tags || [], hc(d.farNode!.id), mkColClick(d.farNode!.id))}
                               </>
                             )}
                           </div>
@@ -1672,8 +1672,8 @@ const TableDetail: React.FC = () => {
                     <span className="attr-name">{attr.name}</span>
                     <div className="attr-tags">
                       {attr.tag && <span className="attr-tag">{attr.tag}</span>}
-                      {attr.tags?.map((t, ti) => <span key={ti} className="attr-tag">{t}</span>)}
-                      {attr.more && <span className="attr-tag more">{attr.more}</span>}
+                      {attr.tags?.map((t: string, ti: number) => <span key={ti} className="attr-tag">{t}</span>)}
+                      {(attr as any).more && <span className="attr-tag more">{(attr as any).more}</span>}
                       {appliedRules.filter((r: any) => r.attribute === attr.name && !deletedRules.includes(r.name)).map((rule: any, ri: number) => {
                         const isShut = shutDownRules.includes(rule.name);
                         const isHovered = hoveredRule === rule.name;

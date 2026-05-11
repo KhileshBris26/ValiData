@@ -80,9 +80,6 @@ const ObservabilityConnections: React.FC = () => {
     if (activeDetails === id) setActiveDetails(null);
   };
 
-  const toggleDetails = (id: number) => {
-    setActiveDetails(prev => (prev === id ? null : id));
-  };
 
   return (
     <div className="obs-connections-page">

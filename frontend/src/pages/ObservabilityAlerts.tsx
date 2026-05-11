@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Bell, AlertCircle, CheckCircle, ShieldAlert, Sparkles, ChevronDown, UserPlus, Users, X, Check, Mail, GitBranch, ArrowRight, BarChart, Plus, Minus, Maximize, Lock, Unlock } from 'lucide-react';
+import { Search, Bell, AlertCircle, CheckCircle, ShieldAlert, ChevronDown, UserPlus, Users, X, Mail, ArrowRight, Plus, Minus, Maximize, Lock, Unlock } from 'lucide-react';
 import './ObservabilityAlerts.css';
 
 interface AlertItem {
@@ -849,9 +849,6 @@ const ObservabilityAlerts: React.FC = () => {
       <div className="alerts-list">
         {filteredAlerts.length > 0 ? (
           filteredAlerts.map(alert => {
-            const isResolved = alert.resolution === 'Resolved';
-            const isExpected = alert.resolution === 'Expected';
-
             return (
               <div key={alert.id} className="alert-card glass-panel" onClick={() => setSelectedAlert(alert)} style={{ cursor: 'pointer' }}>
                 <div className="alert-info-col">

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, RefreshCw, Layers, Radio, Clock, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ChevronLeft, RefreshCw, Layers, Radio, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
 import './ObservabilityConnectionDetail.css';
 
 const ObservabilityConnectionDetail: React.FC = () => {
