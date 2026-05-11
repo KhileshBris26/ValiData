@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Play, Sparkles, Loader2, Plus, Trash2, CheckCircle2, XCircle, BarChart3, ListChecks } from 'lucide-react';
+import { Play, Loader2, Plus, Trash2, BarChart3, ListChecks } from 'lucide-react';
 import { usePlatform } from '../context/PlatformContext';
 import SearchableDropdown from '../components/SearchableDropdown';
 import './RuleStudio.css';
@@ -30,9 +30,9 @@ const RuleStudio: React.FC = () => {
   // Rule manifest state
   const [manifest, setManifest] = useState<RuleManifestItem[]>([]);
   const [ruleType, setRuleType] = useState('NULL_CHECK');
-  const [minVal, setMinVal] = useState('');
-  const [maxVal, setMaxVal] = useState('');
-  const [pattern, setPattern] = useState('');
+  const [minVal] = useState('');
+  const [maxVal] = useState('');
+  const [pattern] = useState('');
 
   const [loadingMeta, setLoadingMeta] = useState<'none' | 'db' | 'schema' | 'table' | 'column'>('none');
   const [executing, setExecuting] = useState(false);
@@ -207,7 +207,7 @@ const RuleStudio: React.FC = () => {
               <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600 }}>RULE MANIFEST ({manifest.length})</span>
               {manifest.length > 0 && <span onClick={() => setManifest([])} style={{ fontSize: '0.75rem', color: '#ef4444', cursor: 'pointer' }}>Clear All</span>}
             </div>
-            {manifest.map((m, i) => (
+            {manifest.map((m) => (
               <div key={m.id} className="manifest-item">
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <span style={{ fontWeight: 600 }}>{m.column}</span>
