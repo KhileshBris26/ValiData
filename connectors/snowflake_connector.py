@@ -1,0 +1,49 @@
+import os
+import snowflake.connector
+from snowflake.connector.errors import DatabaseError
+from typing import Any, List, Dict
+from .base import BaseConnector
+
+class SnowflakeConnector(BaseConnector):
+    def __init__(self):
+        self.conn = None
+        
+    def connect(self, credentials: Dict[str, Any] = None) -> None:
+        try:
+            creds = credentials or {}
+            account = creds.get("account") or os.getenv("SNOWFLAKE_ACCOUNT")
+            if not account:
+                raise ValueError("Missing Snowflake account credentials. Please configure connections first.")
+
+            self.conn = snowflake.connector.connect(
+                account=account,
+                user=creds.get("user") or os.getenv("SNOWFLAKE_USER"),
+                password=creds.get("password") or os.getenv("SNOWFLAKE_PASSWORD"),
+                role=creds.get("role") or os.getenv("SNOWFLAKE_ROLE"),
+                warehouse=creds.get("warehouse") or os.getenv("SNOWFLAKE_WAREHOUSE"),
+                database=creds.get("database") or os.getenv("SNOWFLAKE_DATABASE"),
+                schema=creds.get("schema") or os.getenv("SNOWFLAKE_SCHEMA")
+            )
+            print("Successfully connected to Snowflake.")
+        except DatabaseError as e:
+            print(f"Failed to connect to Snowflake: {e}")
+            raise
+
+    def execute_query(self, query: str) -> List[Dict[str, Any]]:
+        if not self.conn:
+            raise ConnectionError("Not connected to Snowflake. Call connect() first.")
+        
+        try:
+            # DictCursor returns rows as dictionaries
+            with self.conn.cursor(snowflake.connector.DictCursor) as cur:
+                cur.execute(query)
+                results = cur.fetchall()
+                return results
+        except DatabaseError as e:
+            print(f"Error executing Snowflake query: {e}")
+            raise
+
+    def disconnect(self) -> None:
+        if self.conn:
+            self.conn.close()
+            print("Disconnected from Snowflake.")

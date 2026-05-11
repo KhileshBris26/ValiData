@@ -1,0 +1,131 @@
+.lineage-studio {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.lineage-header {
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  position: relative;
+  z-index: 50;
+}
+
+.controls-row {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-end;
+}
+
+.control-group {
+  flex: 1;
+}
+
+.btn-group {
+  flex: 0 0 auto;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--panel-border);
+  color: var(--text-muted);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.toggle-btn.active {
+  background: var(--accent-primary);
+  color: white;
+  border-color: var(--accent-primary);
+}
+
+.lineage-content {
+  flex: 1;
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.react-flow-wrapper {
+  width: 100%;
+  height: 100%;
+}
+
+.react-flow__node {
+  border-radius: 8px;
+}
+
+.react-flow__edge-path {
+  stroke-width: 2;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  gap: 1rem;
+}
+
+.tabular-wrapper {
+  padding: 1.5rem;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.lineage-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.lineage-table th, .lineage-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.lineage-table th {
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="light"] .lineage-table th {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.badge {
+  background: rgba(139, 92, 246, 0.2);
+  color: var(--accent-secondary);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-family: monospace;
+}
+
+.react-flow__node { transition: opacity 0.3s, box-shadow 0.3s; }
+.react-flow__node.dimmed { opacity: 0.3 !important; }
+.react-flow__node.highlighted { opacity: 1 !important; box-shadow: 0 0 15px rgba(139, 92, 246, 0.4); }
+.react-flow__node.selected { opacity: 1 !important; box-shadow: 0 0 0 3px var(--accent-primary); }
+
+.react-flow__edge { transition: opacity 0.3s, stroke-width 0.3s; }
+.react-flow__edge.dimmed-edge { opacity: 0.1 !important; }
+.react-flow__edge.highlighted-edge { opacity: 1 !important; z-index: 1000; stroke-width: 3px !important; }
+
