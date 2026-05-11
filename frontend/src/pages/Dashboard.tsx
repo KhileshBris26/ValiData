@@ -49,12 +49,6 @@ const Dashboard: React.FC = () => {
 
   const [selectedFinding, setSelectedFinding] = React.useState<any>(null);
 
-  const activities = [
-    { time: 'Just now', msg: 'Schema discovery completed for H_AIRCRAFT', type: 'discovery' },
-    { time: '12 mins ago', msg: 'Rule "Email Completeness" passed for UNICORN.DEV', type: 'success' },
-    { time: '45 mins ago', msg: 'Metadata sync initiated with Snowflake (UNICORN)', type: 'system' },
-    { time: '2 hours ago', msg: 'Anomalous pattern detected in FLIGHT_ID (H_FLIGHT)', type: 'warning' },
-  ];
 
   return (
     <div className="dashboard">
