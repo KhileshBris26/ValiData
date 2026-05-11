@@ -7,39 +7,42 @@ import './Connections.css';
 const Connections: React.FC = () => {
   const { platform } = usePlatform();
   
-  // Databricks state
-  const [dbHostname, setDbHostname] = useState('');
-  const [dbHttpPath, setDbHttpPath] = useState('');
-  const [dbToken, setDbToken] = useState('');
+  // Databricks state with defaults
+  const [dbHostname, setDbHostname] = useState('dbc-ff683f53-d730.cloud.databricks.com');
+  const [dbHttpPath, setDbHttpPath] = useState('/sql/1.0/warehouses/755e296acd2446b6');
+  const [dbToken, setDbToken] = useState('dapia91ce03b26effdb0d8f98680724ab63c');
 
-  // Snowflake state
-  const [sfAccount, setSfAccount] = useState('');
-  const [sfUser, setSfUser] = useState('');
-  const [sfPassword, setSfPassword] = useState('');
-  const [sfRole, setSfRole] = useState('');
-  const [sfWarehouse, setSfWarehouse] = useState('');
+  // Snowflake state with defaults
+  const [sfAccount, setSfAccount] = useState('CEDKVOT-PHB81098');
+  const [sfUser, setSfUser] = useState('KHILESHKHUBNANI26');
+  const [sfPassword, setSfPassword] = useState('Citius@Mar2026');
+  const [sfRole, setSfRole] = useState('ACCOUNTADMIN');
+  const [sfWarehouse, setSfWarehouse] = useState('SMALL_WH');
 
   const [savedMessage, setSavedMessage] = useState('');
   const [testStatus, setTestStatus] = useState<{type: 'success' | 'error', msg: string} | null>(null);
   const [isTesting, setIsTesting] = useState(false);
 
   useEffect(() => {
-    // Load existing credentials from sessionStorage on mount
+    // Load existing credentials from sessionStorage on mount (if user has overridden them)
     const saved = sessionStorage.getItem('robin_credentials');
     if (saved) {
       const creds = JSON.parse(saved);
       if (creds.databricks) {
-        setDbHostname(creds.databricks.server_hostname || '');
-        setDbHttpPath(creds.databricks.http_path || '');
-        setDbToken(creds.databricks.access_token || '');
+        if (creds.databricks.server_hostname) setDbHostname(creds.databricks.server_hostname);
+        if (creds.databricks.http_path) setDbHttpPath(creds.databricks.http_path);
+        if (creds.databricks.access_token) setDbToken(creds.databricks.access_token);
       }
       if (creds.snowflake) {
-        setSfAccount(creds.snowflake.account || '');
-        setSfUser(creds.snowflake.user || '');
-        setSfPassword(creds.snowflake.password || '');
-        setSfRole(creds.snowflake.role || '');
-        setSfWarehouse(creds.snowflake.warehouse || '');
+        if (creds.snowflake.account) setSfAccount(creds.snowflake.account);
+        if (creds.snowflake.user) setSfUser(creds.snowflake.user);
+        if (creds.snowflake.password) setSfPassword(creds.snowflake.password);
+        if (creds.snowflake.role) setSfRole(creds.snowflake.role);
+        if (creds.snowflake.warehouse) setSfWarehouse(creds.snowflake.warehouse);
       }
+    } else {
+      // If no session, save the defaults to session immediately so RuleStudio can use them
+      handleSave();
     }
   }, []);
 
@@ -62,15 +65,6 @@ const Connections: React.FC = () => {
     sessionStorage.setItem('robin_credentials', JSON.stringify(credentials));
     
     setSavedMessage('Credentials saved securely to your session!');
-    setTimeout(() => setSavedMessage(''), 3000);
-  };
-
-  const handleClear = () => {
-    sessionStorage.removeItem('robin_credentials');
-    setDbHostname(''); setDbHttpPath(''); setDbToken('');
-    setSfAccount(''); setSfUser(''); setSfPassword(''); setSfRole('');
-    setSfWarehouse('');
-    setSavedMessage('Credentials cleared from session.');
     setTimeout(() => setSavedMessage(''), 3000);
   };
 
@@ -104,6 +98,15 @@ const Connections: React.FC = () => {
       });
     }
     setIsTesting(false);
+  };
+
+  const handleClear = () => {
+    sessionStorage.removeItem('robin_credentials');
+    setDbHostname(''); setDbHttpPath(''); setDbToken('');
+    setSfAccount(''); setSfUser(''); setSfPassword(''); setSfRole('');
+    setSfWarehouse('');
+    setSavedMessage('Credentials cleared from session.');
+    setTimeout(() => setSavedMessage(''), 3000);
   };
 
   return (
