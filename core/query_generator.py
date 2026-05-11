@@ -383,3 +383,34 @@ class QueryGenerator:
             LIMIT 1000;
             """
         return ""
+    @staticmethod
+    def generate_profiling_sql(platform: str, db: str, schema: str, table: str, column: str) -> str:
+        """
+        Generates SQL to profile a single column for NULLs, distincts, and top values.
+        """
+        platform = platform.lower()
+        full_table = f'"{db.upper()}"."{schema.upper()}"."{table.upper()}"' if platform == "snowflake" else f"`{db}`.`{schema}`.`{table}`"
+        
+        agg_func = "LISTAGG(val || ':' || val_count, ',')" if platform == "snowflake" else "concat_ws(',', collect_list(concat(val, ':', val_count)))"
+        
+        return f"""
+        WITH stats AS (
+            SELECT 
+                COUNT(*) as total_rows,
+                COUNT(DISTINCT {column}) as distinct_count,
+                SUM(CASE WHEN {column} IS NULL THEN 1 ELSE 0 END) as null_count
+            FROM {full_table}
+        ),
+        top_vals AS (
+            SELECT CAST({column} AS STRING) as val, COUNT(*) as val_count
+            FROM {full_table}
+            WHERE {column} IS NOT NULL
+            GROUP BY 1
+            ORDER BY 2 DESC
+            LIMIT 3
+        )
+        SELECT 
+            s.*,
+            (SELECT {agg_func} FROM top_vals) as top_values
+        FROM stats s
+        """

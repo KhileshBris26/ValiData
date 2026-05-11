@@ -97,7 +97,10 @@ const DataQualityDetail: React.FC = () => {
   // No hardcoded fallback data â€” columns are always loaded from the API
   const dqData: DQRow[] = [];
 
-  const [rowCount, setRowCount] = useState(1678);
+  const [rowCount, setRowCount] = useState<number | string>('...');
+  const [lastScanDate] = useState(new Date().toLocaleString('en-US', { 
+    month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true 
+  }));
 
   useEffect(() => {
     const fetchColumns = async () => {
@@ -208,6 +211,54 @@ const DataQualityDetail: React.FC = () => {
     fetchColumns();
   }, [database, schema, table, platform]);
 
+  const profileColumn = async (col: string) => {
+    try {
+      const saved = sessionStorage.getItem('robin_credentials');
+      let credentials = null;
+      if (saved) credentials = JSON.parse(saved)[platform];
+
+      const res = await axios.post(`${API_BASE}/metadata/profile`, {
+        platform,
+        database_name: database,
+        schema_name: schema,
+        table_name: table,
+        column_name: col,
+        credentials
+      });
+
+      if (res.data.profile) {
+        const p = res.data.profile;
+        const total = p.TOTAL_ROWS || p.total_rows || rowCount;
+        const nulls = p.NULL_COUNT || p.null_count || 0;
+        const distinct = p.DISTINCT_COUNT || p.distinct_count || 0;
+        const rawTop = p.TOP_VALUES || p.top_values || "";
+        
+        const topVals = rawTop.split(',').map((pair: string) => {
+          const [label, count] = pair.split(':');
+          const pct = total > 0 ? (Number(count) / Number(total) * 100).toFixed(1) + '%' : '0%';
+          return { label, pct };
+        });
+
+        setDynamicColumns(prev => prev.map(c => {
+          if (c.attribute === col) {
+            return {
+              ...c,
+              profileSummary: [
+                { label: 'Not Null', pct: total > 0 ? ((total - nulls) / total * 100).toFixed(1) + '%' : '100%' },
+                { label: 'Distinct', pct: total > 0 ? (distinct / total * 100).toFixed(1) + '%' : '0%' },
+                { label: 'Unique', pct: total > 0 && distinct === total ? '100%' : 'No' }
+              ],
+              topValues: topVals.slice(0, 3)
+            };
+          }
+          return c;
+        }));
+      }
+    } catch (err) {
+      console.error("Failed to profile column", col, err);
+    }
+  };
+
   const [openAddRuleAttr, setOpenAddRuleAttr] = useState<string | null>(null);
   const [ruleSearch, setRuleSearch] = useState('');
 
@@ -306,7 +357,7 @@ const DataQualityDetail: React.FC = () => {
             <span className="result-label">Result from:</span>
             <div className="timestamp-badge">
               <Clock size={14} />
-              <span>October 22, 2025, 11:01:20 AM</span>
+              <span>{lastScanDate}</span>
               <ChevronDown size={14} />
             </div>
             <span className="pushdown-badge">
@@ -341,18 +392,18 @@ const DataQualityDetail: React.FC = () => {
           {/* Overall */}
           <div className="metric-card">
             <span className="m-label">Overall</span>
-            <h2 className={`m-score ${hasEvaluated ? 'text-green' : 'text-red'}`} style={{ color: hasEvaluated ? '#10b981' : undefined }}>
-              {hasEvaluated ? '82%' : '39%'}
+            <h2 className="m-score text-green" style={{ color: '#10b981' }}>
+              {hasEvaluated ? '82%' : '28%'}
             </h2>
             <div className="overall-bar-bg">
               <div 
-                className={`overall-bar-fill ${hasEvaluated ? 'green' : 'red'}`} 
-                style={{ width: hasEvaluated ? '82%' : '39%', background: hasEvaluated ? '#10b981' : undefined }}
+                className="overall-bar-fill green" 
+                style={{ width: hasEvaluated ? '82%' : '28%', background: '#10b981' }}
               ></div>
             </div>
             <div className="m-sub-stats">
-              <span className="stat-item"><span className="dot green"></span> {hasEvaluated ? '1376 Passed' : '654 Passed'}</span>
-              <span className="stat-item"><span className="dot red"></span> {hasEvaluated ? '302 Failed' : '1024 Failed'}</span>
+              <span className="stat-item"><span className="dot green"></span> {hasEvaluated ? '1376 Passed' : 'Active'}</span>
+              <span className="stat-item"><span className="dot red"></span> {hasEvaluated ? '302 Failed' : '0 Failed'}</span>
             </div>
           </div>
 
@@ -362,12 +413,12 @@ const DataQualityDetail: React.FC = () => {
             <div className="dimensions-list">
               <div className="dim-row">
                 <span className="dim-dot green"></span>
-                <span className="dim-pct">44%</span>
+                <span className="dim-pct">{hasEvaluated ? '82%' : '28%'}</span>
                 <span className="dim-lbl">Validity</span>
               </div>
               <div className="dim-row">
                 <span className="dim-dot pink"></span>
-                <span className="dim-pct">92%</span>
+                <span className="dim-pct">100%</span>
                 <span className="dim-lbl">Accuracy</span>
               </div>
             </div>
@@ -384,11 +435,11 @@ const DataQualityDetail: React.FC = () => {
                 </svg>
               </div>
               <div className="graph-x-axis">
-                <span>Sep 21</span>
-                <span>Sep 28</span>
-                <span>Oct 05</span>
-                <span>Oct 12</span>
-                <span>Oct 19</span>
+                <span>{new Date(Date.now() - 28*86400000).toLocaleDateString('en-US', {month:'short', day:'2-digit'})}</span>
+                <span>{new Date(Date.now() - 21*86400000).toLocaleDateString('en-US', {month:'short', day:'2-digit'})}</span>
+                <span>{new Date(Date.now() - 14*86400000).toLocaleDateString('en-US', {month:'short', day:'2-digit'})}</span>
+                <span>{new Date(Date.now() - 7*86400000).toLocaleDateString('en-US', {month:'short', day:'2-digit'})}</span>
+                <span>Today</span>
               </div>
             </div>
           </div>
@@ -400,17 +451,17 @@ const DataQualityDetail: React.FC = () => {
 
             <span className="m-subtext">Last run change</span>
             <span className="m-sub-change">0</span>
-            <button className="btn-profiling-detail">Show profiling detail</button>
+            <button className="btn-profiling-detail" onClick={() => setActiveTab('Profiling & Rules')}>Show profiling detail</button>
           </div>
 
           {/* Metadata */}
           <div className="metric-card text-card">
             <span className="m-label">Metadata</span>
             <div className="meta-info">
-              <span className="m-bold">{hasEvaluated ? '7' : '4'}</span> applied rules
+              <span className="m-bold">{activeColumnsList.reduce((acc, curr) => acc + curr.appliedRules.length, 0)}</span> applied rules
             </div>
             <div className="meta-info">
-              <span className="m-bold">13</span> attributes
+              <span className="m-bold">{activeColumnsList.length}</span> attributes
             </div>
           </div>
         </div>
@@ -800,11 +851,6 @@ const DataQualityDetail: React.FC = () => {
                         </div>
                       </div>
                     )}
-                    {row.appliedRules.filter(rule => !deletedRules.includes(rule.label)).map((rule, ri) => {
-                      const isShut = shutDownRules.includes(rule.label);
-                      const isHovered = hoveredRule === rule.label;
-                      const hoverDetails = getRuleHoverDetails(rule.label);
-
                       return (
                         <div 
                           className="applied-rule-badge" 

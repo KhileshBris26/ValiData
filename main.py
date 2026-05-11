@@ -228,6 +228,28 @@ async def get_table_row_count(request: TableSummaryRequest):
     except Exception as e:
         return {"status": "success", "row_count": 1678}
 
+@app.post("/api/v1/metadata/profile")
+async def get_column_profile(request: RuleExecutionRequest):
+    try:
+        sql_query = QueryGenerator.generate_profiling_sql(
+            platform=request.platform,
+            db=request.database_name,
+            schema=request.schema_name,
+            table=request.table_name,
+            column=request.column_name
+        )
+        if request.platform == "snowflake":
+            snowflake_engine.connect(request.credentials)
+            res = snowflake_engine.execute_query(sql_query)
+            snowflake_engine.disconnect()
+        elif request.platform == "databricks":
+            databricks_engine.connect(request.credentials)
+            res = databricks_engine.execute_query(sql_query)
+            databricks_engine.disconnect()
+        return {"status": "success", "profile": res[0] if res else {}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/v1/lineage/infer")
 async def infer_lineage(request: LineageRequest):
     try:
