@@ -28,21 +28,35 @@ const DataCatalog: React.FC = () => {
           credentials
         });
         
-        // Enrich backend names with deterministic dummy data for the rest of the columns
+        // Enrich backend names with deterministic data synced with TableDetail
         const enriched = (res.data.tables || []).map((t: any, idx: number) => {
           const name = t.NAME || t.name;
           const db = t.DATABASE || t.database;
           const sch = t.SCHEMA || t.schema;
+          
+          // Check sessionStorage for user updates (synced with TableDetail)
+          const hasDesc = sessionStorage.getItem(`robin_has_saved_desc_${name}`) === 'true';
+          const terms = JSON.parse(sessionStorage.getItem(`robin_terms_${name}`) || '[]');
+          
+          // Calculate scores using the exact same logic as TableDetail
+          const descriptionScore = hasDesc ? 10 : 0;
+          const glossaryScore = terms.length > 0 ? 10 : 0;
+          const contextScore = 20 + descriptionScore + glossaryScore;
+          
+          // Quality is 28 (base) + any user-applied rules (simulated for now)
+          const qualityBase = 28;
+          const totalTrustScore = qualityBase + 20 + contextScore;
+          
           return {
             name: name,
             database: db,
             schema: sch,
-            description: `Auto-discovered catalog item from ${db}.${sch}`,
-            terms: idx % 3 === 0 ? ['Sensitive', 'Personal Data'] : ['Internal Use'],
-            trustIndex: idx % 4 === 0 ? 'Trusted' : 'Limited',
-            trustScore: 40 + (idx * 7) % 50,
+            description: hasDesc ? `User-curated description active for ${name}` : `Auto-discovered catalog item from ${db}.${sch}`,
+            terms: terms.length > 0 ? terms : (idx % 3 === 0 ? ['Sensitive', 'Personal Data'] : ['Internal Use']),
+            trustIndex: totalTrustScore > 60 ? 'Trusted' : 'Limited',
+            trustScore: totalTrustScore,
             anomalies: '-',
-            quality: (idx * 13) % 100,
+            quality: qualityBase,
             attributes: t.ATTRIBUTES !== undefined ? Number(t.ATTRIBUTES) : (t.attributes !== undefined ? Number(t.attributes) : 5 + (idx * 3) % 20),
             records: t.RECORDS !== undefined ? Number(t.RECORDS) : (t.records !== undefined ? Number(t.records) : 1000 + (idx * 157) % 50000),
             origin: platform === 'snowflake' ? 'Snowflake' : 'Databricks'
