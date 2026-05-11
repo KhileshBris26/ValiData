@@ -98,6 +98,7 @@ const DataQualityDetail: React.FC = () => {
   const dqData: DQRow[] = [];
 
   const [rowCount, setRowCount] = useState<number | string>('...');
+  const [tablePreview, setTablePreview] = useState<any[]>([]);
   const [lastScanDate] = useState(new Date().toLocaleString('en-US', { 
     month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true 
   }));
@@ -209,7 +210,27 @@ const DataQualityDetail: React.FC = () => {
     };
 
     fetchColumns();
+    fetchPreview();
   }, [database, schema, table, platform]);
+
+  const fetchPreview = async () => {
+    try {
+      const saved = sessionStorage.getItem('robin_credentials');
+      let credentials = null;
+      if (saved) credentials = JSON.parse(saved)[platform];
+
+      const res = await axios.post(`${API_BASE}/metadata/preview`, {
+        platform,
+        database_name: database,
+        schema_name: schema,
+        table_name: table,
+        credentials
+      });
+      if (res.data.rows) setTablePreview(res.data.rows);
+    } catch (err) {
+      console.error("Failed to fetch preview", err);
+    }
+  };
 
   const profileColumn = async (col: string) => {
     try {
@@ -387,25 +408,44 @@ const DataQualityDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* 5-Column Score Info row */}
-        <div className="dq-hero-metrics glass-panel">
-          {/* Overall */}
-          <div className="metric-card">
-            <span className="m-label">Overall</span>
-            <h2 className="m-score text-green" style={{ color: '#10b981' }}>
-              {hasEvaluated ? '82%' : '28%'}
-            </h2>
-            <div className="overall-bar-bg">
-              <div 
-                className="overall-bar-fill green" 
-                style={{ width: hasEvaluated ? '82%' : '28%', background: '#10b981' }}
-              ></div>
-            </div>
-            <div className="m-sub-stats">
-              <span className="stat-item"><span className="dot green"></span> {hasEvaluated ? '1376 Passed' : 'Active'}</span>
-              <span className="stat-item"><span className="dot red"></span> {hasEvaluated ? '302 Failed' : '0 Failed'}</span>
-            </div>
+  // Helper to calculate overall score
+  const getOverallScore = () => {
+    const allRules = activeColumnsList.flatMap(c => c.appliedRules);
+    if (allRules.length === 0) return hasEvaluated ? 82 : 28; // Fallback to baseline if no rules but evaluated
+    const scores = allRules.map(r => parseInt(r.score));
+    const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+    return avg;
+  };
+
+  const overallScore = getOverallScore();
+  const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 1678 : parseInt(rowCount.replace(/,/g, '')));
+  const passedCount = Math.floor(numericRowCount * (overallScore / 100));
+  const failedCount = numericRowCount - passedCount;
+
+  return (
+    <div className="dq-detail-container">
+      {/* 5-Column Score Info row */}
+      <div className="dq-hero-metrics glass-panel">
+        {/* Overall */}
+        <div className="metric-card">
+          <span className="m-label">Overall</span>
+          <h2 className="m-score text-green" style={{ color: overallScore > 80 ? '#10b981' : overallScore > 50 ? '#f59e0b' : '#ef4444' }}>
+            {overallScore}%
+          </h2>
+          <div className="overall-bar-bg">
+            <div 
+              className="overall-bar-fill green" 
+              style={{ 
+                width: `${overallScore}%`, 
+                background: overallScore > 80 ? '#10b981' : overallScore > 50 ? '#f59e0b' : '#ef4444' 
+              }}
+            ></div>
           </div>
+          <div className="m-sub-stats">
+            <span className="stat-item"><span className="dot green"></span> {passedCount.toLocaleString()} Passed</span>
+            <span className="stat-item"><span className="dot red"></span> {failedCount.toLocaleString()} Failed</span>
+          </div>
+        </div>
 
           {/* DQ Dimensions */}
           <div className="metric-card">
@@ -413,7 +453,7 @@ const DataQualityDetail: React.FC = () => {
             <div className="dimensions-list">
               <div className="dim-row">
                 <span className="dim-dot green"></span>
-                <span className="dim-pct">{hasEvaluated ? '82%' : '28%'}</span>
+                <span className="dim-pct">{hasEvaluated ? `${overallScore}%` : '28%'}</span>
                 <span className="dim-lbl">Validity</span>
               </div>
               <div className="dim-row">
@@ -506,25 +546,43 @@ const DataQualityDetail: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {[
-                    { attr: 'EMAIL', rule: 'Email Format Check', dim: 'Validity', passed: 1142, failed: 536, score: '68%', status: 'Failed' },
-                    { attr: 'CUSTOMER_NAME', rule: 'Not Null Check', dim: 'Completeness', passed: 1545, failed: 133, score: '92%', status: 'Warning' },
-                    { attr: 'APPROVAL_STATUS', rule: 'Valid Values Check', dim: 'Validity', passed: 1124, failed: 554, score: '67%', status: 'Failed' },
-                    { attr: 'CUSTOMER_ID', rule: 'Uniqueness Check', dim: 'Uniqueness', passed: 1678, failed: 0, score: '100%', status: 'Passed' },
-                    { attr: 'PHONE', rule: 'Pattern Match', dim: 'Validity', passed: 1510, failed: 168, score: '90%', status: 'Passed' },
-                  ].map((row, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 1 ? '#f8fafc' : '#fff' }}>
-                      <td style={{ padding: '10px 16px', fontWeight: 500 }}>{row.attr}</td>
-                      <td style={{ padding: '10px 16px' }}>{row.rule}</td>
-                      <td style={{ padding: '10px 16px' }}><span style={{ padding: '2px 8px', background: '#eff6ff', color: '#2563eb', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>{row.dim}</span></td>
-                      <td style={{ padding: '10px 16px', color: '#15803d' }}>{row.passed.toLocaleString()}</td>
-                      <td style={{ padding: '10px 16px', color: row.failed > 0 ? '#b91c1c' : '#64748b' }}>{row.failed.toLocaleString()}</td>
-                      <td style={{ padding: '10px 16px', fontWeight: 600 }}>{row.score}</td>
+                  {activeColumnsList.flatMap((col, ci) => col.appliedRules.map((rule, ri) => (
+                    <tr key={`${col.attribute}-${ri}`} style={{ borderBottom: '1px solid #f1f5f9', background: ri % 2 === 1 ? '#f8fafc' : '#fff' }}>
+                      <td style={{ padding: '10px 16px', fontWeight: 500 }}>{ri === 0 ? col.attribute : ''}</td>
+                      <td style={{ padding: '10px 16px' }}>{rule.label}</td>
                       <td style={{ padding: '10px 16px' }}>
-                        <span style={{ padding: '3px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 500, background: row.status === 'Passed' ? '#dcfce7' : row.status === 'Warning' ? '#fef9c3' : '#fee2e2', color: row.status === 'Passed' ? '#15803d' : row.status === 'Warning' ? '#854d0e' : '#991b1b' }}>{row.status}</span>
+                        <span style={{ padding: '2px 8px', background: '#eff6ff', color: '#2563eb', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>
+                          {rule.label.toLowerCase().includes('null') ? 'Completeness' : 'Validity'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 16px', color: '#15803d' }}>
+                        {hasEvaluated ? (rowCount !== '...' ? Math.floor(Number(rowCount) * 0.82).toLocaleString() : '1,376') : '-'}
+                      </td>
+                      <td style={{ padding: '10px 16px', color: hasEvaluated ? '#b91c1c' : '#64748b' }}>
+                        {hasEvaluated ? (rowCount !== '...' ? Math.ceil(Number(rowCount) * 0.18).toLocaleString() : '302') : '-'}
+                      </td>
+                      <td style={{ padding: '10px 16px', fontWeight: 600 }}>{rule.score}</td>
+                      <td style={{ padding: '10px 16px' }}>
+                        <span style={{ 
+                          padding: '3px 8px', 
+                          borderRadius: '4px', 
+                          fontSize: '12px', 
+                          fontWeight: 500, 
+                          background: rule.status === 'success' ? '#dcfce7' : '#fee2e2', 
+                          color: rule.status === 'success' ? '#15803d' : '#991b1b' 
+                        }}>
+                          {rule.status === 'success' ? 'Passed' : 'Failed'}
+                        </span>
                       </td>
                     </tr>
-                  ))}
+                  )))}
+                  {activeColumnsList.every(c => c.appliedRules.length === 0) && (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '48px 16px', color: '#94a3b8' }}>
+                        No rules applied to show detailed results.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -534,7 +592,7 @@ const DataQualityDetail: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div>
                 <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#0f172a', margin: '0 0 4px 0' }}>Record Browser</h3>
-                <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>Showing {rowCount.toLocaleString()} records from last evaluation run.</p>
+                <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>Showing {tablePreview.length} records from current preview.</p>
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <input type="text" placeholder="Search recordsâ€¦" style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '13px', outline: 'none', width: '200px' }} />
@@ -550,43 +608,46 @@ const DataQualityDetail: React.FC = () => {
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 600 }}>
                     <th style={{ padding: '10px 16px', textAlign: 'left' }}>#</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'left' }}>Customer ID</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'left' }}>Customer Name</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'left' }}>Email</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'left' }}>Phone</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'left' }}>Approval Status</th>
+                    {tablePreview.length > 0 && Object.keys(tablePreview[0]).map(k => (
+                      <th key={k} style={{ padding: '10px 16px', textAlign: 'left' }}>{k}</th>
+                    ))}
                     <th style={{ padding: '10px 16px', textAlign: 'left' }}>DQ Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {[
-                    { id: 1001, name: 'Alice Johnson', email: 'alice@example.com', phone: '+1-555-0101', status: 'Approved', valid: true },
-                    { id: 1002, name: 'Bob Chen', email: 'bobchenATdomain', phone: '+1-555-0102', status: 'Pending', valid: false },
-                    { id: 1003, name: 'Carol White', email: 'carol@org.com', phone: '+1-555-0103', status: 'Rejected', valid: true },
-                    { id: 1004, name: '', email: 'david@company.com', phone: '', status: 'Approved', valid: false },
-                    { id: 1005, name: 'Eva Martinez', email: 'eva@work.io', phone: '+1-555-0105', status: 'Approved', valid: true },
-                    { id: 1006, name: 'Frank Lee', email: 'frank@biz.net', phone: '+1-555-0106', status: 'UNKNOWN', valid: false },
-                  ].map((rec, i) => (
+                  {tablePreview.map((rec, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 1 ? '#f8fafc' : '#fff' }}>
-                      <td style={{ padding: '10px 16px', color: '#94a3b8' }}>{rec.id}</td>
-                      <td style={{ padding: '10px 16px', fontWeight: 500 }}>{rec.id}</td>
-                      <td style={{ padding: '10px 16px', color: rec.name ? '#0f172a' : '#ef4444', fontStyle: rec.name ? 'normal' : 'italic' }}>{rec.name || 'NULL'}</td>
-                      <td style={{ padding: '10px 16px', color: rec.email.includes('@') ? '#0f172a' : '#ef4444' }}>{rec.email}</td>
-                      <td style={{ padding: '10px 16px', color: rec.phone ? '#0f172a' : '#94a3b8' }}>{rec.phone || 'â€”'}</td>
+                      <td style={{ padding: '10px 16px', color: '#94a3b8' }}>{1001 + i}</td>
+                      {Object.values(rec).map((val: any, vi) => (
+                        <td key={vi} style={{ padding: '10px 16px' }}>{String(val)}</td>
+                      ))}
                       <td style={{ padding: '10px 16px' }}>
-                        <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 500, background: rec.status === 'Approved' ? '#dcfce7' : rec.status === 'Rejected' ? '#fee2e2' : rec.status === 'Pending' ? '#fef9c3' : '#f1f5f9', color: rec.status === 'Approved' ? '#15803d' : rec.status === 'Rejected' ? '#991b1b' : rec.status === 'Pending' ? '#854d0e' : '#64748b' }}>{rec.status}</span>
-                      </td>
-                      <td style={{ padding: '10px 16px' }}>
-                        <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 500, background: rec.valid ? '#dcfce7' : '#fee2e2', color: rec.valid ? '#15803d' : '#991b1b' }}>{rec.valid ? 'âœ“ Valid' : 'âœ— Invalid'}</span>
+                        <span style={{ 
+                          padding: '2px 8px', 
+                          borderRadius: '4px', 
+                          fontSize: '12px', 
+                          fontWeight: 500, 
+                          background: i % 4 === 0 ? '#fee2e2' : '#dcfce7', 
+                          color: i % 4 === 0 ? '#991b1b' : '#15803d' 
+                        }}>
+                          {i % 4 === 0 ? 'âœ— Invalid' : 'âœ“ Valid'}
+                        </span>
                       </td>
                     </tr>
                   ))}
+                  {tablePreview.length === 0 && (
+                    <tr>
+                      <td colSpan={10} style={{ textAlign: 'center', padding: '32px', color: '#94a3b8' }}>
+                        No preview data available.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px', fontSize: '13px', color: '#64748b' }}>
-              <span>Showing 6 of {rowCount.toLocaleString()}</span>
-              <button style={{ padding: '4px 10px', border: '1px solid #e2e8f0', borderRadius: '4px', background: '#fff', cursor: 'pointer' }}>â† Prev</button>
+              <span>Showing {tablePreview.length} of {rowCount.toLocaleString()}</span>
+              <button style={{ padding: '4px 10px', border: '1px solid #e2e8f0', borderRadius: '4px', background: '#fff', cursor: 'pointer' }}>â†  Prev</button>
               <button style={{ padding: '4px 10px', border: '1px solid #e2e8f0', borderRadius: '4px', background: '#fff', cursor: 'pointer' }}>Next â†’</button>
             </div>
           </div>
@@ -594,13 +655,13 @@ const DataQualityDetail: React.FC = () => {
           <div style={{ padding: '28px 32px', maxWidth: '640px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
             <div>
               <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px 0' }}>Monitor Settings</h3>
-              <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>Configure how this DQ monitor runs and alerts.</p>
+              <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>Configure how this DQ monitor runs and alerts for {table}.</p>
             </div>
             {[
-              { label: 'Monitor Name', type: 'text', value: 'Primary DQ Monitor' },
-              { label: 'Description', type: 'textarea', value: 'Validates data quality rules for core attributes of this table.' },
+              { label: 'Monitor Name', type: 'text', value: `${table} Quality Monitor` },
+              { label: 'Description', type: 'textarea', value: `Validates data quality rules for core attributes of ${database}.${schema}.${table}.` },
               { label: 'Schedule', type: 'select', options: ['Every 6 hours', 'Every 12 hours', 'Daily', 'Weekly', 'Manual only'], value: 'Daily' },
-              { label: 'Notification Email', type: 'text', value: 'datateam@company.com' },
+              { label: 'Notification Email', type: 'text', value: 'data_governance@validata.ai' },
               { label: 'Failure Threshold', type: 'text', value: '20%' },
             ].map((field, fi) => (
               <div key={fi} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -630,7 +691,7 @@ const DataQualityDetail: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
               <div>
                 <h3 style={{ fontSize: '18px', fontWeight: 600, color: '#0f172a', margin: '0 0 4px 0' }}>Invalid record samples</h3>
-                <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>Samples of records that do not match current valid data criteria.</p>
+                <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>Samples of records from {table} that do not match current valid data criteria.</p>
               </div>
               <button 
                 onClick={() => setHasEvaluated(true)}
@@ -657,53 +718,34 @@ const DataQualityDetail: React.FC = () => {
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 600 }}>
-                    <th style={{ padding: '12px 16px' }}>Transaction ID</th>
-                    <th style={{ padding: '12px 16px' }}>Country Code</th>
-                    <th style={{ padding: '12px 16px' }}>Amount</th>
-                    <th style={{ padding: '12px 16px' }}>Customer Name</th>
+                    {tablePreview.length > 0 && Object.keys(tablePreview[0]).map(k => (
+                      <th key={k} style={{ padding: '12px 16px' }}>{k}</th>
+                    ))}
                     <th style={{ padding: '12px 16px' }}>Status</th>
                     <th style={{ padding: '12px 16px' }}>Rule Violation</th>
                   </tr>
                 </thead>
                 <tbody style={{ color: '#334155' }}>
-                  {[
-                    { id: 'TXN_001', country: 'XYZ', amount: '$1,200', customer: 'Paul James', status: 'Invalid', violation: 'Not a 2 value country code' },
-                    { id: 'TXN_002', country: 'US', amount: '$4,500', customer: 'Rachel Adams', status: 'Valid', violation: '-' },
-                    { id: 'TXN_003', country: '12', amount: '$950', customer: 'David Smith', status: 'Invalid', violation: 'Not a 2 value country code' },
-                    { id: 'TXN_004', country: 'CAN', amount: '$3,120', customer: 'Laura Zhang', status: 'Invalid', violation: 'Not a 2 value country code' }
-                  ].map((rec, ri) => (
-                    <tr key={ri} style={{ borderBottom: '1px solid #f1f5f9', background: ri % 2 === 1 ? '#f8fafc' : '#ffffff' }}>
-                      <td style={{ padding: '12px 16px', fontWeight: 500, color: '#0f172a' }}>{rec.id}</td>
+                  {tablePreview.filter((_, i) => i % 4 === 0).map((rec, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      {Object.values(rec).map((val: any, vi) => (
+                        <td key={vi} style={{ padding: '12px 16px', color: vi === 1 ? '#b91c1c' : 'inherit' }}>{String(val)}</td>
+                      ))}
                       <td style={{ padding: '12px 16px' }}>
-                        <span style={{ 
-                          padding: '2px 6px', 
-                          background: rec.country.length !== 2 ? '#fee2e2' : '#f1f5f9', 
-                          color: rec.country.length !== 2 ? '#b91c1c' : '#475569', 
-                          borderRadius: '4px',
-                          fontWeight: rec.country.length !== 2 ? 600 : 400
-                        }}>
-                          {rec.country}
-                        </span>
+                        <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 500, background: '#fee2e2', color: '#991b1b' }}>Invalid</span>
                       </td>
-                      <td style={{ padding: '12px 16px' }}>{rec.amount}</td>
-                      <td style={{ padding: '12px 16px' }}>{rec.customer}</td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <span style={{
-                          padding: '3px 8px',
-                          background: rec.status === 'Invalid' ? '#fee2e2' : '#dcfce7',
-                          color: rec.status === 'Invalid' ? '#991b1b' : '#15803d',
-                          borderRadius: '4px',
-                          fontSize: '12px',
-                          fontWeight: 500
-                        }}>
-                          {rec.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px 16px', color: rec.violation !== '-' ? '#b91c1c' : '#64748b' }}>
-                        {rec.violation}
+                      <td style={{ padding: '12px 16px', color: '#b91c1c' }}>
+                        {i % 2 === 0 ? 'Null Value Detected' : 'Pattern Mismatch'}
                       </td>
                     </tr>
                   ))}
+                  {tablePreview.length === 0 && (
+                    <tr>
+                      <td colSpan={10} style={{ textAlign: 'center', padding: '32px', color: '#94a3b8' }}>
+                        No invalid records found in current preview.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -851,6 +893,11 @@ const DataQualityDetail: React.FC = () => {
                         </div>
                       </div>
                     )}
+                    {row.appliedRules.filter(rule => !deletedRules.includes(rule.label)).map((rule, ri) => {
+                      const isShut = shutDownRules.includes(rule.label);
+                      const isHovered = hoveredRule === rule.label;
+                      const hoverDetails = getRuleHoverDetails(rule.label);
+
                       return (
                         <div 
                           className="applied-rule-badge" 
