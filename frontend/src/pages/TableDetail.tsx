@@ -1500,28 +1500,39 @@ const TableDetail: React.FC = () => {
                   direction: 'Consumer', icon: '⬆️', app: 'Snowflake SQL', procedure: '—', lastRun: '2025-10-29 06:00:00', execCount: 30, rows: '1,245,600', duration: '823 ms',
                   sql: `INSERT INTO ${database}.${schema}.${d.node.id}\nSELECT\n  *\nFROM ${database}.${schema}.${table};`
                 }))
-              ].map((t, idx) => (
-                <div key={idx} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
-                  <div style={{ padding: '14px 18px', background: '#f8fafc', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '1.2rem' }}>{t.icon}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e293b' }}>{t.direction} Pipeline</span>
-                        <span style={{ padding: '1px 8px', background: t.direction === 'Producer' ? '#eff6ff' : '#f0fdf4', color: t.direction === 'Producer' ? '#2563eb' : '#16a34a', border: `1px solid ${t.direction === 'Producer' ? '#bfdbfe' : '#bbf7d0'}`, borderRadius: '10px', fontSize: '0.7rem', fontWeight: 600 }}>{t.app}</span>
-                      </div>
-                      <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px', display: 'flex', gap: '16px' }}>
-                        <span>Last run: {t.lastRun}</span>
-                        <span>Executions: {t.execCount}</span>
-                        <span>Rows: {t.rows}</span>
-                        <span>Duration: {t.duration}</span>
+              ].map((t, idx) => {
+                // Generate semi-random but deterministic stats based on the table name
+                const seed = (t.sql.length + idx) % 10;
+                const rows = (500000 + (seed * 123456)).toLocaleString();
+                const duration = (400 + (seed * 85)).toLocaleString();
+                const executions = 10 + seed;
+                const lastRunDate = new Date();
+                lastRunDate.setHours(lastRunDate.getHours() - (seed * 2));
+                const lastRunStr = lastRunDate.toISOString().replace('T', ' ').split('.')[0];
+
+                return (
+                  <div key={idx} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden', background: '#ffffff' }}>
+                    <div style={{ padding: '14px 18px', background: '#f8fafc', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span style={{ fontSize: '1.2rem' }}>{t.icon}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e293b' }}>{t.direction} Pipeline</span>
+                          <span style={{ padding: '1px 8px', background: t.direction === 'Producer' ? '#eff6ff' : '#f0fdf4', color: t.direction === 'Producer' ? '#2563eb' : '#16a34a', border: `1px solid ${t.direction === 'Producer' ? '#bfdbfe' : '#bbf7d0'}`, borderRadius: '10px', fontSize: '0.7rem', fontWeight: 600 }}>{t.app}</span>
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px', display: 'flex', gap: '16px' }}>
+                          <span>Last run: {lastRunStr}</span>
+                          <span>Executions: {executions}</span>
+                          <span>Rows: {rows}</span>
+                          <span>Duration: {duration} ms</span>
+                        </div>
                       </div>
                     </div>
+                    <div style={{ padding: '14px 18px', background: '#1e293b', fontFamily: 'monospace', fontSize: '0.78rem', color: '#e2e8f0', whiteSpace: 'pre', overflowX: 'auto', lineHeight: 1.6 }}>
+                      {t.sql}
+                    </div>
                   </div>
-                  <div style={{ padding: '14px 18px', background: '#1e293b', fontFamily: 'monospace', fontSize: '0.78rem', color: '#e2e8f0', whiteSpace: 'pre', overflowX: 'auto', lineHeight: 1.6 }}>
-                    {t.sql}
-                  </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
                 <Loader2 className="animate-spin" style={{ margin: '0 auto 12px' }} />
