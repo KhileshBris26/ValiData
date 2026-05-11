@@ -5,7 +5,7 @@ import { usePlatform } from '../context/PlatformContext';
 import SearchableDropdown from '../components/SearchableDropdown';
 import './RuleStudio.css';
 
-const API_BASE = 'http://127.0.0.1:8000/api/v1';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api/v1';
 
 const RuleStudio: React.FC = () => {
   const { platform } = usePlatform();
