@@ -286,6 +286,8 @@ class QueryGenerator:
             
         sql = "WITH " + ",\n".join(cte_parts) + "\n" + "\nUNION ALL\n".join(select_parts)
         return sql
+    @staticmethod
+    def generate_query_history_sql(platform: str, days_back: int = 7, database_name: str = None) -> str:
         """
         Generates query to fetch query history for usage analytics.
         """

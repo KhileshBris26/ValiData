@@ -242,12 +242,18 @@ async def infer_lineage(request: LineageRequest):
 @app.post("/api/v1/analytics/usage")
 async def get_usage_analytics(request: AnalyticsRequest):
     try:
+        if request.platform == "snowflake": snowflake_engine.connect(request.credentials)
+        elif request.platform == "databricks": databricks_engine.connect(request.credentials)
+        
         sql_query = QueryGenerator.generate_query_history_sql(request.platform, request.days_back or 7)
         result = snowflake_engine.execute_query(sql_query) if request.platform == "snowflake" else databricks_engine.execute_query(sql_query)
         analytics = UsageAnalyzer.analyze_queries(result)
         return {"status": "success", "analytics": analytics}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if request.platform == "snowflake": snowflake_engine.disconnect()
+        elif request.platform == "databricks": databricks_engine.disconnect()
 
 @app.post("/api/v1/ai/table_summary")
 async def generate_table_summary(request: TableSummaryRequest):
