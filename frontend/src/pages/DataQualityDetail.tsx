@@ -155,46 +155,35 @@ const DataQualityDetail: React.FC = () => {
         });
 
         if (res.data.entities && res.data.entities.length > 0) {
-          const parsedCols = res.data.entities.map((col: string) => {
-            let terms: string | undefined = undefined;
-            const lowCol = col.toLowerCase();
-            if (lowCol.includes('email')) terms = 'E-mail';
-            if (lowCol.includes('phone') || lowCol.includes('telephone')) terms = 'Phone Number';
-            if (lowCol.includes('id')) terms = 'Identifier';
-            if (lowCol.includes('name')) terms = 'Full Name';
-            if (lowCol.includes('country')) terms = 'ISO-2 Country Code';
-            if (lowCol.includes('revenue') || lowCol.includes('amount')) terms = 'Financial Value';
-
-            const nameLen = col.length;
-            const notNullVal = nameLen % 13 === 0 ? 92 : (nameLen % 7 === 0 ? 84 : 100);
-            const distinctVal = (nameLen * 11) % 100 || 55;
-            const uniqueVal = distinctVal - (nameLen % 3);
+          const parsedCols = res.data.entities.map((colObj: any) => {
+            const colName = colObj.name || colObj;
+            const colType = (colObj.type || 'VARCHAR').toUpperCase();
+            const isNumeric = colType.includes('INT') || colType.includes('NUMBER') || colType.includes('FLOAT') || colType.includes('DECIMAL') || colType.includes('DOUBLE');
+            const isDate = colType.includes('DATE') || colType.includes('TIMESTAMP') || colType.includes('TIME');
 
             let tv: { label: string; pct: string }[] = [];
-            if (lowCol.includes('email')) {
-              tv = [{ label: 'user@example.com', pct: '18%' }, { label: 'test@domain.com', pct: '12%' }, { label: 'info@org.com', pct: '2%' }];
-            } else if (lowCol.includes('id') || lowCol.includes('hk_')) {
-              tv = [{ label: `${col}_10932`, pct: '1%' }, { label: `${col}_10955`, pct: '1%' }, { label: `${col}_10981`, pct: '0%' }];
-            } else if (lowCol.includes('amount') || lowCol.includes('balance') || lowCol.includes('revenue')) {
-              tv = [{ label: '1240.50', pct: '8%' }, { label: '500.00', pct: '4%' }, { label: '99.99', pct: '2%' }];
-            } else if (lowCol.includes('country') || lowCol.includes('code')) {
-              tv = [{ label: 'US', pct: '21%' }, { label: 'CA', pct: '14%' }, { label: 'GB', pct: '12%' }];
-            } else if (lowCol.includes('status')) {
-              tv = [{ label: 'Active', pct: '62%' }, { label: 'Pending', pct: '24%' }, { label: 'Inactive', pct: '14%' }];
+            if (isNumeric) {
+              tv = [
+                { label: 'Min: 1,024.50', pct: 'Value' },
+                { label: 'Max: 85,400.00', pct: 'Value' },
+                { label: 'Avg: 42,712.25', pct: 'Value' }
+              ];
+            } else if (isDate) {
+              tv = [
+                { label: 'Min: 2023-01-01', pct: 'Date' },
+                { label: 'Max: 2023-12-31', pct: 'Date' },
+                { label: 'Span: 365 Days', pct: 'Range' }
+              ];
             } else {
-              tv = [{ label: `${col}_V1`, pct: '36%' }, { label: `${col}_V2`, pct: '24%' }, { label: `${col}_V3`, pct: '15%' }];
+              tv = [{ label: 'NA', pct: '-' }];
             }
 
             return {
-              attribute: col,
-              terms,
-              type: lowCol.includes('hk_') || lowCol.includes('amount') || lowCol.includes('balance') ? 'num' : 'Az',
-              overallDQ: '-',
-              profileSummary: [
-                { label: 'Not Null', pct: `${notNullVal}%` },
-                { label: 'Distinct', pct: `${distinctVal}%` },
-                { label: 'Unique', pct: `${uniqueVal > 0 ? uniqueVal : 1}%` }
-              ],
+              attribute: colName,
+              terms: undefined, // Keep empty for now
+              type: isNumeric ? 'num' : (isDate ? 'date' : 'Az'),
+              overallDQ: '100%', // Default to 100% as requested
+              profileSummary: [], // Keep empty for now
               topValues: tv,
               masks: [],
               appliedRules: []
@@ -228,21 +217,48 @@ const DataQualityDetail: React.FC = () => {
       }
     });
 
-    if (combinedRules.length > 0) {
-      let dqPct = '100%';
-      if (hasEvaluated) {
-        if (colItem.attribute === 'EMAIL') dqPct = '68%';
-        else if (colItem.attribute === 'CUSTOMER_NAME') dqPct = '92%';
-        else if (colItem.attribute === 'APPROVAL_STATUS') dqPct = '67%';
-        else dqPct = '85%';
-      }
-      return { ...colItem, overallDQ: dqPct, appliedRules: combinedRules };
+    let dqPct = '100%';
+    if (combinedRules.length > 0 && hasEvaluated) {
+      const validCount = combinedRules.filter(r => r.status === 'valid').length;
+      dqPct = `${Math.round((validCount / combinedRules.length) * 100)}%`;
     }
-    return colItem;
+
+    return { ...colItem, overallDQ: dqPct, appliedRules: combinedRules };
   });
 
   const handleAddRuleClick = (attr: string) => {
     setOpenAddRule(openAddRule === attr ? null : attr);
+  };
+
+  const handleApplyRule = (attr: string, ruleName: string) => {
+    const newRule = { label: ruleName, score: '100%', status: 'valid' as const };
+    const storageKey = `robin_rules_${database}_${schema}_${table}_${attr}`;
+    const existingRules = JSON.parse(sessionStorage.getItem(storageKey) || '[]');
+    if (!existingRules.some((r: any) => r.label === ruleName)) {
+      existingRules.push(newRule);
+      sessionStorage.setItem(storageKey, JSON.stringify(existingRules));
+    }
+    setOpenAddRule(null);
+  };
+
+  const [suggestingRules, setSuggestingRules] = useState(false);
+  const handleSuggestRules = async () => {
+    setSuggestingRules(true);
+    try {
+      // Simulate multiple suggestions for all numeric/string columns
+      const suggested = dynamicColumns.slice(0, 5).map(col => ({
+        attribute: col.attribute,
+        name: col.attribute.includes('EMAIL') ? 'Email Format' : (col.type === 'num' ? 'Value Range' : 'Completeness'),
+        score: '100%',
+        status: 'valid' as const
+      }));
+      sessionStorage.setItem('robin_applied_rules', JSON.stringify(suggested));
+      setHasEvaluated(true);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSuggestingRules(false);
+    }
   };
 
   const getOverallScore = () => {
@@ -418,7 +434,9 @@ const DataQualityDetail: React.FC = () => {
             <>
               <div className="dq-table-actions">
                 <div className="filter-input-wrapper"><Filter size={16} /><input type="text" placeholder="Filter" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-                <button className="btn-suggested-rules">Suggested Rules</button>
+                <button className="btn-suggested-rules" onClick={handleSuggestRules} disabled={suggestingRules}>
+                  {suggestingRules ? 'Thinking...' : 'Suggested Rules'}
+                </button>
               </div>
               <div className="dq-scrollable-table">
                 <table className="dq-main-table">
@@ -439,9 +457,70 @@ const DataQualityDetail: React.FC = () => {
                           <td className="profile-cell">{row.profileSummary.map((ps, pi) => <div key={pi} className="ps-row"><span>{ps.label}</span><span>{ps.pct}</span></div>)}</td>
                           <td className="values-cell">{row.topValues.map((tv, ti) => <div key={ti} className="tv-row"><span>{tv.pct}</span><span>{tv.label}</span></div>)}</td>
                           <td className="applied-rules-cell">
-                            <button className="btn-add-rule" onClick={() => handleAddRuleClick(row.attribute)}>
-                              <Plus size={12} /> Add
-                            </button>
+                            <div style={{ position: 'relative', display: 'inline-block' }}>
+                              <button className="btn-add-rule" onClick={() => handleAddRuleClick(row.attribute)}>
+                                <Plus size={12} /> Add
+                              </button>
+                              {openAddRule === row.attribute && (
+                                <div className="add-rule-popup glass-panel" style={{
+                                  position: 'absolute',
+                                  top: '100%',
+                                  left: 0,
+                                  zIndex: 1100,
+                                  background: '#ffffff',
+                                  border: '1px solid #e2e8f0',
+                                  borderRadius: '8px',
+                                  boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
+                                  padding: '8px',
+                                  minWidth: '180px',
+                                  marginTop: '5px'
+                                }}>
+                                  <div style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Select Rule</div>
+                                  {['Null Check', 'Unique Check', 'Pattern Match', 'Range Check', 'Freshness'].map(rule => (
+                                    <button 
+                                      key={rule}
+                                      onClick={() => handleApplyRule(row.attribute, rule)}
+                                      style={{
+                                        display: 'block',
+                                        width: '100%',
+                                        padding: '8px 12px',
+                                        textAlign: 'left',
+                                        background: 'transparent',
+                                        border: 'none',
+                                        fontSize: '13px',
+                                        color: '#1e293b',
+                                        cursor: 'pointer',
+                                        borderRadius: '4px',
+                                        transition: 'background 0.2s'
+                                      }}
+                                      onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                    >
+                                      {rule}
+                                    </button>
+                                  ))}
+                                  <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '4px', paddingTop: '4px' }}>
+                                    <Link to="/rule-studio" style={{ textDecoration: 'none' }}>
+                                      <button style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        width: '100%',
+                                        padding: '8px 12px',
+                                        textAlign: 'left',
+                                        background: 'transparent',
+                                        border: 'none',
+                                        fontSize: '13px',
+                                        color: '#3b82f6',
+                                        cursor: 'pointer'
+                                      }}>
+                                        <ExternalLink size={12} /> Rule Studio
+                                      </button>
+                                    </Link>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                             {row.appliedRules.filter(rule => !deletedRules.includes(rule.label)).map((rule, ri) => {
                               const isShut = shutDownRules.includes(rule.label);
                               const isHovered = hoveredRule === rule.label;
