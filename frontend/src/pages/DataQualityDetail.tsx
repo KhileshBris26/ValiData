@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 
 import { 
-  ChevronRight, ShieldCheck, Clock, ExternalLink, Filter, ChevronDown, HelpCircle, Plus, Power, X
+  ChevronRight, ShieldCheck, Clock, ExternalLink, Filter, ChevronDown, HelpCircle, Plus, Power, X, CheckCircle2, XCircle
 } from 'lucide-react';
 import axios from 'axios';
 import { usePlatform } from '../context/PlatformContext';
@@ -261,14 +261,30 @@ const DataQualityDetail: React.FC = () => {
     }
   };
 
-  const getOverallScore = () => {
+  const getDimensionStats = () => {
     const allRules = activeColumnsList.flatMap(c => c.appliedRules);
-    if (allRules.length === 0) return hasEvaluated ? 82 : 28;
-    const scores = allRules.map(r => parseInt(r.score));
-    return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+    const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Freshness', 'Validity'];
+    const accuracyLabels = ['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy'];
+
+    const valRules = allRules.filter(r => validityLabels.some(lbl => r.label.includes(lbl)));
+    const accRules = allRules.filter(r => accuracyLabels.some(lbl => r.label.includes(lbl)));
+
+    const getScore = (rules: any[]) => {
+      if (rules.length === 0) return hasEvaluated ? 100 : 28;
+      const total = rules.reduce((acc, r) => acc + parseInt(r.score), 0);
+      return Math.round(total / rules.length);
+    };
+
+    const valScore = getScore(valRules);
+    const accScore = getScore(accRules);
+    const overall = allRules.length > 0 
+      ? Math.round(allRules.reduce((acc, r) => acc + parseInt(r.score), 0) / allRules.length)
+      : (hasEvaluated ? 82 : 28);
+
+    return { valScore, accScore, overallScore: overall };
   };
 
-  const overallScore = getOverallScore();
+  const { valScore, accScore, overallScore } = getDimensionStats();
 
   useEffect(() => {
     if (table) {
@@ -338,15 +354,21 @@ const DataQualityDetail: React.FC = () => {
           <div className="metric-card">
             <span className="m-label">DQ Dimensions</span>
             <div className="dimensions-list">
-              <div className="dim-row"><span className="dim-dot green"></span><span className="dim-pct">{hasEvaluated ? `${overallScore}%` : '28%'}</span><span className="dim-lbl">Validity</span></div>
-              <div className="dim-row"><span className="dim-dot pink"></span><span className="dim-pct">100%</span><span className="dim-lbl">Accuracy</span></div>
+              <div className="dim-row"><span className="dim-dot green"></span><span className="dim-pct">{valScore}%</span><span className="dim-lbl">Validity</span></div>
+              <div className="dim-row"><span className="dim-dot pink"></span><span className="dim-pct">{accScore}%</span><span className="dim-lbl">Accuracy</span></div>
             </div>
           </div>
           <div className="metric-card graph-card">
             <span className="m-label">Dq over time</span>
             <div className="graph-plot">
               <div className="graph-svg-container"><svg viewBox="0 0 160 50"><path d="M 0 30 Q 40 32 80 34 T 160 10" fill="none" stroke="#6366f1" strokeWidth="2" /></svg></div>
-              <div className="graph-x-axis"><span>Oct 14</span><span>Oct 21</span><span>Oct 28</span><span>Nov 04</span><span>Today</span></div>
+              <div className="graph-x-axis">
+                <span>{new Date(Date.now() - 28*86400000).toLocaleDateString('en-US', {month:'short', day:'numeric'})}</span>
+                <span>{new Date(Date.now() - 21*86400000).toLocaleDateString('en-US', {month:'short', day:'numeric'})}</span>
+                <span>{new Date(Date.now() - 14*86400000).toLocaleDateString('en-US', {month:'short', day:'numeric'})}</span>
+                <span>{new Date(Date.now() - 7*86400000).toLocaleDateString('en-US', {month:'short', day:'numeric'})}</span>
+                <span>Today</span>
+              </div>
             </div>
           </div>
           <div className="metric-card text-card">
@@ -389,19 +411,30 @@ const DataQualityDetail: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {activeColumnsList.flatMap((col) => col.appliedRules.map((rule, ri) => (
-                      <tr key={`${col.attribute}-${ri}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '10px 16px', fontWeight: 500 }}>{ri === 0 ? col.attribute : ''}</td>
-                        <td style={{ padding: '10px 16px' }}>{rule.label}</td>
-                        <td style={{ padding: '10px 16px' }}><span className="dim-badge">Validity</span></td>
-                        <td style={{ padding: '10px 16px', color: '#15803d' }}>{hasEvaluated ? '1,376' : '-'}</td>
-                        <td style={{ padding: '10px 16px', color: '#b91c1c' }}>{hasEvaluated ? '302' : '-'}</td>
-                        <td style={{ padding: '10px 16px', fontWeight: 600 }}>{rule.score}</td>
-                        <td style={{ padding: '10px 16px' }}>
-                          <span className={`status-badge ${rule.status}`}>{rule.status === 'valid' ? 'Passed' : 'Failed'}</span>
-                        </td>
-                      </tr>
-                    )))}
+                    {activeColumnsList.flatMap((col) => col.appliedRules.map((rule, ri) => {
+                      const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Freshness', 'Validity'];
+                      const isValidity = validityLabels.some(lbl => rule.label.includes(lbl));
+                      const scoreVal = parseInt(rule.score) || 100;
+                      const pCount = Math.floor(numericRowCount * (scoreVal / 100));
+                      const fCount = numericRowCount - pCount;
+
+                      return (
+                        <tr key={`${col.attribute}-${ri}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '10px 16px', fontWeight: 500 }}>{ri === 0 ? col.attribute : ''}</td>
+                          <td style={{ padding: '10px 16px' }}>{rule.label}</td>
+                          <td style={{ padding: '10px 16px' }}><span className={`dim-badge ${isValidity ? 'validity' : 'accuracy'}`}>{isValidity ? 'Validity' : 'Accuracy'}</span></td>
+                          <td style={{ padding: '10px 16px', color: '#15803d' }}>{hasEvaluated ? pCount.toLocaleString() : '-'}</td>
+                          <td style={{ padding: '10px 16px', color: '#b91c1c' }}>{hasEvaluated ? fCount.toLocaleString() : '-'}</td>
+                          <td style={{ padding: '10px 16px', fontWeight: 600 }}>{rule.score}</td>
+                          <td style={{ padding: '10px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: scoreVal > 80 ? '#16a34a' : '#dc2626' }}>
+                              {scoreVal > 80 ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                              <span>{scoreVal > 80 ? 'Pass' : 'Fail'}</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }))}
                   </tbody>
                 </table>
               </div>
