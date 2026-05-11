@@ -158,6 +158,8 @@ const TableDetail: React.FC = () => {
   const [_isLoadingCols, setIsLoadingCols] = useState(false);
   const [previewRows, setPreviewRows] = useState<any[]>([]);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+  const [dataFilter, setDataFilter] = useState('');
 
   useEffect(() => {
     const fetchColumns = async () => {
@@ -1252,58 +1254,142 @@ const TableDetail: React.FC = () => {
         <div className="card glass-panel" style={{ padding: '2rem', marginTop: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <div>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: '#1e293b' }}>Live Data Preview (Limit 10)</h3>
-              <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Sampling real records from {platform} · Sensitive fields masked</p>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: '#1e293b' }}>Live Data Preview (Sample 100)</h3>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>Sampling real records from {platform} · Click headers to sort</p>
             </div>
-            <button 
-              onClick={fetchPreview}
-              disabled={isLoadingPreview}
-              className="btn-outline" 
-              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              {isLoadingPreview ? <Loader2 size={14} className="animate-spin" /> : <RotateCw size={14} />}
-              Refresh
-            </button>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <div style={{ position: 'relative' }}>
+                <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                <input 
+                  type="text" 
+                  placeholder="Filter results..." 
+                  value={dataFilter}
+                  onChange={(e) => setDataFilter(e.target.value)}
+                  style={{
+                    padding: '8px 12px 8px 32px',
+                    borderRadius: '6px',
+                    border: '1px solid #e2e8f0',
+                    fontSize: '0.82rem',
+                    width: '240px',
+                    outline: 'none',
+                    transition: 'border-color 0.2s'
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                  onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
+                />
+              </div>
+              <button 
+                onClick={fetchPreview}
+                disabled={isLoadingPreview}
+                className="btn-outline" 
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                {isLoadingPreview ? <Loader2 size={14} className="animate-spin" /> : <RotateCw size={14} />}
+                Refresh
+              </button>
+            </div>
           </div>
-          <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          
+          <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff' }}>
             {isLoadingPreview ? (
               <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
                 <Loader2 size={24} className="animate-spin" style={{ margin: '0 auto 12px' }} />
                 <span>Fetching live data from {platform}...</span>
               </div>
-            ) : previewRows.length > 0 ? (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                <thead>
-                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                    {Object.keys(previewRows[0]).map(h => (
-                      <th key={h} style={{ textAlign: 'left', padding: '12px 14px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {previewRows.map((row, ri) => (
-                    <tr key={ri} style={{ borderBottom: '1px solid #f1f5f9', background: ri % 2 === 0 ? '#ffffff' : '#fafafa' }}>
-                      {Object.values(row).map((val: any, ci) => {
-                        const isNull = val === null || val === undefined;
-                        const displayVal = isNull ? 'NULL' : String(val);
-                        return (
-                          <td key={ci} style={{ padding: '10px 14px', color: isNull ? '#ef4444' : '#1e293b', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-                            {displayVal}
-                          </td>
-                        );
-                      })}
+            ) : previewRows.length > 0 ? (() => {
+              // Filtering logic
+              let filtered = [...previewRows];
+              if (dataFilter) {
+                const lowerFilter = dataFilter.toLowerCase();
+                filtered = filtered.filter(row => 
+                  Object.values(row).some(val => String(val).toLowerCase().includes(lowerFilter))
+                );
+              }
+
+              // Sorting logic
+              if (sortConfig) {
+                filtered.sort((a, b) => {
+                  const aVal = a[sortConfig.key];
+                  const bVal = b[sortConfig.key];
+                  if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                  if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                  return 0;
+                });
+              }
+
+              const headers = Object.keys(previewRows[0]);
+
+              return (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                      {headers.map(h => (
+                        <th 
+                          key={h} 
+                          onClick={() => {
+                            setSortConfig({
+                              key: h,
+                              direction: sortConfig?.key === h && sortConfig.direction === 'asc' ? 'desc' : 'asc'
+                            });
+                          }}
+                          style={{ 
+                            textAlign: 'left', 
+                            padding: '12px 14px', 
+                            color: '#475569', 
+                            fontWeight: 700, 
+                            textTransform: 'uppercase', 
+                            letterSpacing: '0.5px',
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            position: 'relative',
+                            transition: 'background 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = '#f8fafc'}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {h}
+                            {sortConfig?.key === h ? (
+                              <span style={{ fontSize: '10px' }}>{sortConfig.direction === 'asc' ? '🔼' : '🔽'}</span>
+                            ) : (
+                              <span style={{ fontSize: '10px', opacity: 0.2 }}>↕️</span>
+                            )}
+                          </div>
+                        </th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
+                  </thead>
+                  <tbody>
+                    {filtered.length > 0 ? filtered.map((row, ri) => (
+                      <tr key={ri} style={{ borderBottom: '1px solid #f1f5f9', background: ri % 2 === 0 ? '#ffffff' : '#fafafa' }}>
+                        {headers.map((h, ci) => {
+                          const val = row[h];
+                          const isNull = val === null || val === 'None' || val === 'NULL';
+                          return (
+                            <td key={ci} style={{ padding: '10px 14px', color: isNull ? '#ef4444' : '#334155', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                              {isNull ? 'NULL' : String(val)}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan={headers.length} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>
+                          No results match your filter.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              );
+            })() : (
               <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b' }}>
                 <span>No data found in {table}.</span>
               </div>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
-            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>🔒 PII fields are masked in production. Previewing live warehouse records.</span>
+            <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>🔒 Data is sampled from the warehouse. Sensitive fields are masked in accordance with governance policies.</span>
           </div>
         </div>
 

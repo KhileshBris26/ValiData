@@ -316,7 +316,7 @@ class QueryGenerator:
             """
         return ""
     @staticmethod
-    def generate_preview_sql(platform: str, db: str, schema: str, table: str, limit: int = 10) -> str:
+    def generate_preview_sql(platform: str, db: str, schema: str, table: str, limit: int = 100) -> str:
         """
         Generates SQL to fetch a sample of data for preview.
         """
