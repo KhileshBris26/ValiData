@@ -192,7 +192,8 @@ async def get_metadata_entities(request: MetadataRequest):
                     if request.entity_type == 'columns':
                         entities.append({"name": row.get('column_name'), "type": row.get('data_type'), "nullable": row.get('is_nullable') == 'YES'})
                     else:
-                        entities.append(row.get(key))
+                        val = row.get(key) or row.get(key.upper())
+                        if val: entities.append(val)
             elif request.platform == "databricks":
                 key_map = {"databases": "catalog", "schemas": "databaseName", "tables": "tableName", "columns": "col_name"}
                 key = key_map.get(request.entity_type, "name")
@@ -200,7 +201,8 @@ async def get_metadata_entities(request: MetadataRequest):
                     if request.entity_type == 'columns':
                         entities.append({"name": row.get(key), "type": row.get('data_type'), "nullable": True})
                     else:
-                        entities.append(row.get(key))
+                        val = row.get(key) or row.get(key.upper())
+                        if val: entities.append(val)
         return {"status": "success", "platform": request.platform, "entities": entities}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -261,7 +263,6 @@ async def generate_table_summary(request: TableSummaryRequest):
 async def get_catalog_tables(request: CatalogRequest):
     try:
         sql_query = QueryGenerator.generate_catalog_sql(request.platform)
-        
         result = None
         try:
             if request.platform == "snowflake":
@@ -281,10 +282,7 @@ async def get_catalog_tables(request: CatalogRequest):
                     {"DATABASE": "DEMO_DB", "SCHEMA": "PUBLIC", "NAME": "CUSTOMER_MASTER", "TYPE": "TABLE", "RECORDS": 8200, "ATTRIBUTES": 8},
                     {"DATABASE": "UTIL_DB", "SCHEMA": "LOGS", "NAME": "APP_EVENTS", "TYPE": "TABLE", "RECORDS": 120500, "ATTRIBUTES": 5}
                 ]
-            
         return {"status": "success", "tables": result or []}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
