@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { Key, Server, Hash } from 'lucide-react';
 import { usePlatform } from '../context/PlatformContext';
 import './Connections.css';
