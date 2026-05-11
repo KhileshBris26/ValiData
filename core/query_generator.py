@@ -353,10 +353,16 @@ class QueryGenerator:
                 t.TABLE_NAME AS NAME,
                 'TABLE' AS TYPE,
                 COALESCE(t.ROW_COUNT, 0) AS RECORDS,
-                10 AS ATTRIBUTES
+                COUNT(c.COLUMN_NAME) AS ATTRIBUTES
             FROM SNOWFLAKE.ACCOUNT_USAGE.TABLES t
+            LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.COLUMNS c 
+              ON t.TABLE_CATALOG = c.TABLE_CATALOG 
+              AND t.TABLE_SCHEMA = c.TABLE_SCHEMA 
+              AND t.TABLE_NAME = c.TABLE_NAME
+              AND c.DELETED IS NULL
             WHERE t.DELETED IS NULL
               AND UPPER(t.TABLE_CATALOG) NOT IN ('SNOWFLAKE', 'SNOWFLAKE_SAMPLE_DATA')
+            GROUP BY 1, 2, 3, 4, 5
             ORDER BY t.TABLE_CATALOG, t.TABLE_SCHEMA, t.TABLE_NAME
             LIMIT 100;
             """
@@ -367,7 +373,7 @@ class QueryGenerator:
                 t.table_schema AS SCHEMA,
                 t.table_name AS NAME,
                 'TABLE' AS TYPE,
-                0 AS RECORDS,
+                COALESCE(t.row_count, 0) AS RECORDS,
                 COALESCE(c.ATTR_COUNT, 0) AS ATTRIBUTES
             FROM system.information_schema.tables t
             LEFT JOIN (

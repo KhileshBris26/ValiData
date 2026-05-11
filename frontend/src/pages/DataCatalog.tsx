@@ -43,8 +43,9 @@ const DataCatalog: React.FC = () => {
           const glossaryScore = terms.length > 0 ? 10 : 0;
           const contextScore = 20 + descriptionScore + glossaryScore;
           
-          // Quality is 28 (base) + any user-applied rules (simulated for now)
-          const qualityBase = 28;
+          // Quality is retrieved from sessionStorage if user has visited the detail page, else base 28
+          const savedQuality = sessionStorage.getItem(`robin_table_quality_${name}`);
+          const qualityBase = savedQuality ? parseInt(savedQuality) : 28;
           const totalTrustScore = qualityBase + 20 + contextScore;
           
           return {

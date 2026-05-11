@@ -253,6 +253,13 @@ const DataQualityDetail: React.FC = () => {
   };
 
   const overallScore = getOverallScore();
+
+  useEffect(() => {
+    if (table) {
+      sessionStorage.setItem(`robin_table_quality_${table}`, overallScore.toString());
+    }
+  }, [table, overallScore]);
+
   const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 1678 : parseInt(rowCount.replace(/,/g, '')));
   const passedCount = Math.floor(numericRowCount * (overallScore / 100));
   const failedCount = numericRowCount - passedCount;
