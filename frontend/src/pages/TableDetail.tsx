@@ -707,7 +707,6 @@ const TableDetail: React.FC = () => {
                   // ─────────────────────────────────────────────────────────────
                   // Lineage config map — keyed by uppercase table name
                   // ─────────────────────────────────────────────────────────────
-                  const tKey = (table || '').toUpperCase();
                   
                   if (lineageError) {
                     return (
