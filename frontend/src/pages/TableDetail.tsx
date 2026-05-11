@@ -408,11 +408,27 @@ const TableDetail: React.FC = () => {
     }
   };
 
-  // Dynamic Scores
-  const descriptionScore = hasSavedDescription ? 10 : 0;
-  const glossaryScore = selectedTerms.length > 0 ? 10 : 0;
-  const contextScore = 20 + descriptionScore + glossaryScore;
-  const overallScore = 28 + 20 + contextScore; // Quality 28 + Ownership 20 + Context
+  // Data Trust Index calculation (0-100) based on weighted pillars
+  const savedQuality = sessionStorage.getItem(`robin_table_quality_${table}`);
+  const qualityBase = savedQuality ? parseInt(savedQuality) : 100;
+
+  const qualityWeight = 0.4;
+  const freshnessWeight = 0.2;
+  const governanceWeight = 0.4;
+
+  const freshnessScore = 100; // In a production app, this would come from warehouse metadata
+  const descriptionScoreVal = hasSavedDescription ? 100 : 0;
+  const glossaryScoreVal = selectedTerms.length > 0 ? 100 : 0;
+  const governanceScore = Math.round((descriptionScoreVal + glossaryScoreVal) / 2);
+
+  const trustIndex = Math.round(
+    (qualityBase * qualityWeight) +
+    (freshnessScore * freshnessWeight) +
+    (governanceScore * governanceWeight)
+  );
+
+  // Keep compatibility for any other parts using overallScore
+  const overallScore = trustIndex;
 
   const appliedRules = useMemo(() => {
     try {
@@ -1553,20 +1569,19 @@ const TableDetail: React.FC = () => {
                   <h3>Data trust index</h3>
                   <span className="trust-status limited">
                     <AlertCircle size={14} />
-                    Limited 68
+                    {overallScore > 80 ? 'Excellent' : overallScore > 50 ? 'Limited' : 'Poor'} {overallScore}
                   </span>
                 </div>
                 <ChevronUp size={18} className="collapse-icon" />
               </div>
-              
               <div className="trust-metrics">
                 <div className="metric-group">
                   <div className="metric-row">
                     <span>Overall score</span>
                     <div className="progress-container">
-                      <div className="progress-bar" style={{ width: `${overallScore}%`, background: overallScore > 70 ? 'var(--success)' : '#fbbf24' }}></div>
+                      <div className="progress-bar" style={{ width: `${trustIndex}%`, background: trustIndex > 80 ? 'var(--success)' : trustIndex > 50 ? '#fbbf24' : '#ef4444' }}></div>
                     </div>
-                    <span className="score-val">{overallScore}</span>
+                    <span className="score-val">{trustIndex}</span>
                   </div>
                 </div>
 
@@ -1574,9 +1589,9 @@ const TableDetail: React.FC = () => {
                   <div className="metric-row">
                     <span>Data quality</span>
                     <div className="progress-container">
-                      <div className="progress-bar" style={{ width: '28%', background: '#64748b' }}></div>
+                      <div className="progress-bar" style={{ width: `${qualityBase}%`, background: qualityBase > 80 ? 'var(--success)' : '#64748b' }}></div>
                     </div>
-                    <span className="score-val">28</span>
+                    <span className="score-val">{qualityBase}</span>
                   </div>
                   <Link to={`/catalog/${database}/${schema}/${table}/dq/primary`} className="dq-link">
                     <div className="metric-sub-row">Primary DQ monitor</div>
@@ -1585,41 +1600,40 @@ const TableDetail: React.FC = () => {
 
                 <div className="metric-group">
                   <div className="metric-row">
-                    <span>Ownership</span>
-                    <div className="status-icon"><ShieldCheck size={14} style={{ color: 'var(--success)' }} /> 20</div>
+                    <span>Data freshness</span>
+                    <div className="progress-container">
+                      <div className="progress-bar" style={{ width: `${freshnessScore}%`, background: '#3b82f6' }}></div>
+                    </div>
+                    <span className="score-val">{freshnessScore}</span>
                   </div>
-                  <div className="metric-sub-row">Stewardship assigned</div>
+                  <div className="metric-sub-row">Real-time sync enabled</div>
                 </div>
 
                 <div className="metric-group">
                   <div className="metric-row">
-                    <span>Data context</span>
+                    <span>Governance</span>
                     <div className="progress-container">
-                      <div className="progress-bar" style={{ width: `${contextScore}%`, background: '#64748b' }}></div>
+                      <div className="progress-bar" style={{ width: `${governanceScore}%`, background: '#8b5cf6' }}></div>
                     </div>
-                    <span className="score-val">{contextScore}</span>
+                    <span className="score-val">{governanceScore}</span>
                   </div>
                   <div className="metric-sub-item">
-                    <span>Terms assigned to attributes</span>
-                    <span>20</span>
-                  </div>
-                  <div className="metric-sub-item">
-                    <span>Terms assigned to the catalog item</span>
-                    <div className="status-val">
-                      {selectedTerms.length > 0 ? <ShieldCheck size={12} style={{ color: 'var(--success)' }} /> : <X size={12} style={{ color: 'var(--error)' }} />}
-                      <span>{glossaryScore}</span>
-                    </div>
-                  </div>
-                  <div className="metric-sub-item">
-                    <span>Description available</span>
+                    <span>Description status</span>
                     <div className="status-val">
                       {hasSavedDescription ? <ShieldCheck size={12} style={{ color: 'var(--success)' }} /> : <X size={12} style={{ color: 'var(--error)' }} />}
-                      <span>{descriptionScore}</span>
+                      <span>{hasSavedDescription ? 'Available' : 'Missing'}</span>
+                    </div>
+                  </div>
+                  <div className="metric-sub-item">
+                    <span>Business terms</span>
+                    <div className="status-val">
+                      {selectedTerms.length > 0 ? <ShieldCheck size={12} style={{ color: 'var(--success)' }} /> : <X size={12} style={{ color: 'var(--error)' }} />}
+                      <span>{selectedTerms.length} assigned</span>
                     </div>
                   </div>
                 </div>
               </div>
-              <p className="card-footer-text">The score is calculated based on weighted contributions across categories.</p>
+              <p className="card-footer-text">The trust index is a weighted score of Quality (40%), Freshness (20%), and Governance (40%).</p>
             </div>
 
             {/* DQ Monitors */}
@@ -1639,8 +1653,8 @@ const TableDetail: React.FC = () => {
                     <span className="dq-name clickable">Primary</span>
                   </Link>
                   <div className="dq-progress">
-                    <div className="dq-bar" style={{ width: '75%' }}></div>
-                    <span>75%</span>
+                    <div className="dq-bar" style={{ width: `${qualityBase}%` }}></div>
+                    <span>{qualityBase}%</span>
                   </div>
                   <span className="dq-date">October 21, 2025, 7:52:42 PM</span>
                 </div>
