@@ -99,17 +99,27 @@ class QueryGenerator:
         return sql
 
     @staticmethod
-    def generate_chat_agent_sql(platform: str, system_prompt: str, user_message: str) -> str:
+    def generate_chat_agent_sql(platform: str, system_prompt: str, messages: list) -> str:
         """
         Generates the platform-specific SQL to invoke Native LLMs for chat agent interaction.
+        Supports full conversation history.
         """
-        full_prompt = f"{system_prompt}\n\nUser Message: {user_message}"
-        safe_prompt = full_prompt.replace("'", "''")
+        # Format the conversation history for the LLM
+        history_text = f"System: {system_prompt}\n"
+        for msg in messages:
+            role = "User" if msg.get("role") == "user" else "Assistant"
+            text = msg.get("text") or msg.get("content") or ""
+            history_text += f"{role}: {text}\n"
+        
+        history_text += "Assistant:"
+        safe_prompt = history_text.replace("'", "''")
         
         if platform.lower() == "snowflake":
-            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-large', '{safe_prompt}') AS ai_response"
+            # Using Claude 3.5 Sonnet for top-tier reasoning
+            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE('claude-3-5-sonnet', '{safe_prompt}') AS ai_response"
         elif platform.lower() == "databricks":
-            sql = f"SELECT ai_query('databricks-meta-llama-3-3-70b-instruct', '{safe_prompt}') AS ai_response"
+            # Using Large Llama 3.1 for high-end reasoning
+            sql = f"SELECT ai_query('databricks-meta-llama-3-1-70b-instruct', '{safe_prompt}') AS ai_response"
         else:
             raise ValueError(f"Unsupported platform for AI pushdown: {platform}")
             

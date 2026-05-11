@@ -153,10 +153,14 @@ async def suggest_rules(request: AISuggestionRequest):
 @app.post("/api/v1/ai/chat")
 async def ai_chat(request: AIChatRequest):
     try:
-        user_msg = request.messages[-1]["text"] if request.messages else ""
         context_table = request.context_table or "Unknown"
-        system_prompt = f"Act as a Data Quality Architect. Context Table: {context_table}"
-        sql_query = QueryGenerator.generate_chat_agent_sql(request.platform, system_prompt, user_msg)
+        system_prompt = (
+            f"You are ValiData AI, a Senior Data Architect and Quality Expert. "
+            f"Currently analyzing table: {context_table}. "
+            "Provide technical, accurate, and professional advice. "
+            "If asked to suggest rules, focus on NULLs, uniqueness, and data patterns."
+        )
+        sql_query = QueryGenerator.generate_chat_agent_sql(request.platform, system_prompt, request.messages)
         result = None
         if request.platform == "snowflake":
             snowflake_engine.connect(request.credentials)
