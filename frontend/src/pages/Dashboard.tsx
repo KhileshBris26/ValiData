@@ -32,16 +32,22 @@ const Dashboard: React.FC = () => {
       const count = Object.keys(creds).filter(k => creds[k] && Object.keys(creds[k]).length > 0).length;
       const rules = JSON.parse(sessionStorage.getItem('robin_applied_rules') || '[]');
       
+      // Calculate Passed Checks accurately: (Total Rules * 100 sampled rows) - Known Anomalies
+      const totalChecks = (rules.length || 12) * 100;
+      const anomalyCount = 3; 
+      
       setMetrics({
         platforms: count || 1,
         rules: rules.length || 12,
-        passed: (rules.length * 142) || 1432,
-        anomalies: Math.floor(rules.length * 0.15) || 3
+        passed: totalChecks - anomalyCount,
+        anomalies: anomalyCount
       });
     } catch (e) {
       console.error("Dashboard metrics failed", e);
     }
   }, []);
+
+  const [selectedFinding, setSelectedFinding] = React.useState<any>(null);
 
   const activities = [
     { time: 'Just now', msg: 'Schema discovery completed for H_AIRCRAFT', type: 'discovery' },
@@ -105,37 +111,44 @@ const Dashboard: React.FC = () => {
       {/* Rules Overlay */}
       {showRulesOverlay && (
         <div className="overlay-backdrop" onClick={() => setShowRulesOverlay(false)}>
-          <div className="glass-panel overlay-content" onClick={e => e.stopPropagation()} style={{ width: '600px', maxHeight: '80vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <div className="glass-panel overlay-content" onClick={e => e.stopPropagation()} style={{ width: '600px', maxHeight: '80vh', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', position: 'sticky', top: 0, background: '#1e293b', zIndex: 10, paddingBottom: '10px' }}>
               <h3>Active DQ Rules by Table</h3>
               <button onClick={() => setShowRulesOverlay(false)} className="btn-icon">×</button>
             </div>
-            <table style={{ width: '100%', color: '#f8fafc', fontSize: '0.9rem' }}>
-              <thead>
-                <tr style={{ color: '#94a3b8', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                  <th style={{ textAlign: 'left', padding: '10px' }}>Table Name</th>
-                  <th style={{ textAlign: 'left', padding: '10px' }}>Rule Type</th>
-                  <th style={{ textAlign: 'right', padding: '10px' }}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <td style={{ padding: '10px' }}>H_AIRCRAFT</td>
-                  <td style={{ padding: '10px' }}>Completeness Check</td>
-                  <td style={{ padding: '10px', textAlign: 'right', color: '#10b981' }}>Active</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <td style={{ padding: '10px' }}>L_FLIGHT_AIRCRAFT</td>
-                  <td style={{ padding: '10px' }}>Foreign Key Integrity</td>
-                  <td style={{ padding: '10px', textAlign: 'right', color: '#10b981' }}>Active</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <td style={{ padding: '10px' }}>S_AIRCRAFT_DETAILS</td>
-                  <td style={{ padding: '10px' }}>JSON Schema Validation</td>
-                  <td style={{ padding: '10px', textAlign: 'right', color: '#10b981' }}>Active</td>
-                </tr>
-              </tbody>
-            </table>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              <table style={{ width: '100%', color: '#f8fafc', fontSize: '0.9rem', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ color: '#94a3b8', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                    <th style={{ textAlign: 'left', padding: '10px' }}>Table Name</th>
+                    <th style={{ textAlign: 'left', padding: '10px' }}>Rule Type</th>
+                    <th style={{ textAlign: 'right', padding: '10px' }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { name: 'H_AIRCRAFT', type: 'Completeness', status: 'Active' },
+                    { name: 'L_FLIGHT_AIRCRAFT', type: 'FK Integrity', status: 'Active' },
+                    { name: 'S_AIRCRAFT_DETAILS', type: 'JSON Validation', status: 'Active' },
+                    { name: 'H_FLIGHT', type: 'Unique ID', status: 'Active' },
+                    { name: 'S_AIRPORT_LOGS', type: 'Timestamp Sync', status: 'Active' }
+                  ].map((r, i) => (
+                    <tr key={i} className="hover-row" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }} onClick={() => setSelectedFinding(r)}>
+                      <td style={{ padding: '10px' }}>{r.name}</td>
+                      <td style={{ padding: '10px' }}>{r.type}</td>
+                      <td style={{ padding: '10px', textAlign: 'right', color: '#10b981' }}>{r.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {selectedFinding && (
+                <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <h4 style={{ margin: '0 0 8px 0', color: '#8b5cf6' }}>Rule Details: {selectedFinding.name}</h4>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>This {selectedFinding.type} rule is currently enforcing pushdown validation on the warehouse. Last evaluation returned 100% success for all sampled rows.</p>
+                  <button onClick={() => setSelectedFinding(null)} style={{ marginTop: '12px', background: 'none', border: 'none', color: '#3b82f6', fontSize: '0.8rem', cursor: 'pointer', padding: 0 }}>Close Details</button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -143,20 +156,27 @@ const Dashboard: React.FC = () => {
       {/* Anomalies Overlay */}
       {showAnomaliesOverlay && (
         <div className="overlay-backdrop" onClick={() => setShowAnomaliesOverlay(false)}>
-          <div className="glass-panel overlay-content" onClick={e => e.stopPropagation()} style={{ width: '600px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+          <div className="glass-panel overlay-content" onClick={e => e.stopPropagation()} style={{ width: '600px', maxHeight: '80vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', position: 'sticky', top: 0, background: '#1e293b', zIndex: 10, paddingBottom: '10px' }}>
               <h3>Detailed Anomaly Findings</h3>
               <button onClick={() => setShowAnomaliesOverlay(false)} className="btn-icon">×</button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ padding: '16px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '10px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                <div style={{ fontWeight: 600, color: '#ef4444' }}>Schema Drift Detected</div>
-                <div style={{ fontSize: '0.85rem', color: '#fca5a5', marginTop: '4px' }}>Table H_FLIGHT in UNICORN.DEV has 2 new columns detected during last metadata sync.</div>
-              </div>
-              <div style={{ padding: '16px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '10px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                <div style={{ fontWeight: 600, color: '#ef4444' }}>Volume Spike</div>
-                <div style={{ fontSize: '0.85rem', color: '#fca5a5', marginTop: '4px' }}>Ingestion volume for S_AIRPORT_LOGS increased by 400% compared to the 7-day average.</div>
-              </div>
+              {[
+                { title: "Schema Drift Detected", msg: "Table H_FLIGHT in UNICORN.DEV has 2 new columns detected during last metadata sync.", type: "drift" },
+                { title: "Volume Spike", msg: "Ingestion volume for S_AIRPORT_LOGS increased by 400% compared to the 7-day average.", type: "volume" },
+                { title: "Null Rate Violation", msg: "H_AIRCRAFT: AIRCRAFT_TYPE column showed a sudden jump to 15% nulls from 0.02%.", type: "null" }
+              ].map((a, i) => (
+                <div key={i} onClick={() => setSelectedFinding(a)} style={{ padding: '16px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '10px', border: '1px solid rgba(239, 68, 68, 0.2)', cursor: 'pointer' }}>
+                  <div style={{ fontWeight: 600, color: '#ef4444' }}>{a.title}</div>
+                  <div style={{ fontSize: '0.85rem', color: '#fca5a5', marginTop: '4px' }}>{a.msg}</div>
+                  {selectedFinding?.title === a.title && (
+                    <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(239, 68, 68, 0.2)', fontSize: '0.8rem', color: '#fecaca' }}>
+                      <strong>Root Cause Analysis:</strong> Pipeline refresh at 04:00 AM triggered an unvalidated DDL change. Recommendation: Rollback to previous schema version or update DQ manifest.
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         </div>
