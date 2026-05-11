@@ -73,10 +73,17 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* Main Dashboard Content */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginTop: '24px' }}>
-        <div className="dashboard-content glass-panel" style={{ margin: 0 }}>
-          <h2>System Health</h2>
-          <div className="health-metrics">
+        
+        {/* System Health & Lineage Summary */}
+        <div className="dashboard-content glass-panel" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h2 style={{ margin: 0 }}>Lineage & System Health</h2>
+            <button onClick={() => navigate('/catalog')} className="btn-small" style={{ fontSize: '0.75rem', padding: '4px 10px' }}>View Full Catalog</button>
+          </div>
+          
+          <div className="health-metrics" style={{ marginBottom: '20px' }}>
             <div className="metric">
               <span>Snowflake Data Cloud</span>
               <span className="status healthy">Operational</span>
@@ -86,37 +93,76 @@ const Dashboard: React.FC = () => {
               <span className="status healthy">Operational</span>
             </div>
           </div>
-          <p className="placeholder-text" style={{ marginTop: '20px' }}>Lineage and Query History modules will be populated here in future phases.</p>
+
+          <div style={{ flex: 1, padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Lineage Flow (Data Vault 2.0)</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '10px 0' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem' }}>🏛️</div>
+                <div style={{ fontSize: '0.7rem', color: '#f8fafc', marginTop: '4px' }}>Hubs</div>
+              </div>
+              <div style={{ color: '#3b82f6' }}>→</div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem' }}>🔗</div>
+                <div style={{ fontSize: '0.7rem', color: '#f8fafc', marginTop: '4px' }}>Links</div>
+              </div>
+              <div style={{ color: '#3b82f6' }}>→</div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem' }}>📋</div>
+                <div style={{ fontSize: '0.7rem', color: '#f8fafc', marginTop: '4px' }}>Sats</div>
+              </div>
+            </div>
+            <p style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '16px', textAlign: 'center' }}>14 active relationships inferred from query history in UNICORN.DEV</p>
+          </div>
         </div>
 
+        {/* Query History & Recent Activity */}
         <div className="dashboard-content glass-panel" style={{ margin: 0 }}>
-          <h2>Recent Activity</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
-            {activities.map((a, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <span style={{ fontSize: '0.85rem', color: '#f8fafc' }}>{a.msg}</span>
-                  <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{a.time}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h2 style={{ margin: 0 }}>Query History</h2>
+            <div style={{ fontSize: '0.75rem', color: '#3b82f6', cursor: 'pointer' }}>View All History</div>
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {[
+              { query: 'SELECT * FROM H_AIRCRAFT...', duration: '45ms', status: 'SUCCESS' },
+              { query: 'INSERT INTO L_FLIGHT_AIR...', duration: '822ms', status: 'SUCCESS' },
+              { query: 'CALL SP_DQ_VALIDATE...', duration: '1.2s', status: 'SUCCESS' },
+              { query: 'DROP TABLE TEMP_RECO...', duration: '12ms', status: 'SUCCESS' }
+            ].map((q, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)', fontSize: '0.8rem' }}>
+                <code style={{ color: '#e2e8f0', fontSize: '0.75rem' }}>{q.query}</code>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <span style={{ color: '#64748b', fontSize: '0.7rem' }}>{q.duration}</span>
+                  <span style={{ color: '#10b981', fontWeight: 700, fontSize: '0.65rem' }}>{q.status}</span>
                 </div>
-                <div style={{ 
-                  width: '8px', height: '8px', borderRadius: '50%', 
-                  background: a.type === 'success' ? '#10b981' : a.type === 'warning' ? '#ef4444' : '#3b82f6'
-                }} />
               </div>
             ))}
+          </div>
+
+          <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '10px', fontWeight: 600 }}>System Events</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {activities.slice(0, 2).map((a, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: a.type === 'success' ? '#10b981' : '#3b82f6' }} />
+                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{a.msg}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Rules Overlay */}
       {showRulesOverlay && (
-        <div className="overlay-backdrop" onClick={() => setShowRulesOverlay(false)}>
-          <div className="glass-panel overlay-content" onClick={e => e.stopPropagation()} style={{ width: '600px', maxHeight: '80vh', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', position: 'sticky', top: 0, background: '#1e293b', zIndex: 10, paddingBottom: '10px' }}>
-              <h3>Active DQ Rules by Table</h3>
-              <button onClick={() => setShowRulesOverlay(false)} className="btn-icon">×</button>
+        <div className="overlay-backdrop" onClick={() => setShowRulesOverlay(false)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 2000 }}>
+          <div className="glass-panel" onClick={e => e.stopPropagation()} style={{ width: '600px', maxHeight: '500px', display: 'flex', flexDirection: 'column', background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', position: 'sticky', top: 0, background: '#1e293b', zIndex: 10 }}>
+              <h3 style={{ margin: 0 }}>Active DQ Rules by Table</h3>
+              <button onClick={() => setShowRulesOverlay(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
             </div>
-            <div style={{ overflowY: 'auto', flex: 1 }}>
+            <div style={{ overflowY: 'auto', flex: 1, paddingRight: '8px' }}>
               <table style={{ width: '100%', color: '#f8fafc', fontSize: '0.9rem', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ color: '#94a3b8', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
@@ -131,7 +177,12 @@ const Dashboard: React.FC = () => {
                     { name: 'L_FLIGHT_AIRCRAFT', type: 'FK Integrity', status: 'Active' },
                     { name: 'S_AIRCRAFT_DETAILS', type: 'JSON Validation', status: 'Active' },
                     { name: 'H_FLIGHT', type: 'Unique ID', status: 'Active' },
-                    { name: 'S_AIRPORT_LOGS', type: 'Timestamp Sync', status: 'Active' }
+                    { name: 'S_AIRPORT_LOGS', type: 'Timestamp Sync', status: 'Active' },
+                    { name: 'H_CUSTOMER', type: 'PII Check', status: 'Active' },
+                    { name: 'L_ORDER_ITEM', type: 'Calc Logic', status: 'Active' },
+                    { name: 'S_ORDER_DETAILS', type: 'Range Check', status: 'Active' },
+                    { name: 'H_PRODUCT', type: 'Master Sync', status: 'Active' },
+                    { name: 'L_SHIPMENT', type: 'Delay Logic', status: 'Active' }
                   ].map((r, i) => (
                     <tr key={i} className="hover-row" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }} onClick={() => setSelectedFinding(r)}>
                       <td style={{ padding: '10px' }}>{r.name}</td>
@@ -141,14 +192,14 @@ const Dashboard: React.FC = () => {
                   ))}
                 </tbody>
               </table>
-              {selectedFinding && (
-                <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                  <h4 style={{ margin: '0 0 8px 0', color: '#8b5cf6' }}>Rule Details: {selectedFinding.name}</h4>
-                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>This {selectedFinding.type} rule is currently enforcing pushdown validation on the warehouse. Last evaluation returned 100% success for all sampled rows.</p>
-                  <button onClick={() => setSelectedFinding(null)} style={{ marginTop: '12px', background: 'none', border: 'none', color: '#3b82f6', fontSize: '0.8rem', cursor: 'pointer', padding: 0 }}>Close Details</button>
-                </div>
-              )}
             </div>
+            {selectedFinding && (
+              <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <h4 style={{ margin: '0 0 8px 0', color: '#8b5cf6' }}>Rule Details: {selectedFinding.name}</h4>
+                <p style={{ margin: 0, fontSize: '0.82rem', color: '#94a3b8' }}>This {selectedFinding.type} rule is currently enforcing pushdown validation on the warehouse. Last evaluation returned 100% success.</p>
+                <button onClick={() => setSelectedFinding(null)} style={{ marginTop: '12px', background: 'none', border: 'none', color: '#3b82f6', fontSize: '0.8rem', cursor: 'pointer' }}>Close Details</button>
+              </div>
+            )}
           </div>
         </div>
       )}
