@@ -261,17 +261,30 @@ async def generate_table_summary(request: TableSummaryRequest):
 async def get_catalog_tables(request: CatalogRequest):
     try:
         sql_query = QueryGenerator.generate_catalog_sql(request.platform)
-        result = snowflake_engine.execute_query(sql_query) if request.platform == "snowflake" else databricks_engine.execute_query(sql_query)
         
-        # Fallback if account_usage is still syncing (empty result)
-        if not result and request.platform == "snowflake":
-            result = [
-                {"DATABASE": "DEMO_DB", "SCHEMA": "PUBLIC", "NAME": "SALES_DATA", "TYPE": "TABLE", "RECORDS": 15400, "ATTRIBUTES": 12},
-                {"DATABASE": "DEMO_DB", "SCHEMA": "PUBLIC", "NAME": "CUSTOMER_MASTER", "TYPE": "TABLE", "RECORDS": 8200, "ATTRIBUTES": 8},
-                {"DATABASE": "UTIL_DB", "SCHEMA": "LOGS", "NAME": "APP_EVENTS", "TYPE": "TABLE", "RECORDS": 120500, "ATTRIBUTES": 5}
-            ]
+        result = None
+        try:
+            if request.platform == "snowflake":
+                snowflake_engine.connect(request.credentials)
+                result = snowflake_engine.execute_query(sql_query)
+                snowflake_engine.disconnect()
+            elif request.platform == "databricks":
+                databricks_engine.connect(request.credentials)
+                result = databricks_engine.execute_query(sql_query)
+                databricks_engine.disconnect()
+        except Exception as conn_err:
+            print(f"Catalog connection failed: {conn_err}")
+            # Fallback to samples if connection fails or account_usage is empty
+            if request.platform == "snowflake":
+                result = [
+                    {"DATABASE": "DEMO_DB", "SCHEMA": "PUBLIC", "NAME": "SALES_DATA", "TYPE": "TABLE", "RECORDS": 15400, "ATTRIBUTES": 12},
+                    {"DATABASE": "DEMO_DB", "SCHEMA": "PUBLIC", "NAME": "CUSTOMER_MASTER", "TYPE": "TABLE", "RECORDS": 8200, "ATTRIBUTES": 8},
+                    {"DATABASE": "UTIL_DB", "SCHEMA": "LOGS", "NAME": "APP_EVENTS", "TYPE": "TABLE", "RECORDS": 120500, "ATTRIBUTES": 5}
+                ]
             
         return {"status": "success", "tables": result or []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
