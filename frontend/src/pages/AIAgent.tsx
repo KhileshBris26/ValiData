@@ -1059,7 +1059,7 @@ const AIAgent: React.FC = () => {
 
                       <div style={{ color: '#94a3b8' }}>
                         <strong style={{ color: '#f8fafc' }}>Tool Result Review:</strong><br />
-                        Execution 1: I successfully fetched the attributes of <span style={{ color: '#c084fc' }}>@{activeContext || 'BANK_TRANSACTIONS'}</span>. There are 13 attributes, including TRANSACTION_ID, CUSTOMER_ID, CUSTOMER_NAME, EMAIL, BIRTH_DATE, COUNTRY_CODE, ACCOUNT_BALANCE, ORDER_AMOUNT, APPROVAL_STATUS, PAYMENT_METHOD, TRANSACTION_DATE, CREATED_BY, and RISK_RATING.
+                        Execution 1: I successfully fetched the attributes of <span style={{ color: '#c084fc' }}>@{activeContext || 'SELECTED_TABLE'}</span>. Dynamic profiling has identified {dynamicColumns.length} attributes in the source warehouse.
                       </div>
 
                       <div style={{ color: '#94a3b8' }}>

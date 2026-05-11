@@ -420,19 +420,7 @@ const TableDetail: React.FC = () => {
     }
   }, []);
 
-  const staticAttributes = [
-    { name: 'CUSTOMER_ID', type: 'number', tag: 'Customer ID' },
-    { name: 'CUSTOMER_NAME', type: 'string', tags: ['Full name', 'Personal Identifiable Information'], more: '+2' },
-    { name: 'EMAIL', type: 'string', tag: 'E-mail' },
-    { name: 'PHONE', type: 'string', tag: 'Phone number' },
-    { name: 'SEGMENT', type: 'string' },
-    { name: 'PRODUCT_SUITE', type: 'string', tag: 'Product' },
-    { name: 'ANNUAL_REVENUE', type: 'number', tag: 'Revenue' },
-    { name: 'APPROVAL_STATUS', type: 'string' },
-    { name: 'CREATED_TS', type: 'timestamp' },
-    { name: 'UPDATED_TS', type: 'timestamp' },
-    { name: 'RENEWAL_DATE', type: 'date', tag: 'Renewal' },
-  ];
+  const staticAttributes: any[] = [];
 
   const attributes = dynamicColumns && dynamicColumns.length > 0 
     ? dynamicColumns.map(c => ({ 
@@ -738,106 +726,13 @@ const TableDetail: React.FC = () => {
                   }
 
                   const buildConfig = (): LineageConfig => {
-                    // ── LOANS_RAW ──────────────────────────────────────────────
-                    if (tKey === 'LOANS_RAW') return {
-                      upstreams: [{ id: 'CORE_BANKING_SYSTEM', title: 'CORE_BANKING_SYSTEM', icon: '🏛️', completeness: '100', completenessColor: '#10b981', attrs: ['LOAN_ID', 'CUSTOMER_ID', 'PRINCIPAL_AMT', 'INTEREST_RATE', 'LOAN_TYPE', 'START_DATE'] }],
-                      current:  { id: 'LOANS_RAW', title: 'LOANS_RAW', icon: '❄️', completeness: '100', completenessColor: '#10b981', attrs: ['CUSTOMER_ID', 'INTEREST_RATE', 'LOAN_ID', 'LOAN_TYPE', 'PRINCIPAL_AMT', 'START_DATE'] },
-                      downstream: [
-                        { node: { id: 'LOANS_CURATED', title: 'LOANS_CURATED', icon: '❄️', completeness: '0', completenessColor: '#ef4444', attrs: ['CUSTOMER_ID', 'INTEREST_RATE', 'LOAN_ID', 'LOAN_TYPE', 'PRINCIPAL_AMT', 'START_DATE'], tags: ['Silver Layer'] }, farNode: { id: 'BANKING_METRICS_ENRICHED', title: 'BANKING_METRICS_ENRICHED', icon: '🏦', completeness: '', completenessColor: '', attrs: ['AVG_INTEREST_RATE', 'BANKING_PROFITABILITY', 'ESTIMATED_ANNUAL_INTEREST_INCOME'] } },
-                        { node: { id: 'LOAN_PAYMENTS_STAGING', title: 'LOAN_PAYMENTS_STAGING', icon: '⚙️', completeness: '', completenessColor: '', attrs: ['LOAN_ID', 'PAYMENT_DATE', 'AMOUNT_PAID', 'REMAINING_BALANCE'] }, farNode: { id: 'LOAN_PAYMENTS_CURATED', title: 'LOAN_PAYMENTS_CURATED', icon: '💳', completeness: '', completenessColor: '', attrs: ['LOAN_ID', 'PAYMENT_DATE', 'AMOUNT_PAID', 'REMAINING_BALANCE'] } },
-                      ],
-                      failedCol: null,
-                      edges: [
-                        { from: 'CORE_BANKING_SYSTEM', to: 'LOANS_RAW', flows: [
-                          { src: 'LOAN_ID', tgt: 'LOAN_ID' }, { src: 'CUSTOMER_ID', tgt: 'CUSTOMER_ID' },
-                          { src: 'PRINCIPAL_AMT', tgt: 'PRINCIPAL_AMT' }, { src: 'INTEREST_RATE', tgt: 'INTEREST_RATE' },
-                          { src: 'LOAN_TYPE', tgt: 'LOAN_TYPE' }, { src: 'START_DATE', tgt: 'START_DATE' },
-                        ]},
-                        { from: 'LOANS_RAW', to: 'LOANS_CURATED', flows: [
-                          { src: 'CUSTOMER_ID', tgt: 'CUSTOMER_ID' }, { src: 'LOAN_ID', tgt: 'LOAN_ID' },
-                          { src: 'LOAN_TYPE', tgt: 'LOAN_TYPE' }, { src: 'PRINCIPAL_AMT', tgt: 'PRINCIPAL_AMT' },
-                          { src: 'START_DATE', tgt: 'START_DATE' },
-                          { src: 'INTEREST_RATE', tgt: 'INTEREST_RATE', expr: 'RATE / 100' },
-                        ]},
-                        { from: 'LOANS_CURATED', to: 'BANKING_METRICS_ENRICHED', flows: [
-                          { src: 'INTEREST_RATE', tgt: 'AVG_INTEREST_RATE', expr: 'AVG(INTEREST_RATE)' },
-                        ]},
-                        { from: 'LOANS_RAW', to: 'LOAN_PAYMENTS_STAGING', flows: [
-                          { src: 'LOAN_ID', tgt: 'LOAN_ID' },
-                        ]},
-                      ],
-                    };
-
-                    // ── LOANS_CURATED ─────────────────────────────────────────
-                    if (tKey === 'LOANS_CURATED') return {
-                      upstreams: [{ id: 'LOANS_RAW', title: 'LOANS_RAW', icon: '❄️', completeness: '100', completenessColor: '#10b981', attrs: ['CUSTOMER_ID', 'INTEREST_RATE', 'LOAN_ID', 'LOAN_TYPE', 'PRINCIPAL_AMT', 'START_DATE'] }],
-                      current:  { id: 'LOANS_CURATED', title: 'LOANS_CURATED', icon: '❄️', completeness: '0', completenessColor: '#ef4444', attrs: ['CUSTOMER_ID', 'INTEREST_RATE', 'LOAN_ID', 'LOAN_TYPE', 'PRINCIPAL_AMT', 'START_DATE'] },
-                      downstream: [
-                        { node: { id: 'CUSTOMER_OVERVIEW_ENRICHED', title: 'CUSTOMER_OVERVIEW_ENRICHED', icon: '🛡️', completeness: '', completenessColor: '', attrs: ['CUSTOMER_ID', 'TOTAL_LOANS', 'CREDIT_SCORE', 'ANNUAL_INCOME', 'STATE', 'EMPLOYMENT_STATUS'], tags: ['Personal Data', '+1'] }, farNode: { id: 'DATASET_TABLE_CUSTOMER_OVERVIEW', title: 'DATASET_TABLE CUSTOMER_OVERVIEW', icon: '⚠️', completeness: '', completenessColor: '', attrs: ['CUSTOMER_ID', 'TOTAL_LOANS', 'CREDIT_SCORE', 'ANNUAL_INCOME', 'STATE', 'EMPLOYMENT_STATUS'] } },
-                        { node: { id: 'BANKING_METRICS_ENRICHED', title: 'BANKING_METRICS_ENRICHED', icon: '🏦', completeness: '', completenessColor: '', attrs: ['CUSTOMER_ID', 'AVG_BALANCE', 'DEPOSIT_FREQ', 'WITHDRAWAL_FREQ', 'ACTIVE_PRODUCTS', 'RISK_SCORE'], tags: ['Personal Data', '+1'] }, farNode: { id: 'CUSTOMER_PROFITABILITY_ENRICHED', title: 'CUSTOMER_PROFITABILITY_ENRICHED', icon: '💰', completeness: '', completenessColor: '', attrs: ['CUSTOMER_ID', 'NET_VALUE', 'PROFIT_MARGIN', 'LIFETIME_VALUE', 'TIER'] } },
-                      ],
-                      failedCol: 'INTEREST_RATE',
-                      edges: [
-                        { from: 'LOANS_RAW', to: 'LOANS_CURATED', flows: [
-                          { src: 'CUSTOMER_ID', tgt: 'CUSTOMER_ID' }, { src: 'LOAN_ID', tgt: 'LOAN_ID' },
-                          { src: 'LOAN_TYPE', tgt: 'LOAN_TYPE' }, { src: 'PRINCIPAL_AMT', tgt: 'PRINCIPAL_AMT' },
-                          { src: 'START_DATE', tgt: 'START_DATE' },
-                          { src: 'INTEREST_RATE', tgt: 'INTEREST_RATE', expr: 'RATE / 100' },
-                        ]},
-                        { from: 'LOANS_CURATED', to: 'CUSTOMER_OVERVIEW_ENRICHED', flows: [
-                          { src: 'CUSTOMER_ID', tgt: 'CUSTOMER_ID' },
-                          { src: 'LOAN_ID', tgt: 'TOTAL_LOANS', expr: 'COUNT(LOAN_ID)' },
-                        ]},
-                        { from: 'LOANS_CURATED', to: 'BANKING_METRICS_ENRICHED', flows: [
-                          { src: 'CUSTOMER_ID', tgt: 'CUSTOMER_ID' },
-                          { src: 'INTEREST_RATE', tgt: 'AVG_BALANCE', expr: 'AVG(INTEREST_RATE)' },
-                        ]},
-                        { from: 'CUSTOMER_OVERVIEW_ENRICHED', to: 'DATASET_TABLE_CUSTOMER_OVERVIEW', flows: [
-                          { src: 'CUSTOMER_ID', tgt: 'CUSTOMER_ID' }, { src: 'TOTAL_LOANS', tgt: 'TOTAL_LOANS' },
-                          { src: 'CREDIT_SCORE', tgt: 'CREDIT_SCORE' }, { src: 'ANNUAL_INCOME', tgt: 'ANNUAL_INCOME' },
-                        ]},
-                        { from: 'BANKING_METRICS_ENRICHED', to: 'CUSTOMER_PROFITABILITY_ENRICHED', flows: [
-                          { src: 'CUSTOMER_ID', tgt: 'CUSTOMER_ID' },
-                          { src: 'AVG_BALANCE', tgt: 'NET_VALUE', expr: 'SUM(AVG_BALANCE)' },
-                          { src: 'RISK_SCORE', tgt: 'TIER', expr: 'CASE WHEN RISK_SCORE > 80 THEN Gold' },
-                        ]},
-                      ],
-                    };
-
-                    // ── Hubs/Links are now exclusively dynamic (H_AIRCRAFT, H_FLIGHT, etc.) ──
-                    
-                    // ── Generic fallback — derive from table name ──────────────
-                    const upstreamName = tKey.includes('_CURATED') || tKey.includes('_ENRICHED') || tKey.includes('_AGG')
-                      ? tKey.replace(/_CURATED|_ENRICHED|_AGG/, '_RAW')
-                      : tKey + '_SOURCE';
-                    const downstream1 = tKey + '_ENRICHED';
-                    const downstream2 = tKey + '_MART';
-
+                    // This is a fallback that uses our discovered columns
                     return {
-                      upstreams: [{ id: upstreamName, title: upstreamName, icon: '📥', completeness: '100', completenessColor: '#10b981', attrs: ['ID', 'CREATED_AT', 'UPDATED_AT', 'SOURCE_SYSTEM', 'BATCH_ID'] }],
-                      current:  { id: tKey, title: tKey, icon: '❄️', completeness: '72', completenessColor: '#f59e0b', attrs: ['ID', 'NAME', 'STATUS', 'CREATED_AT', 'UPDATED_AT'] },
-                      downstream: [
-                        { node: { id: downstream1, title: downstream1, icon: '🔷', completeness: '', completenessColor: '', attrs: ['ID', 'NAME', 'CATEGORY', 'ENRICHED_SCORE', 'PROCESSED_AT'] }, farNode: { id: downstream1 + '_REPORT', title: downstream1 + '_REPORT', icon: '📋', completeness: '', completenessColor: '', attrs: ['ID', 'NAME', 'ENRICHED_SCORE', 'REPORT_DATE'] } },
-                        { node: { id: downstream2, title: downstream2, icon: '🔶', completeness: '', completenessColor: '', attrs: ['ID', 'DIM_KEY', 'METRIC_VALUE', 'PERIOD', 'SEGMENT'] }, farNode: { id: 'BI_DASHBOARD', title: 'BI Dashboard', icon: '📈', completeness: '', completenessColor: '', attrs: ['METRIC_VALUE', 'PERIOD', 'SEGMENT', 'TREND'] } },
-                      ],
+                      upstreams: [{ id: 'SOURCE', title: 'Data Source', icon: '📥', completeness: '100', completenessColor: '#10b981', attrs: [] }],
+                      current:  { id: table || 'CURRENT', title: table || 'CURRENT', icon: '❄️', completeness: '100', completenessColor: '#10b981', attrs: dynamicColumns.map(c => c.name || c.attribute) },
+                      downstream: [],
                       failedCol: null,
-                      edges: [
-                        { from: upstreamName, to: tKey, flows: [
-                          { src: 'ID', tgt: 'ID' }, { src: 'CREATED_AT', tgt: 'CREATED_AT' }, { src: 'UPDATED_AT', tgt: 'UPDATED_AT' },
-                        ]},
-                        { from: tKey, to: downstream1, flows: [
-                          { src: 'ID', tgt: 'ID' }, { src: 'NAME', tgt: 'NAME' }, { src: 'STATUS', tgt: 'ENRICHED_SCORE', expr: 'CASE WHEN STATUS=active THEN 100 ELSE 0' },
-                        ]},
-                        { from: tKey, to: downstream2, flows: [
-                          { src: 'ID', tgt: 'DIM_KEY' }, { src: 'STATUS', tgt: 'METRIC_VALUE', expr: 'COUNT(*)' },
-                        ]},
-                        { from: downstream1, to: downstream1 + '_REPORT', flows: [
-                          { src: 'ID', tgt: 'ID' }, { src: 'NAME', tgt: 'NAME' }, { src: 'ENRICHED_SCORE', tgt: 'ENRICHED_SCORE' },
-                        ]},
-                        { from: downstream2, to: 'BI_DASHBOARD', flows: [
-                          { src: 'METRIC_VALUE', tgt: 'METRIC_VALUE' }, { src: 'PERIOD', tgt: 'PERIOD' }, { src: 'SEGMENT', tgt: 'SEGMENT' },
-                        ]},
-                      ],
+                      edges: [],
                     };
                   };
 
