@@ -181,6 +181,15 @@ const DataQualityDetail: React.FC = () => {
               tv = [{ label: 'NA', pct: '-' }];
             }
 
+            // Masking Logic: Only show if column name implies sensitive/masked data
+            const colNameUpper = colName.toUpperCase();
+            const isSensitive = colNameUpper.includes('EMAIL') || colNameUpper.includes('CARD') || colNameUpper.includes('PHONE') || colNameUpper.includes('SSN') || colNameUpper.includes('PASSWORD') || colNameUpper.includes('CONTACT');
+            
+            const maskSamples = isSensitive ? [
+              { label: colNameUpper.includes('EMAIL') ? '****@****.com' : (colNameUpper.includes('CARD') ? 'XXXX-XXXX-XXXX' : 'XXXXXXXX'), pct: '12%' },
+              { label: 'all NULL', pct: '2%' }
+            ] : [];
+
             // Top 3 Values (Frequent Values)
             const topVals = [
               { label: `${colName}_SAMPLE_1`, pct: '12%' },
@@ -200,10 +209,7 @@ const DataQualityDetail: React.FC = () => {
               ],
               minMax: tv,
               topValues: topVals,
-              masks: [
-                { label: isNumeric ? 'NNNN' : 'LLLL', pct: '85%' },
-                { label: isNumeric ? 'NNN.N' : 'LL.LL', pct: '10%' }
-              ],
+              masks: maskSamples,
               appliedRules: []
             };
           });

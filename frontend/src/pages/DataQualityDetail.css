@@ -493,8 +493,16 @@
   margin-bottom: 0.2rem;
 }
 
-.ps-label { width: 55px; }
-.ps-pct { text-align: left; color: var(--text-main); font-weight: 500; }
+.ps-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-bottom: 0.2rem;
+  min-width: 140px;
+}
+
+.ps-label { color: var(--text-muted); }
+.ps-pct { text-align: right; color: var(--text-main); font-weight: 600; }
 
 
 .top-val-row, .mask-row {
