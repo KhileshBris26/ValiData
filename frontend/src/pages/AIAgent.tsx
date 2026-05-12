@@ -1106,7 +1106,7 @@ const AIAgent: React.FC = () => {
 
                       <div style={{ color: '#94a3b8' }}>
                         <strong style={{ color: '#f8fafc' }}>Tool Result Review:</strong><br />
-                        Execution 1: I successfully fetched the profiling data for <span style={{ color: '#c084fc' }}>@{activeContext || 'BANK_TRANSACTIONS'}</span>. The profiling data provides insights into the data quality of each attribute, including null counts, distinct counts, unique counts, and patterns. Notably, the EMAIL attribute has a high null count (535 out of 1678), and the APPROVAL_STATUS attribute has a significant number of null values (560 out of 1678). These deficiencies suggest potential areas for improvement in data quality.
+                        Execution 1: I successfully fetched the profiling data for <span style={{ color: '#c084fc' }}>@{activeContext || 'BANK_TRANSACTIONS'}</span>. The profiling data provides insights into the data quality of each attribute, including null counts, distinct counts, unique counts, and patterns. Notably, some attributes have high null counts, suggesting potential areas for improvement in data quality.
                       </div>
 
                       <div style={{ color: '#94a3b8' }}>

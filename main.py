@@ -226,7 +226,8 @@ async def get_table_row_count(request: TableSummaryRequest):
         count = res[0].get('row_count') if res else 0
         return {"status": "success", "row_count": count}
     except Exception as e:
-        return {"status": "success", "row_count": 1678}
+        print(f"Row count failed for {request.table_name}: {e}")
+        return {"status": "success", "row_count": 0}
 
 @app.post("/api/v1/metadata/profile")
 async def get_column_profile(request: RuleExecutionRequest):
