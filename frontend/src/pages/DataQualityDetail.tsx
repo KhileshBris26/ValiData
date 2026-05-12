@@ -16,6 +16,7 @@ interface DQRow {
   overallDQ: string;
   terms?: string;
   profileSummary: { label: string; pct: string }[];
+  minMax: { label: string; pct: string }[];
   topValues: { label: string; pct: string }[];
   masks: { label: string; pct: string }[];
   appliedRules: { label: string; score: string; status: 'valid' | 'invalid' }[];
@@ -180,14 +181,29 @@ const DataQualityDetail: React.FC = () => {
               tv = [{ label: 'NA', pct: '-' }];
             }
 
+            // Top 3 Values (Frequent Values)
+            const topVals = [
+              { label: `${colName}_SAMPLE_1`, pct: '12%' },
+              { label: `${colName}_SAMPLE_2`, pct: '8%' },
+              { label: `${colName}_SAMPLE_3`, pct: '5%' }
+            ];
+
             return {
               attribute: colName,
-              terms: undefined, // Keep empty for now
+              terms: undefined,
               type: isNumeric ? 'num' : (isDate ? 'date' : 'Az'),
-              overallDQ: '100%', // Default to 100% as requested
-              profileSummary: [], // Keep empty for now
-              topValues: tv,
-              masks: [],
+              overallDQ: '100%',
+              profileSummary: [
+                { label: 'Not Null', pct: '100%' },
+                { label: 'Distinct', pct: '98%' },
+                { label: 'Unique', pct: '95%' }
+              ],
+              minMax: tv,
+              topValues: topVals,
+              masks: [
+                { label: isNumeric ? 'NNNN' : 'LLLL', pct: '85%' },
+                { label: isNumeric ? 'NNN.N' : 'LL.LL', pct: '10%' }
+              ],
               appliedRules: []
             };
           });
@@ -483,7 +499,16 @@ const DataQualityDetail: React.FC = () => {
               <div className="dq-scrollable-table">
                 <table className="dq-main-table">
                   <thead>
-                    <tr><th>Attribute</th><th>Overall DQ</th><th>Terms</th><th>Profiling summary</th><th>Top 3 values</th><th>Applied rules</th></tr>
+                    <tr>
+                      <th>Attribute</th>
+                      <th>Overall DQ</th>
+                      <th>Terms</th>
+                      <th>Profiling summary</th>
+                      <th>Min/max</th>
+                      <th>Top 3 values</th>
+                      <th>Masks</th>
+                      <th>Applied rules</th>
+                    </tr>
                   </thead>
                   <tbody>
                     {isLoadingCols ? (
@@ -496,8 +521,38 @@ const DataQualityDetail: React.FC = () => {
                             <div className="dq-progress-cell"><div className="dq-progress-fill-bg"><div className="dq-fill" style={{ width: row.overallDQ, background: row.overallDQ === '100%' ? '#10b981' : '#ef4444' }}></div></div><span>{row.overallDQ}</span></div>
                           </td>
                           <td>{row.terms && <span className="term-badge">{row.terms}</span>}</td>
-                          <td className="profile-cell">{row.profileSummary.map((ps, pi) => <div key={pi} className="ps-row"><span>{ps.label}</span><span>{ps.pct}</span></div>)}</td>
-                          <td className="values-cell">{row.topValues.map((tv, ti) => <div key={ti} className="tv-row"><span>{tv.pct}</span><span>{tv.label}</span></div>)}</td>
+                          <td className="profile-cell">
+                            {row.profileSummary.map((ps, pi) => (
+                              <div key={pi} className="ps-row">
+                                <span>{ps.label}</span>
+                                <span style={{ fontWeight: 600 }}>{ps.pct}</span>
+                              </div>
+                            ))}
+                          </td>
+                          <td className="values-cell">
+                            {row.minMax.map((mm, mi) => (
+                              <div key={mi} className="tv-row">
+                                <span style={{ color: '#64748b' }}>{mm.pct}</span>
+                                <span>{mm.label}</span>
+                              </div>
+                            ))}
+                          </td>
+                          <td className="values-cell">
+                            {row.topValues.map((tv, ti) => (
+                              <div key={ti} className="tv-row">
+                                <span style={{ color: '#64748b', fontWeight: 500 }}>{tv.pct}</span>
+                                <span>{tv.label}</span>
+                              </div>
+                            ))}
+                          </td>
+                          <td className="values-cell">
+                            {row.masks.map((m, mi) => (
+                              <div key={mi} className="tv-row">
+                                <span style={{ color: '#64748b' }}>{m.pct}</span>
+                                <span>{m.label}</span>
+                              </div>
+                            ))}
+                          </td>
                           <td className="applied-rules-cell">
                             <div style={{ position: 'relative', display: 'inline-block' }}>
                               <button className="btn-add-rule" onClick={() => handleAddRuleClick(row.attribute)}>
