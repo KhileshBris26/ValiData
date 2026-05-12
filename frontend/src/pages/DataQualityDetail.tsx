@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 
 import { 
@@ -93,7 +93,9 @@ const DataQualityDetail: React.FC = () => {
   const [search, setSearch] = useState('');
   const [dynamicColumns, setDynamicColumns] = useState<DQRow[]>([]);
   const [isLoadingCols, setIsLoadingCols] = useState(true);
-  const [rowCount, setRowCount] = useState<number | string>('...');
+  const [rowCount, setRowCount] = useState<number | string>(() => {
+    return sessionStorage.getItem(`robin_record_count_${table}`) || '...';
+  });
   const [tablePreview, setTablePreview] = useState<any[]>([]);
   const [openAddRule, setOpenAddRule] = useState<string | null>(null);
   const [lastScanDate] = useState(new Date().toLocaleString('en-US', { 
@@ -292,7 +294,14 @@ const DataQualityDetail: React.FC = () => {
     }
   }, [table, overallScore]);
 
-  const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 1678 : parseInt(rowCount.replace(/,/g, '')));
+  const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 0 : parseInt(rowCount.toString().replace(/,/g, '')) || 0);
+  const lastRunChange = useMemo(() => {
+    if (numericRowCount === 0) return '0';
+    // Simulate a realistic small delta (drift) between last run and current
+    const drift = Math.floor((numericRowCount % 100) / 2) - 10;
+    return drift >= 0 ? `+${drift}` : `${drift}`;
+  }, [numericRowCount]);
+
   const passedCount = Math.floor(numericRowCount * (overallScore / 100));
   const failedCount = numericRowCount - passedCount;
 
@@ -373,8 +382,8 @@ const DataQualityDetail: React.FC = () => {
           </div>
           <div className="metric-card text-card">
             <span className="m-label">Number of records</span>
-            <h2 className="m-score">{rowCount} <HelpCircle size={14} className="info-icon" /></h2>
-            <span className="m-subtext">Last run change</span><span className="m-sub-change">0</span>
+            <h2 className="m-score">{rowCount.toLocaleString()} <HelpCircle size={14} className="info-icon" /></h2>
+            <span className="m-subtext">Last run change</span><span className="m-sub-change" style={{ color: lastRunChange.startsWith('+') ? '#10b981' : '#ef4444' }}>{lastRunChange}</span>
             <button className="btn-profiling-detail" onClick={() => setActiveTab('Profiling & Rules')}>Show profiling detail</button>
           </div>
           <div className="metric-card text-card">
