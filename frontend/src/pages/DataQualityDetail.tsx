@@ -65,18 +65,51 @@ const DataQualityDetail: React.FC = () => {
 
   const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 0 : parseInt(rowCount.toString().replace(/,/g, '')) || 0);
 
-  const getRuleScore = (ruleName: string) => {
+  const getRuleScore = (ruleName: string, colName: string) => {
+    if (!tablePreview || tablePreview.length === 0) return 100;
+    
     const lbl = ruleName.toUpperCase();
-    if (lbl.includes('EMPTY')) return 0;
-    if (lbl.includes('EMAIL')) return 68;
-    if (lbl.includes('NULL')) return 70;
-    if (lbl.includes('UNIQUE')) return 92;
-    if (lbl.includes('FRESHNESS')) return 100; // Deterministic freshness for POC
-    return 85;
+    const total = tablePreview.length;
+    const vals = tablePreview.map(r => r[colName]);
+
+    if (lbl.includes('NULL')) {
+      const nonNulls = vals.filter(v => v !== null && v !== undefined && v !== '').length;
+      return Math.round((nonNulls / total) * 100);
+    }
+
+    if (lbl.includes('UNIQUE')) {
+      const counts: Record<any, number> = {};
+      vals.forEach(v => {
+        if (v !== null && v !== undefined && v !== '') {
+          counts[v] = (counts[v] || 0) + 1;
+        }
+      });
+      const uniqueCount = Object.values(counts).filter(c => c === 1).length;
+      return Math.round((uniqueCount / total) * 100);
+    }
+
+    if (lbl.includes('EMAIL')) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const validEmails = vals.filter(v => typeof v === 'string' && emailRegex.test(v)).length;
+      return Math.round((validEmails / total) * 100);
+    }
+
+    if (lbl.includes('EMPTY')) {
+      const nonEmpty = vals.filter(v => v !== null && v !== undefined && v.toString().trim() !== '').length;
+      return Math.round((nonEmpty / total) * 100);
+    }
+
+    if (lbl.includes('FRESHNESS')) {
+      // For POC, freshness is 100% if column is populated
+      const hasData = vals.some(v => v !== null && v !== undefined && v !== '');
+      return hasData ? 100 : 0;
+    }
+
+    return 100; // Default to 100 if no specific logic
   };
 
-  const getRuleHoverDetails = (ruleName: string) => {
-    const scoreVal = getRuleScore(ruleName);
+  const getRuleHoverDetails = (ruleName: string, colName: string) => {
+    const scoreVal = getRuleScore(ruleName, colName);
     const passed = Math.floor(numericRowCount * (scoreVal / 100));
     const failed = numericRowCount - passed;
 
@@ -259,15 +292,10 @@ const DataQualityDetail: React.FC = () => {
       if (hasEvaluated) {
         const activeRules = uniqueRules.filter(r => !shutDownRules.includes(r.label));
         if (activeRules.length > 0) {
-          const totalScore = activeRules.reduce((acc, r) => {
-            const lbl = r.label.toUpperCase();
-            const scoreVal = lbl.includes('EMPTY') ? 0 : 
-                            (lbl.includes('EMAIL') ? 68 : 
-                            (lbl.includes('NULL') ? 70 : 
-                            (lbl.includes('UNIQUE') ? 92 : 85)));
-            return acc + scoreVal;
-          }, 0);
-          dqPct = `${Math.round(totalScore / activeRules.length)}%`;
+        const totalScore = activeRules.reduce((acc, r) => {
+          return acc + getRuleScore(r.label, colItem.attribute);
+        }, 0);
+        dqPct = `${Math.round(totalScore / activeRules.length)}%`;
         }
       }
 
@@ -325,15 +353,20 @@ const DataQualityDetail: React.FC = () => {
 
     const getScore = (rules: any[]) => {
       if (rules.length === 0) return 100;
-      const total = rules.reduce((acc, r) => {
-        const lbl = r.label.toUpperCase();
-        const scoreVal = lbl.includes('EMPTY') ? 0 : 
-                        (lbl.includes('EMAIL') ? 68 : 
-                        (lbl.includes('NULL') ? 70 : 
-                        (lbl.includes('UNIQUE') ? 92 : 85)));
-        return acc + scoreVal;
-      }, 0);
-      return Math.round(total / rules.length);
+      // Note: activeRules here is a flatMap of column rules, so we need to know which column each rule belongs to.
+      // But getDimensionStats is called within handleEvaluationSnapshot which uses activeColumnsList.
+      // I'll refactor getScore to iterate over activeColumnsList directly to be safe.
+      let total = 0;
+      let count = 0;
+      activeColumnsList.forEach(col => {
+        col.appliedRules.filter(r => !shutDownRules.includes(r.label)).forEach(r => {
+          if (rules.some(rule => rule.label === r.label)) {
+             total += getRuleScore(r.label, col.attribute);
+             count++;
+          }
+        });
+      });
+      return count > 0 ? Math.round(total / count) : 100;
     };
 
     const valScore = getScore(valRules);
@@ -682,7 +715,7 @@ const DataQualityDetail: React.FC = () => {
                             {row.appliedRules.filter(rule => !deletedRules.includes(rule.label)).map((rule, ri) => {
                               const isShut = shutDownRules.includes(rule.label);
                               const isHovered = hoveredRule === rule.label;
-                              const hoverDetails = getRuleHoverDetails(rule.label);
+                              const hoverDetails = getRuleHoverDetails(rule.label, row.attribute);
 
                               return (
                                 <div 
