@@ -38,15 +38,24 @@ const DataCatalog: React.FC = () => {
           const hasDesc = sessionStorage.getItem(`robin_has_saved_desc_${name}`) === 'true';
           const terms = JSON.parse(sessionStorage.getItem(`robin_terms_${name}`) || '[]');
           
-          // Calculate scores using the exact same logic as TableDetail
-          const descriptionScore = hasDesc ? 10 : 0;
-          const glossaryScore = terms.length > 0 ? 10 : 0;
-          const contextScore = 20 + descriptionScore + glossaryScore;
-          
-          // Quality is retrieved from sessionStorage if user has visited the detail page, else base 100
+          // Calculate scores using the exact same logic as TableDetail (Weighted Pillars)
           const savedQuality = sessionStorage.getItem(`robin_table_quality_${name}`);
           const qualityBase = savedQuality ? parseInt(savedQuality) : 100;
-          const totalTrustScore = qualityBase + 20 + contextScore;
+
+          const freshnessScore = 100; // Simulated/Warehouse metadata
+          const descriptionScoreVal = hasDesc ? 100 : 0;
+          const glossaryScoreVal = terms.length > 0 ? 100 : 0;
+          const governanceScore = Math.round((descriptionScoreVal + glossaryScoreVal) / 2);
+
+          const qualityWeight = 0.4;
+          const freshnessWeight = 0.2;
+          const governanceWeight = 0.4;
+
+          const totalTrustScore = Math.round(
+            (qualityBase * qualityWeight) +
+            (freshnessScore * freshnessWeight) +
+            (governanceScore * governanceWeight)
+          );
           
           return {
             name: name,
