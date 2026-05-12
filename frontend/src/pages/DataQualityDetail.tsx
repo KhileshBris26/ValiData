@@ -230,24 +230,34 @@ const DataQualityDetail: React.FC = () => {
     const storageKey = `robin_rules_${database}_${schema}_${table}_${colItem.attribute}`;
     const storedRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
     const agentRules = JSON.parse(localStorage.getItem('robin_applied_rules') || '[]');
-    const matchingAgentRules = agentRules
-      .filter((ar: any) => ar.attribute === colItem.attribute)
-      .map((ar: any) => ({ label: ar.name, score: hasEvaluated ? '68%' : '100%', status: 'valid' as const }));
-
-    const combinedRules = [...colItem.appliedRules];
-    [...storedRules, ...matchingAgentRules].forEach((sr: any) => {
-      if (!combinedRules.some(cr => cr.label === sr.label || cr.label === sr.name)) {
-        combinedRules.push(sr);
+    
+    // Combine rules and filter out deleted ones
+    const allApplied = [...colItem.appliedRules, ...storedRules, ...agentRules.filter((ar: any) => ar.attribute === colItem.attribute)];
+    const uniqueRules = allApplied.reduce((acc: any[], curr: any) => {
+      const label = curr.label || curr.name;
+      if (!acc.some(r => (r.label || r.name) === label) && !deletedRules.includes(label)) {
+        acc.push({ ...curr, label });
       }
-    });
+      return acc;
+    }, []);
 
     let dqPct = '100%';
-    if (combinedRules.length > 0 && hasEvaluated) {
-      const validCount = combinedRules.filter(r => r.status === 'valid').length;
-      dqPct = `${Math.round((validCount / combinedRules.length) * 100)}%`;
+    if (hasEvaluated) {
+      const activeRules = uniqueRules.filter(r => !shutDownRules.includes(r.label));
+      if (activeRules.length > 0) {
+        const totalScore = activeRules.reduce((acc, r) => {
+          const lbl = r.label.toUpperCase();
+          const scoreVal = lbl.includes('EMPTY') ? 0 : 
+                          (lbl.includes('EMAIL') ? 68 : 
+                          (lbl.includes('NULL') ? 70 : 
+                          (lbl.includes('UNIQUE') ? 92 : 85)));
+          return acc + scoreVal;
+        }, 0);
+        dqPct = `${Math.round(totalScore / activeRules.length)}%`;
+      }
     }
 
-    return { ...colItem, overallDQ: dqPct, appliedRules: combinedRules };
+    return { ...colItem, overallDQ: dqPct, appliedRules: uniqueRules };
   });
 
   const handleAddRuleClick = (attr: string) => {
@@ -286,26 +296,38 @@ const DataQualityDetail: React.FC = () => {
   };
 
   const getDimensionStats = () => {
-    const allRules = activeColumnsList.flatMap(c => c.appliedRules);
-    const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Freshness', 'Validity'];
-    const accuracyLabels = ['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy'];
+    if (!hasEvaluated) return { valScore: 100, accScore: 100, overallScore: 100 };
 
-    const valRules = allRules.filter(r => validityLabels.some(lbl => r.label.includes(lbl)));
-    const accRules = allRules.filter(r => accuracyLabels.some(lbl => r.label.includes(lbl)));
+    const activeRules = activeColumnsList.flatMap(c => 
+      c.appliedRules.filter(r => !shutDownRules.includes(r.label))
+    );
+
+    const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Freshness', 'Validity'];
+    const accuracyLabels = ['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY'];
+
+    const valRules = activeRules.filter(r => validityLabels.some(lbl => r.label.toUpperCase().includes(lbl.toUpperCase())));
+    const accRules = activeRules.filter(r => accuracyLabels.some(lbl => r.label.toUpperCase().includes(lbl.toUpperCase())));
 
     const getScore = (rules: any[]) => {
       if (rules.length === 0) return 100;
-      const total = rules.reduce((acc, r) => acc + parseInt(r.score), 0);
+      const total = rules.reduce((acc, r) => {
+        const lbl = r.label.toUpperCase();
+        const scoreVal = lbl.includes('EMPTY') ? 0 : 
+                        (lbl.includes('EMAIL') ? 68 : 
+                        (lbl.includes('NULL') ? 70 : 
+                        (lbl.includes('UNIQUE') ? 92 : 85)));
+        return acc + scoreVal;
+      }, 0);
       return Math.round(total / rules.length);
     };
 
     const valScore = getScore(valRules);
     const accScore = getScore(accRules);
-    const overall = allRules.length > 0 
-      ? Math.round(allRules.reduce((acc, r) => acc + parseInt(r.score), 0) / allRules.length)
-      : 100;
+    
+    // Overall score is the average of all column DQ scores that are not 100% (or average of all active rules)
+    const overallScore = activeRules.length > 0 ? getScore(activeRules) : 100;
 
-    return { valScore, accScore, overallScore: overall };
+    return { valScore, accScore, overallScore };
   };
 
   const { valScore, accScore, overallScore } = getDimensionStats();
