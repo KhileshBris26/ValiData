@@ -18,7 +18,7 @@ import SearchableDropdown from '../components/SearchableDropdown';
 import CustomTableNode from '../components/CustomTableNode';
 import './LineageStudio.css';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api/v1';
+import { API_BASE } from '../api';
 
 const nodeTypes = {
   customTable: CustomTableNode,
@@ -328,3 +328,4 @@ const LineageStudio: React.FC = () => {
 };
 
 export default LineageStudio;
+

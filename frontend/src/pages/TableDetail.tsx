@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import './TableDetail.css';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api/v1';
+import { API_BASE } from '../api';
 
 type LineageNode = {
   id: string; title: string; icon: string;
@@ -2688,3 +2688,4 @@ const ChevronDown = ({ size, className }: any) => <ChevronRight size={size} clas
 const ChevronUp = ({ size, className }: any) => <ChevronRight size={size} className={className} style={{ transform: 'rotate(-90deg)' }} />;
 
 export default TableDetail;
+

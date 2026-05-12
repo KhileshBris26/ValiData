@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Key, Server, Hash } from 'lucide-react';
 import { usePlatform } from '../context/PlatformContext';
+import { API_BASE } from '../api';
 import './Connections.css';
 
 const Connections: React.FC = () => {
@@ -69,7 +70,6 @@ const Connections: React.FC = () => {
   };
 
   const handleTest = async () => {
-    const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api/v1';
     const credentials = platform === 'snowflake' ? {
       account: sfAccount,
       user: sfUser,
@@ -192,3 +192,4 @@ const Connections: React.FC = () => {
 };
 
 export default Connections;
+

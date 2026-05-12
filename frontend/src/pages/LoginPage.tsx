@@ -4,7 +4,7 @@ import axios from 'axios';
 import { Shield, Lock, User, ArrowRight, Loader2, Database } from 'lucide-react';
 import './LoginPage.css';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api/v1';
+import { API_BASE } from '../api';
 
 const LoginPage: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);

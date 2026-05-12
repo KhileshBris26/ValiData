@@ -5,7 +5,7 @@ import { Search, ChevronDown, MoreHorizontal, ChevronLeft, ChevronRight, Tag, Sh
 import { Link } from 'react-router-dom';
 import './DataCatalog.css';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000/api/v1';
+import { API_BASE } from '../api';
 
 const DataCatalog: React.FC = () => {
   const { platform } = usePlatform();

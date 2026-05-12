@@ -8,7 +8,7 @@ import axios from 'axios';
 import { usePlatform } from '../context/PlatformContext';
 import './DataQualityDetail.css';
 
-const API_BASE = 'http://127.0.0.1:8000/api/v1';
+import { API_BASE } from '../api';
 
 interface DQRow {
   attribute: string;
