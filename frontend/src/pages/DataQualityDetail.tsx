@@ -542,7 +542,12 @@ const DataQualityDetail: React.FC = () => {
                                     </button>
                                   ))}
                                   <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '4px', paddingTop: '4px' }}>
-                                    <Link to="/rule-studio" style={{ textDecoration: 'none' }}>
+                                    <a 
+                                      href={`/rule-studio?db=${database}&sch=${schema}&tbl=${table}&col=${row.attribute}`} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      style={{ textDecoration: 'none' }}
+                                    >
                                       <button style={{
                                         display: 'flex',
                                         alignItems: 'center',
@@ -556,9 +561,9 @@ const DataQualityDetail: React.FC = () => {
                                         color: '#3b82f6',
                                         cursor: 'pointer'
                                       }}>
-                                        <ExternalLink size={12} /> Rule Studio
+                                        <ExternalLink size={12} /> Custom Rule
                                       </button>
-                                    </Link>
+                                    </a>
                                   </div>
                                 </div>
                               )}
