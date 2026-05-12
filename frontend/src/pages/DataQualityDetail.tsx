@@ -22,55 +22,7 @@ interface DQRow {
   appliedRules: { label: string; score: string; status: 'valid' | 'invalid' }[];
 }
 
-const getRuleHoverDetails = (ruleName: string) => {
-  const nameLower = ruleName.toLowerCase();
-  if (nameLower.includes('country')) {
-    return {
-      title: ruleName,
-      stats: [
-        { color: '#f472b6', label: 'No reference available', count: '0', pct: '0%' },
-        { color: '#7f1d1d', label: 'Not Accurate', count: '240', pct: '14.3%' },
-        { color: '#db2777', label: 'Accurate', count: '1438', pct: '85.7%' }
-      ]
-    };
-  } else if (nameLower.includes('email') || nameLower.includes('completeness')) {
-    return {
-      title: ruleName,
-      stats: [
-        { color: '#f472b6', label: 'No reference available', count: '0', pct: '0%' },
-        { color: '#7f1d1d', label: 'Null', count: '537', pct: '32%' },
-        { color: '#db2777', label: 'Valid / Not Null', count: '1141', pct: '68%' }
-      ]
-    };
-  } else if (nameLower.includes('approval') || nameLower.includes('status')) {
-    return {
-      title: ruleName,
-      stats: [
-        { color: '#f472b6', label: 'No reference available', count: '0', pct: '0%' },
-        { color: '#7f1d1d', label: 'Null', count: '553', pct: '33%' },
-        { color: '#db2777', label: 'Valid', count: '1125', pct: '67%' }
-      ]
-    };
-  } else if (nameLower.includes('name') || nameLower.includes('uniqueness') || nameLower.includes('unique')) {
-    return {
-      title: ruleName,
-      stats: [
-        { color: '#f472b6', label: 'No reference available', count: '0', pct: '0%' },
-        { color: '#7f1d1d', label: 'Duplicates', count: '134', pct: '8%' },
-        { color: '#db2777', label: 'Unique', count: '1544', pct: '92%' }
-      ]
-    };
-  } else {
-    return {
-      title: ruleName,
-      stats: [
-        { color: '#f472b6', label: 'No reference available', count: '0', pct: '0%' },
-        { color: '#7f1d1d', label: 'Not Valid', count: '235', pct: '14%' },
-        { color: '#db2777', label: 'Valid', count: '1443', pct: '86%' }
-      ]
-    };
-  }
-};
+// Rule hover details will be generated dynamically within the component to use real row counts
 
 const DataQualityDetail: React.FC = () => {
   const { database, schema, table } = useParams<{ database: string; schema: string; table: string }>();
@@ -102,6 +54,41 @@ const DataQualityDetail: React.FC = () => {
   const [lastScanDate] = useState(new Date().toLocaleString('en-US', { 
     month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true 
   }));
+
+  // Snapshot results state
+  const [evaluatedResults, setEvaluatedResults] = useState<{
+    overall: number;
+    validity: number;
+    accuracy: number;
+    columns: Record<string, string>;
+  } | null>(null);
+
+  const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 0 : parseInt(rowCount.toString().replace(/,/g, '')) || 0);
+
+  const getRuleScore = (ruleName: string) => {
+    const lbl = ruleName.toUpperCase();
+    if (lbl.includes('EMPTY')) return 0;
+    if (lbl.includes('EMAIL')) return 68;
+    if (lbl.includes('NULL')) return 70;
+    if (lbl.includes('UNIQUE')) return 92;
+    if (lbl.includes('FRESHNESS')) return 100; // Deterministic freshness for POC
+    return 85;
+  };
+
+  const getRuleHoverDetails = (ruleName: string) => {
+    const scoreVal = getRuleScore(ruleName);
+    const passed = Math.floor(numericRowCount * (scoreVal / 100));
+    const failed = numericRowCount - passed;
+
+    return {
+      title: ruleName,
+      stats: [
+        { color: '#f472b6', label: 'No reference available', count: '0', pct: '0%' },
+        { color: '#7f1d1d', label: 'Not Valid', count: failed.toLocaleString(), pct: `${100 - scoreVal}%` },
+        { color: '#db2777', label: 'Valid', count: passed.toLocaleString(), pct: `${scoreVal}%` }
+      ]
+    };
+  };
 
   const fetchPreview = async () => {
     try {
@@ -330,15 +317,32 @@ const DataQualityDetail: React.FC = () => {
     return { valScore, accScore, overallScore };
   };
 
-  const { valScore, accScore, overallScore } = getDimensionStats();
+  const handleEvaluationSnapshot = () => {
+    const currentResults = getDimensionStats();
+    setEvaluatedResults({
+      overall: currentResults.overallScore,
+      validity: currentResults.valScore,
+      accuracy: currentResults.accScore,
+      columns: activeColumnsList.reduce((acc, col) => {
+        acc[col.attribute] = col.overallDQ;
+        return acc;
+      }, {} as Record<string, string>)
+    });
+    setHasEvaluated(true);
+    localStorage.setItem('robin_has_evaluated', 'true');
+  };
+
+  // Scores used for UI rendering
+  const displayOverall = evaluatedResults?.overall ?? 100;
+  const displayValidity = evaluatedResults?.validity ?? 100;
+  const displayAccuracy = evaluatedResults?.accuracy ?? 100;
 
   useEffect(() => {
     if (table) {
-      localStorage.setItem(`robin_table_quality_${table}`, overallScore.toString());
+      localStorage.setItem(`robin_table_quality_${table}`, displayOverall.toString());
     }
-  }, [table, overallScore]);
+  }, [table, displayOverall]);
 
-  const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 0 : parseInt(rowCount.toString().replace(/,/g, '')) || 0);
   const lastRunChange = useMemo(() => {
     if (numericRowCount === 0) return '0';
     // Simulate a realistic small delta (drift) between last run and current
@@ -346,8 +350,6 @@ const DataQualityDetail: React.FC = () => {
     return drift >= 0 ? `+${drift}` : `${drift}`;
   }, [numericRowCount]);
 
-  const passedCount = Math.floor(numericRowCount * (overallScore / 100));
-  const failedCount = numericRowCount - passedCount;
 
   return (
     <div className="dq-detail">
@@ -381,8 +383,7 @@ const DataQualityDetail: React.FC = () => {
                 setIsEvaluating(true);
                 setTimeout(() => {
                   setIsEvaluating(false);
-                  setHasEvaluated(true);
-                  localStorage.setItem('robin_has_evaluated', 'true');
+                  handleEvaluationSnapshot();
                 }, 1000);
               }}
               disabled={isEvaluating}
@@ -397,18 +398,18 @@ const DataQualityDetail: React.FC = () => {
         <div className="dq-hero-metrics glass-panel">
           <div className="metric-card">
             <span className="m-label">Overall</span>
-            <h2 className="m-score" style={{ color: overallScore > 80 ? '#10b981' : overallScore > 50 ? '#f59e0b' : '#ef4444' }}>{overallScore}%</h2>
-            <div className="overall-bar-bg"><div className="overall-bar-fill" style={{ width: `${overallScore}%`, background: overallScore > 80 ? '#10b981' : '#ef4444' }}></div></div>
+            <h2 className="m-score" style={{ color: displayOverall > 80 ? '#10b981' : displayOverall > 50 ? '#f59e0b' : '#ef4444' }}>{displayOverall}%</h2>
+            <div className="overall-bar-bg"><div className="overall-bar-fill" style={{ width: `${displayOverall}%`, background: displayOverall > 80 ? '#10b981' : '#ef4444' }}></div></div>
             <div className="m-sub-stats">
-              <span className="stat-item"><span className="dot green"></span> {passedCount.toLocaleString()} Passed</span>
-              <span className="stat-item"><span className="dot red"></span> {failedCount.toLocaleString()} Failed</span>
+              <span className="stat-item"><span className="dot green"></span> {Math.floor(numericRowCount * (displayOverall / 100)).toLocaleString()} Passed</span>
+              <span className="stat-item"><span className="dot red"></span> {(numericRowCount - Math.floor(numericRowCount * (displayOverall / 100))).toLocaleString()} Failed</span>
             </div>
           </div>
           <div className="metric-card">
             <span className="m-label">DQ Dimensions</span>
             <div className="dimensions-list">
-              <div className="dim-row"><span className="dim-dot green"></span><span className="dim-pct">{valScore}%</span><span className="dim-lbl">Validity</span></div>
-              <div className="dim-row"><span className="dim-dot pink"></span><span className="dim-pct">{accScore}%</span><span className="dim-lbl">Accuracy</span></div>
+              <div className="dim-row"><span className="dim-dot green"></span><span className="dim-pct">{displayValidity}%</span><span className="dim-lbl">Validity</span></div>
+              <div className="dim-row"><span className="dim-dot pink"></span><span className="dim-pct">{displayAccuracy}%</span><span className="dim-lbl">Accuracy</span></div>
             </div>
           </div>
           <div className="metric-card graph-card">
