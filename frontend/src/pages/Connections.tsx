@@ -24,8 +24,8 @@ const Connections: React.FC = () => {
   const [isTesting, setIsTesting] = useState(false);
 
   useEffect(() => {
-    // Load existing credentials from sessionStorage on mount (if user has overridden them)
-    const saved = sessionStorage.getItem('robin_credentials');
+    // Load existing credentials from localStorage on mount (if user has overridden them)
+    const saved = localStorage.getItem('robin_credentials');
     if (saved) {
       const creds = JSON.parse(saved);
       if (creds.databricks) {
@@ -62,7 +62,7 @@ const Connections: React.FC = () => {
       }
     };
     
-    sessionStorage.setItem('robin_credentials', JSON.stringify(credentials));
+    localStorage.setItem('robin_credentials', JSON.stringify(credentials));
     
     setSavedMessage('Credentials saved securely to your session!');
     setTimeout(() => setSavedMessage(''), 3000);
@@ -101,7 +101,7 @@ const Connections: React.FC = () => {
   };
 
   const handleClear = () => {
-    sessionStorage.removeItem('robin_credentials');
+    localStorage.removeItem('robin_credentials');
     setDbHostname(''); setDbHttpPath(''); setDbToken('');
     setSfAccount(''); setSfUser(''); setSfPassword(''); setSfRole('');
     setSfWarehouse('');

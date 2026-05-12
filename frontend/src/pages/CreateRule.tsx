@@ -81,14 +81,18 @@ const CreateRule: React.FC = () => {
     };
 
     const storageKey = `robin_rules_${database}_${schema}_${table}_${column}`;
-    const existingRules = JSON.parse(sessionStorage.getItem(storageKey) || '[]');
+    const existingRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
     if (!existingRules.some((r: any) => r.label === newRule.label)) {
       existingRules.push(newRule);
-      sessionStorage.setItem(storageKey, JSON.stringify(existingRules));
+      localStorage.setItem(storageKey, JSON.stringify(existingRules));
     }
 
     alert("Rule logic successfully saved!");
-    navigate(`/catalog/${database}/${schema}/${table}/dq/primary`);
+    if (window.opener) {
+      window.close();
+    } else {
+      navigate(`/catalog/${database}/${schema}/${table}/dq/primary`);
+    }
   };
 
   const handleTestRule = () => {
@@ -106,7 +110,13 @@ const CreateRule: React.FC = () => {
           <h3 className="cr-modal-title">Create DQ Rule</h3>
           <div className="cr-modal-actions">
             <span className="cr-saving-label">Saving</span>
-            <button className="cr-modal-close-btn" onClick={() => navigate(-1)}>
+            <button className="cr-modal-close-btn" onClick={() => {
+              if (window.opener) {
+                window.close();
+              } else {
+                navigate(-1);
+              }
+            }}>
               ✕
             </button>
           </div>

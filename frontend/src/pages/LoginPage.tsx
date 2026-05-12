@@ -24,8 +24,8 @@ const LoginPage: React.FC = () => {
       const res = await axios.post(`${API_BASE}${endpoint}`, { username, password });
       
       if (res.data.token) {
-        sessionStorage.setItem('robin_auth_token', res.data.token);
-        sessionStorage.setItem('robin_user', username);
+        localStorage.setItem('robin_auth_token', res.data.token);
+        localStorage.setItem('robin_user', username);
         navigate('/');
       } else {
         setError('Invalid response from server');

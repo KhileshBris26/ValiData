@@ -28,9 +28,9 @@ const Dashboard: React.FC = () => {
 
   React.useEffect(() => {
     try {
-      const creds = JSON.parse(sessionStorage.getItem('robin_credentials') || '{}');
+      const creds = JSON.parse(localStorage.getItem('robin_credentials') || '{}');
       const count = Object.keys(creds).filter(k => creds[k] && Object.keys(creds[k]).length > 0).length;
-      const rules = JSON.parse(sessionStorage.getItem('robin_applied_rules') || '[]');
+      const rules = JSON.parse(localStorage.getItem('robin_applied_rules') || '[]');
       
       // Calculate Passed Checks accurately: (Total Rules * 100 sampled rows) - Known Anomalies
       const totalChecks = (rules.length || 12) * 100;

@@ -8,8 +8,8 @@ const ObservabilityConnectionDetail: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'settings'>('overview');
 
-  // Let's retrieve existing connections from sessionStorage
-  const saved = sessionStorage.getItem('observability_connections');
+  // Let's retrieve existing connections from localStorage
+  const saved = localStorage.getItem('observability_connections');
   let connection: any = null;
 
   if (saved) {

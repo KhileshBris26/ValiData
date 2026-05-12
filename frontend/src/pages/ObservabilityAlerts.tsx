@@ -69,7 +69,7 @@ const ObservabilityAlerts: React.FC = () => {
 
   // Users State
   const [users, setUsers] = useState<UserRecipient[]>(() => {
-    const saved = sessionStorage.getItem('observability_users');
+    const saved = localStorage.getItem('observability_users');
     return saved ? JSON.parse(saved) : defaultUsers;
   });
 
@@ -99,7 +99,7 @@ const ObservabilityAlerts: React.FC = () => {
   const [findingTypeSearch, setFindingTypeSearch] = useState('');
 
   useEffect(() => {
-    sessionStorage.setItem('observability_users', JSON.stringify(users));
+    localStorage.setItem('observability_users', JSON.stringify(users));
   }, [users]);
 
   // Initial user matching for subscription selection

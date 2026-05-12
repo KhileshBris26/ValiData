@@ -83,7 +83,7 @@ const TableDetail: React.FC = () => {
 
   React.useEffect(() => {
     if (table) {
-      sessionStorage.setItem('robin_active_context_table', table);
+      localStorage.setItem('robin_active_context_table', table);
     }
   }, [table]);
 
@@ -107,11 +107,11 @@ const TableDetail: React.FC = () => {
     "Flight Number", "Seat Class", "Departure Time", "Arrival Time", "Frequent Flyer ID", "Baggage Weight", "Gate Number"
   ].sort();
 
-  const [summary, setSummary] = useState(() => sessionStorage.getItem(`robin_summary_${table}`) || '');
+  const [summary, setSummary] = useState(() => localStorage.getItem(`robin_summary_${table}`) || '');
   const [isEditing, setIsEditing] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [editedSummary, setEditedSummary] = useState(summary);
-  const [hasSavedDescription, setHasSavedDescription] = useState(() => sessionStorage.getItem(`robin_has_saved_desc_${table}`) === 'true');
+  const [hasSavedDescription, setHasSavedDescription] = useState(() => localStorage.getItem(`robin_has_saved_desc_${table}`) === 'true');
   const [activeTab, setActiveTab] = useState('Overview');
   const [expandedNodes, setExpandedNodes] = useState<string[]>([]);
   const [attrFilters, setAttrFilters] = useState<{ [key: string]: string }>({});
@@ -121,13 +121,13 @@ const TableDetail: React.FC = () => {
   const [showAiExplanation, setShowAiExplanation] = useState(false);
   const [showTransformationContext, setShowTransformationContext] = useState(false);
   
-  const [hasEvaluated, setHasEvaluated] = useState(() => sessionStorage.getItem('robin_has_evaluated') === 'true');
+  const [hasEvaluated, setHasEvaluated] = useState(() => localStorage.getItem('robin_has_evaluated') === 'true');
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [shutDownRules, setShutDownRules] = useState<string[]>(() => {
-    try { return JSON.parse(sessionStorage.getItem(`robin_shut_down_rules_${table}`) || '[]'); } catch { return []; }
+    try { return JSON.parse(localStorage.getItem(`robin_shut_down_rules_${table}`) || '[]'); } catch { return []; }
   });
   const [deletedRules, setDeletedRules] = useState<string[]>(() => {
-    try { return JSON.parse(sessionStorage.getItem(`robin_deleted_rules_${table}`) || '[]'); } catch { return []; }
+    try { return JSON.parse(localStorage.getItem(`robin_deleted_rules_${table}`) || '[]'); } catch { return []; }
   });
   const [hoveredRule, setHoveredRule] = useState<string | null>(null);
   const [selectedRuleForPanel, setSelectedRuleForPanel] = useState<string | null>(null);
@@ -135,16 +135,16 @@ const TableDetail: React.FC = () => {
   
   // Glossary state
   const [selectedTerms, setSelectedTerms] = useState<string[]>(() => {
-    try { return JSON.parse(sessionStorage.getItem(`robin_terms_${table}`) || '[]'); } catch { return []; }
+    try { return JSON.parse(localStorage.getItem(`robin_terms_${table}`) || '[]'); } catch { return []; }
   });
 
   useEffect(() => {
     if (table) {
-      sessionStorage.setItem(`robin_summary_${table}`, summary);
-      sessionStorage.setItem(`robin_has_saved_desc_${table}`, hasSavedDescription.toString());
-      sessionStorage.setItem(`robin_shut_down_rules_${table}`, JSON.stringify(shutDownRules));
-      sessionStorage.setItem(`robin_deleted_rules_${table}`, JSON.stringify(deletedRules));
-      sessionStorage.setItem(`robin_terms_${table}`, JSON.stringify(selectedTerms));
+      localStorage.setItem(`robin_summary_${table}`, summary);
+      localStorage.setItem(`robin_has_saved_desc_${table}`, hasSavedDescription.toString());
+      localStorage.setItem(`robin_shut_down_rules_${table}`, JSON.stringify(shutDownRules));
+      localStorage.setItem(`robin_deleted_rules_${table}`, JSON.stringify(deletedRules));
+      localStorage.setItem(`robin_terms_${table}`, JSON.stringify(selectedTerms));
     }
   }, [table, summary, hasSavedDescription, shutDownRules, deletedRules, selectedTerms]);
   const [isGlossaryOpen, setIsGlossaryOpen] = useState(false);
@@ -167,7 +167,7 @@ const TableDetail: React.FC = () => {
       setIsLoadingCols(true);
       try {
         let credentials = null;
-        const saved = sessionStorage.getItem('robin_credentials');
+        const saved = localStorage.getItem('robin_credentials');
         if (saved) credentials = JSON.parse(saved)[platform];
 
         const res = await axios.post(`${API_BASE}/metadata/entities`, {
@@ -198,7 +198,7 @@ const TableDetail: React.FC = () => {
     try {
       setLineageError(null);
       let credentials = null;
-      const saved = sessionStorage.getItem('robin_credentials');
+      const saved = localStorage.getItem('robin_credentials');
       if (saved) credentials = JSON.parse(saved)[platform];
 
       const res = await axios.post(`${API_BASE}/lineage/infer`, {
@@ -308,7 +308,7 @@ const TableDetail: React.FC = () => {
     setIsLoadingPreview(true);
     try {
       let credentials = null;
-      const saved = sessionStorage.getItem('robin_credentials');
+      const saved = localStorage.getItem('robin_credentials');
       if (saved) credentials = JSON.parse(saved)[platform];
 
       const res = await axios.post(`${API_BASE}/metadata/preview`, {
@@ -362,7 +362,7 @@ const TableDetail: React.FC = () => {
     await new Promise(resolve => setTimeout(resolve, 1600));
     try {
       let credentials = null;
-      const saved = sessionStorage.getItem('robin_credentials');
+      const saved = localStorage.getItem('robin_credentials');
       if (saved) {
         credentials = JSON.parse(saved)[platform];
       }
@@ -409,7 +409,7 @@ const TableDetail: React.FC = () => {
   };
 
   // Data Trust Index calculation (0-100) based on weighted pillars
-  const savedQuality = sessionStorage.getItem(`robin_table_quality_${table}`);
+  const savedQuality = localStorage.getItem(`robin_table_quality_${table}`);
   const qualityBase = savedQuality ? parseInt(savedQuality) : 100;
 
   const qualityWeight = 0.4;
@@ -432,7 +432,7 @@ const TableDetail: React.FC = () => {
 
   const appliedRules = useMemo(() => {
     try {
-      return JSON.parse(sessionStorage.getItem('robin_applied_rules') || '[]');
+      return JSON.parse(localStorage.getItem('robin_applied_rules') || '[]');
     } catch {
       return [];
     }
@@ -512,7 +512,7 @@ const TableDetail: React.FC = () => {
               setTimeout(() => {
                 setIsEvaluating(false);
                 setHasEvaluated(true);
-                sessionStorage.setItem('robin_has_evaluated', 'true');
+                localStorage.setItem('robin_has_evaluated', 'true');
               }, 1000);
             }}
             style={{ cursor: isEvaluating ? 'not-allowed' : 'pointer', opacity: isEvaluating ? 0.7 : 1 }}

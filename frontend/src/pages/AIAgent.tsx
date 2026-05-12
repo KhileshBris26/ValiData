@@ -74,7 +74,7 @@ const AIAgent: React.FC = () => {
   const [activeTopicId, setActiveTopicId] = useState<string>('1');
   const [inputText, setInputText] = useState('');
   const [activeContext, setActiveContext] = useState<string | null>(() => {
-    return sessionStorage.getItem('robin_active_context_table') || 'BANK_TRANSACTIONS';
+    return localStorage.getItem('robin_active_context_table') || 'BANK_TRANSACTIONS';
   });
   const [showPromptLibrary, setShowPromptLibrary] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -94,7 +94,7 @@ const AIAgent: React.FC = () => {
     setTopics([newTopic, ...topics]);
     setActiveTopicId(newId);
     setInputText('');
-    const context = sessionStorage.getItem('robin_active_context_table') || 'BANK_TRANSACTIONS';
+    const context = localStorage.getItem('robin_active_context_table') || 'BANK_TRANSACTIONS';
     setActiveContext(context);
   };
 
@@ -121,7 +121,7 @@ const AIAgent: React.FC = () => {
 
     try {
       let credentials = null;
-      const saved = sessionStorage.getItem('robin_credentials');
+      const saved = localStorage.getItem('robin_credentials');
       if (saved) {
         credentials = JSON.parse(saved)[platform];
       }

@@ -89,7 +89,7 @@ const LineageStudio: React.FC = () => {
   // Fetch Metadata Helpers
   const fetchMetadata = async (entityType: string, params: any) => {
     let credentials = null;
-    const saved = sessionStorage.getItem('robin_credentials');
+    const saved = localStorage.getItem('robin_credentials');
     if (saved) credentials = JSON.parse(saved)[platform];
     
     const res = await axios.post(`${API_BASE}/metadata/entities`, {
@@ -148,7 +148,7 @@ const LineageStudio: React.FC = () => {
     setLoadingInfer(true);
     try {
       let credentials = null;
-      const saved = sessionStorage.getItem('robin_credentials');
+      const saved = localStorage.getItem('robin_credentials');
       if (saved) credentials = JSON.parse(saved)[platform];
 
       const res = await axios.post(`${API_BASE}/lineage/infer`, {

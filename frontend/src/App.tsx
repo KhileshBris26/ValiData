@@ -21,7 +21,7 @@ import ObservabilityAlerts from './pages/ObservabilityAlerts';
 import LoginPage from './pages/LoginPage';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const token = sessionStorage.getItem('robin_auth_token');
+  const token = localStorage.getItem('robin_auth_token');
   const location = useLocation();
 
   if (!token) {

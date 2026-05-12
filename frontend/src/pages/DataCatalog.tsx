@@ -18,7 +18,7 @@ const DataCatalog: React.FC = () => {
       setLoading(true);
       try {
         let credentials = null;
-        const saved = sessionStorage.getItem('robin_credentials');
+        const saved = localStorage.getItem('robin_credentials');
         if (saved) {
           const creds = JSON.parse(saved);
           credentials = creds[platform];
@@ -34,12 +34,12 @@ const DataCatalog: React.FC = () => {
           const db = t.DATABASE || t.database;
           const sch = t.SCHEMA || t.schema;
           
-          // Check sessionStorage for user updates (synced with TableDetail)
-          const hasDesc = sessionStorage.getItem(`robin_has_saved_desc_${name}`) === 'true';
-          const terms = JSON.parse(sessionStorage.getItem(`robin_terms_${name}`) || '[]');
+          // Check localStorage for user updates (synced with TableDetail)
+          const hasDesc = localStorage.getItem(`robin_has_saved_desc_${name}`) === 'true';
+          const terms = JSON.parse(localStorage.getItem(`robin_terms_${name}`) || '[]');
           
           // Calculate scores using the exact same logic as TableDetail (Weighted Pillars)
-          const savedQuality = sessionStorage.getItem(`robin_table_quality_${name}`);
+          const savedQuality = localStorage.getItem(`robin_table_quality_${name}`);
           const qualityBase = savedQuality ? parseInt(savedQuality) : 100;
 
           const freshnessScore = 100; // Simulated/Warehouse metadata
@@ -57,7 +57,7 @@ const DataCatalog: React.FC = () => {
             (governanceScore * governanceWeight)
           );
           const recordCount = t.RECORDS !== undefined ? Number(t.RECORDS) : (t.records !== undefined ? Number(t.records) : 1000 + (idx * 157) % 50000);
-          sessionStorage.setItem(`robin_record_count_${name}`, recordCount.toString());
+          localStorage.setItem(`robin_record_count_${name}`, recordCount.toString());
           
           return {
             name: name,

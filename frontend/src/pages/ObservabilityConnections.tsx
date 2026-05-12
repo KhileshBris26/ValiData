@@ -15,7 +15,7 @@ interface Connection {
 const ObservabilityConnections: React.FC = () => {
   const navigate = useNavigate();
   const [connections, setConnections] = useState<Connection[]>(() => {
-    const saved = sessionStorage.getItem('observability_connections');
+    const saved = localStorage.getItem('observability_connections');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -52,7 +52,7 @@ const ObservabilityConnections: React.FC = () => {
   const [newTotalJobs, setNewTotalJobs] = useState(0);
 
   useEffect(() => {
-    sessionStorage.setItem('observability_connections', JSON.stringify(connections));
+    localStorage.setItem('observability_connections', JSON.stringify(connections));
   }, [connections]);
 
   const handleAddConnection = (e: React.FormEvent) => {

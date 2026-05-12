@@ -77,12 +77,12 @@ const DataQualityDetail: React.FC = () => {
 
   useEffect(() => {
     if (table) {
-      sessionStorage.setItem('robin_active_context_table', table);
+      localStorage.setItem('robin_active_context_table', table);
     }
   }, [table]);
 
   const [activeTab, setActiveTab] = useState('Profiling & Rules');
-  const [hasEvaluated, setHasEvaluated] = useState(() => sessionStorage.getItem('robin_has_evaluated') === 'true');
+  const [hasEvaluated, setHasEvaluated] = useState(() => localStorage.getItem('robin_has_evaluated') === 'true');
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [shutDownRules, setShutDownRules] = useState<string[]>([]);
   const [deletedRules, setDeletedRules] = useState<string[]>([]);
@@ -94,7 +94,7 @@ const DataQualityDetail: React.FC = () => {
   const [dynamicColumns, setDynamicColumns] = useState<DQRow[]>([]);
   const [isLoadingCols, setIsLoadingCols] = useState(true);
   const [rowCount, setRowCount] = useState<number | string>(() => {
-    return sessionStorage.getItem(`robin_record_count_${table}`) || '...';
+    return localStorage.getItem(`robin_record_count_${table}`) || '...';
   });
   const [tablePreview, setTablePreview] = useState<any[]>([]);
   const [openAddRule, setOpenAddRule] = useState<string | null>(null);
@@ -104,7 +104,7 @@ const DataQualityDetail: React.FC = () => {
 
   const fetchPreview = async () => {
     try {
-      const saved = sessionStorage.getItem('robin_credentials');
+      const saved = localStorage.getItem('robin_credentials');
       let credentials = null;
       if (saved) credentials = JSON.parse(saved)[platform];
 
@@ -125,7 +125,7 @@ const DataQualityDetail: React.FC = () => {
     const fetchColumns = async () => {
       setIsLoadingCols(true);
       try {
-        const saved = sessionStorage.getItem('robin_credentials');
+        const saved = localStorage.getItem('robin_credentials');
         let credentials = null;
         if (saved) {
           const parsed = JSON.parse(saved);
@@ -206,8 +206,8 @@ const DataQualityDetail: React.FC = () => {
 
   const activeColumnsList = dynamicColumns.map(colItem => {
     const storageKey = `robin_rules_${database}_${schema}_${table}_${colItem.attribute}`;
-    const storedRules = JSON.parse(sessionStorage.getItem(storageKey) || '[]');
-    const agentRules = JSON.parse(sessionStorage.getItem('robin_applied_rules') || '[]');
+    const storedRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    const agentRules = JSON.parse(localStorage.getItem('robin_applied_rules') || '[]');
     const matchingAgentRules = agentRules
       .filter((ar: any) => ar.attribute === colItem.attribute)
       .map((ar: any) => ({ label: ar.name, score: hasEvaluated ? '68%' : '100%', status: 'valid' as const }));
@@ -235,10 +235,10 @@ const DataQualityDetail: React.FC = () => {
   const handleApplyRule = (attr: string, ruleName: string) => {
     const newRule = { label: ruleName, score: '100%', status: 'valid' as const };
     const storageKey = `robin_rules_${database}_${schema}_${table}_${attr}`;
-    const existingRules = JSON.parse(sessionStorage.getItem(storageKey) || '[]');
+    const existingRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
     if (!existingRules.some((r: any) => r.label === ruleName)) {
       existingRules.push(newRule);
-      sessionStorage.setItem(storageKey, JSON.stringify(existingRules));
+      localStorage.setItem(storageKey, JSON.stringify(existingRules));
     }
     setOpenAddRule(null);
   };
@@ -254,7 +254,7 @@ const DataQualityDetail: React.FC = () => {
         score: '100%',
         status: 'valid' as const
       }));
-      sessionStorage.setItem('robin_applied_rules', JSON.stringify(suggested));
+      localStorage.setItem('robin_applied_rules', JSON.stringify(suggested));
       setHasEvaluated(true);
     } catch (e) {
       console.error(e);
@@ -290,7 +290,7 @@ const DataQualityDetail: React.FC = () => {
 
   useEffect(() => {
     if (table) {
-      sessionStorage.setItem(`robin_table_quality_${table}`, overallScore.toString());
+      localStorage.setItem(`robin_table_quality_${table}`, overallScore.toString());
     }
   }, [table, overallScore]);
 
@@ -338,7 +338,7 @@ const DataQualityDetail: React.FC = () => {
                 setTimeout(() => {
                   setIsEvaluating(false);
                   setHasEvaluated(true);
-                  sessionStorage.setItem('robin_has_evaluated', 'true');
+                  localStorage.setItem('robin_has_evaluated', 'true');
                 }, 1000);
               }}
               disabled={isEvaluating}

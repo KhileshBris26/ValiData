@@ -109,7 +109,7 @@ const UsageAnalytics: React.FC = () => {
     setLoadingMeta(true);
     try {
       let credentials = null;
-      const saved = sessionStorage.getItem('robin_credentials');
+      const saved = localStorage.getItem('robin_credentials');
       if (saved) {
         credentials = JSON.parse(saved)[platform];
       }
@@ -132,7 +132,7 @@ const UsageAnalytics: React.FC = () => {
     setError(null);
     try {
       let credentials = null;
-      const saved = sessionStorage.getItem('robin_credentials');
+      const saved = localStorage.getItem('robin_credentials');
       if (saved) {
         credentials = JSON.parse(saved)[platform];
       }

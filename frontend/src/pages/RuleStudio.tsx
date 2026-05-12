@@ -42,7 +42,7 @@ const RuleStudio: React.FC = () => {
   // Helper to fetch metadata
   const fetchMetadata = async (entityType: string, params: any) => {
     let credentials = null;
-    const saved = sessionStorage.getItem('robin_credentials');
+    const saved = localStorage.getItem('robin_credentials');
     if (saved) {
       const creds = JSON.parse(saved);
       credentials = creds[platform];
@@ -137,7 +137,7 @@ const RuleStudio: React.FC = () => {
     setResults([]);
     
     let credentials = null;
-    const saved = sessionStorage.getItem('robin_credentials');
+    const saved = localStorage.getItem('robin_credentials');
     if (saved) {
       credentials = JSON.parse(saved)[platform];
     }
