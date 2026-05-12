@@ -543,7 +543,7 @@ const DataQualityDetail: React.FC = () => {
                                   ))}
                                   <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '4px', paddingTop: '4px' }}>
                                     <a 
-                                      href={`/rule-studio?db=${database}&sch=${schema}&tbl=${table}&col=${row.attribute}`} 
+                                      href={`/studio?db=${database}&sch=${schema}&tbl=${table}&col=${row.attribute}`} 
                                       target="_blank" 
                                       rel="noopener noreferrer"
                                       style={{ textDecoration: 'none' }}
