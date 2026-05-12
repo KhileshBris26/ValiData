@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  ChevronDown, Plus, HelpCircle, Terminal, Trash2, Sparkles
+  ChevronDown, Plus, HelpCircle, Terminal, Trash2, Sparkles, Loader2
 } from 'lucide-react';
 import './CreateRule.css';
 
@@ -109,7 +109,10 @@ const CreateRule: React.FC = () => {
           <div className="cr-modal-blank"></div>
           <h3 className="cr-modal-title">Create DQ Rule</h3>
           <div className="cr-modal-actions">
-            <span className="cr-saving-label">Saving</span>
+            <div className="cr-saving-label">
+              <Loader2 size={12} className="cr-saving-spin" />
+              <span>Saving</span>
+            </div>
             <button className="cr-modal-close-btn" onClick={() => {
               if (window.opener) {
                 window.close();

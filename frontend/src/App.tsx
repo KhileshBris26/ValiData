@@ -52,12 +52,15 @@ function App() {
 }
 
 function AuthenticatedApp() {
+  const location = useLocation();
+  const isPopup = location.pathname.includes('/create-rule/');
+
   return (
     <div className="app-root">
-      <TopBar />
-      <div className="app-container">
-        <Sidebar />
-        <main className="main-content">
+      {!isPopup && <TopBar />}
+      <div className="app-container" style={{ paddingTop: isPopup ? 0 : 'var(--top-bar-height)' }}>
+        {!isPopup && <Sidebar />}
+        <main className="main-content" style={{ paddingLeft: isPopup ? 0 : 'var(--sidebar-width)' }}>
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/ai-agent" element={<AIAgent />} />
