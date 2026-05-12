@@ -189,11 +189,7 @@ const DataQualityDetail: React.FC = () => {
               terms: undefined,
               type: isNumeric ? 'num' : (isDate ? 'date' : 'Az'),
               overallDQ: '100%',
-              profileSummary: [
-                { label: 'Not Null', pct: '100%' },
-                { label: 'Distinct', pct: '98%' },
-                { label: 'Unique', pct: '95%' }
-              ],
+              profileSummary: [], // Will be calculated dynamically
               minMax: tv,
               topValues: topVals,
               masks: maskSamples,
@@ -213,39 +209,71 @@ const DataQualityDetail: React.FC = () => {
     fetchPreview();
   }, [database, schema, table, platform]);
 
-  const activeColumnsList = dynamicColumns.map(colItem => {
-    const storageKey = `robin_rules_${database}_${schema}_${table}_${colItem.attribute}`;
-    const storedRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
-    const agentRules = JSON.parse(localStorage.getItem('robin_applied_rules') || '[]');
-    
-    // Combine rules and filter out deleted ones
-    const allApplied = [...colItem.appliedRules, ...storedRules, ...agentRules.filter((ar: any) => ar.attribute === colItem.attribute)];
-    const uniqueRules = allApplied.reduce((acc: any[], curr: any) => {
-      const label = curr.label || curr.name;
-      if (!acc.some(r => (r.label || r.name) === label) && !deletedRules.includes(label)) {
-        acc.push({ ...curr, label });
-      }
-      return acc;
-    }, []);
+  const activeColumnsList = useMemo(() => {
+    return dynamicColumns.map(colItem => {
+      const storageKey = `robin_rules_${database}_${schema}_${table}_${colItem.attribute}`;
+      const storedRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      const agentRules = JSON.parse(localStorage.getItem('robin_applied_rules') || '[]');
+      
+      // Combine rules and filter out deleted ones
+      const allApplied = [...colItem.appliedRules, ...storedRules, ...agentRules.filter((ar: any) => ar.attribute === colItem.attribute)];
+      const uniqueRules = allApplied.reduce((acc: any[], curr: any) => {
+        const label = curr.label || curr.name;
+        if (!acc.some(r => (r.label || r.name) === label) && !deletedRules.includes(label)) {
+          acc.push({ ...curr, label });
+        }
+        return acc;
+      }, []);
 
-    let dqPct = '100%';
-    if (hasEvaluated) {
-      const activeRules = uniqueRules.filter(r => !shutDownRules.includes(r.label));
-      if (activeRules.length > 0) {
-        const totalScore = activeRules.reduce((acc, r) => {
-          const lbl = r.label.toUpperCase();
-          const scoreVal = lbl.includes('EMPTY') ? 0 : 
-                          (lbl.includes('EMAIL') ? 68 : 
-                          (lbl.includes('NULL') ? 70 : 
-                          (lbl.includes('UNIQUE') ? 92 : 85)));
-          return acc + scoreVal;
-        }, 0);
-        dqPct = `${Math.round(totalScore / activeRules.length)}%`;
-      }
-    }
+      // Calculate Profiling Summary from tablePreview
+      let profileSummary = [
+        { label: 'Not Null', pct: '100%' },
+        { label: 'Distinct', pct: '100%' },
+        { label: 'Unique', pct: '100%' }
+      ];
 
-    return { ...colItem, overallDQ: dqPct, appliedRules: uniqueRules };
-  });
+      if (tablePreview.length > 0) {
+        const total = tablePreview.length;
+        const vals = tablePreview.map(r => r[colItem.attribute]);
+        const nonNulls = vals.filter(v => v !== null && v !== undefined && v !== '').length;
+        const distinctSet = new Set(vals.filter(v => v !== null && v !== undefined && v !== ''));
+        const distinctCount = distinctSet.size;
+        
+        // Uniques (values that appear exactly once)
+        const counts: Record<any, number> = {};
+        vals.forEach(v => {
+          if (v !== null && v !== undefined && v !== '') {
+            counts[v] = (counts[v] || 0) + 1;
+          }
+        });
+        const uniqueCount = Object.values(counts).filter(c => c === 1).length;
+
+        profileSummary = [
+          { label: 'Not Null', pct: `${Math.round((nonNulls / total) * 100)}%` },
+          { label: 'Distinct', pct: `${Math.round((distinctCount / total) * 100)}%` },
+          { label: 'Unique', pct: `${Math.round((uniqueCount / total) * 100)}%` }
+        ];
+      }
+
+      let dqPct = '100%';
+      if (hasEvaluated) {
+        const activeRules = uniqueRules.filter(r => !shutDownRules.includes(r.label));
+        if (activeRules.length > 0) {
+          const totalScore = activeRules.reduce((acc, r) => {
+            const lbl = r.label.toUpperCase();
+            const scoreVal = lbl.includes('EMPTY') ? 0 : 
+                            (lbl.includes('EMAIL') ? 68 : 
+                            (lbl.includes('NULL') ? 70 : 
+                            (lbl.includes('UNIQUE') ? 92 : 85)));
+            return acc + scoreVal;
+          }, 0);
+          dqPct = `${Math.round(totalScore / activeRules.length)}%`;
+        }
+      }
+
+      return { ...colItem, overallDQ: dqPct, appliedRules: uniqueRules, profileSummary };
+    });
+  }, [dynamicColumns, tablePreview, hasEvaluated, shutDownRules, deletedRules, database, schema, table]);
 
   const handleAddRuleClick = (attr: string) => {
     setOpenAddRule(openAddRule === attr ? null : attr);
