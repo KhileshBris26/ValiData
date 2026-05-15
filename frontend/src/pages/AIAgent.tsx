@@ -22,6 +22,16 @@ interface ChatTopic {
   messages: ChatMessage[];
 }
 
+interface Rule {
+  id: string;
+  name: string;
+  description: string;
+  when: string;
+  then: string;
+  expanded: boolean;
+  checked: boolean;
+}
+
 const AIAgent: React.FC = () => {
   const navigate = useNavigate();
   const { platform } = usePlatform();
@@ -29,7 +39,7 @@ const AIAgent: React.FC = () => {
   const [showReviewChanges, setShowReviewChanges] = useState(false);
   const [testingRule, setTestingRule] = useState<any>(null);
   const [ruleInstances, setRuleInstances] = useState<any>([]);
-  const [rules, setRules] = useState([]);
+  const [rules, setRules] = useState<Rule[]>([]);
 
   // Topics and Active Topic Management
   const [topics, setTopics] = useState<ChatTopic[]>([
