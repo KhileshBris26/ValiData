@@ -190,7 +190,6 @@ const DataQualityDetail: React.FC = () => {
             tv = [{ label: 'Pending...', pct: '-' }];
 
             // Masking Logic: Only show if column name implies sensitive/masked data
-            const colNameUpper = colName.toUpperCase();
             
             const maskSamples: any[] = [];
 
