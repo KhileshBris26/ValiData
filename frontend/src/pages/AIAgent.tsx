@@ -29,44 +29,15 @@ const AIAgent: React.FC = () => {
   const [showReviewChanges, setShowReviewChanges] = useState(false);
   const [testingRule, setTestingRule] = useState<any>(null);
   const [ruleInstances, setRuleInstances] = useState<any>([]);
-  const [rules, setRules] = useState([
-    {
-      id: 'r1',
-      name: 'AI Rule Email Completeness Check',
-      description: 'This expression checks if the email attribute is either missing (null) or empty, meaning it has no characters.',
-      when: '1  EMAIL is NULL or length(EMAIL) = 0',
-      then: 'Not Complete',
-      expanded: false,
-      checked: false
-    },
-    {
-      id: 'r2',
-      name: 'AI Rule Approval Status Completeness Check',
-      description: 'This expression checks if the approval status attribute is missing or null.',
-      when: '1  APPROVAL_STATUS is NULL or APPROVAL_STATUS = \'\'',
-      then: 'Incomplete Approval',
-      expanded: false,
-      checked: false
-    },
-    {
-      id: 'r3',
-      name: 'AI Rule Customer Name Uniqueness Check',
-      description: 'This expression checks if the customer name attribute is unique across all transactions.',
-      when: '1  count(CUSTOMER_NAME) over (partition by CUSTOMER_NAME) > 1',
-      then: 'Duplicate Name',
-      expanded: false,
-      checked: false
-    }
-  ]);
+  const [rules, setRules] = useState([]);
 
   // Topics and Active Topic Management
   const [topics, setTopics] = useState<ChatTopic[]>([
     {
       id: '1',
-      title: 'Based on deficiencies from ...',
+      title: 'New Analysis',
       messages: [
-        { id: 'm1', sender: 'user', text: 'Analyze existing DQ results and tell me the most critical issues.', context: 'BANK_TRANSACTIONS' },
-        { id: 'm2', sender: 'agent', text: 'Based on your latest scan of the BANK_TRANSACTIONS table, the EMAIL column has a 32% failure rate for NULL checks. I recommend adding a mandatory format validation regex.' }
+        { id: 'm1', sender: 'agent', text: 'Hello! I am ValiData AI. I can help you analyze your warehouse tables, suggest DQ rules, or write SQL. What would you like to explore today?' }
       ]
     }
   ]);
@@ -74,7 +45,7 @@ const AIAgent: React.FC = () => {
   const [activeTopicId, setActiveTopicId] = useState<string>('1');
   const [inputText, setInputText] = useState('');
   const [activeContext, setActiveContext] = useState<string | null>(() => {
-    return localStorage.getItem('robin_active_context_table') || 'BANK_TRANSACTIONS';
+    return localStorage.getItem('robin_active_context_table') || null;
   });
   const [showPromptLibrary, setShowPromptLibrary] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -94,7 +65,7 @@ const AIAgent: React.FC = () => {
     setTopics([newTopic, ...topics]);
     setActiveTopicId(newId);
     setInputText('');
-    const context = localStorage.getItem('robin_active_context_table') || 'BANK_TRANSACTIONS';
+    const context = localStorage.getItem('robin_active_context_table') || null;
     setActiveContext(context);
   };
 

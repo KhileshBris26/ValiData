@@ -56,7 +56,7 @@ const DataCatalog: React.FC = () => {
             (freshnessScore * freshnessWeight) +
             (governanceScore * governanceWeight)
           );
-          const recordCount = t.RECORDS !== undefined ? Number(t.RECORDS) : (t.records !== undefined ? Number(t.records) : 1000 + (idx * 157) % 50000);
+          const recordCount = t.RECORDS !== undefined ? Number(t.RECORDS) : (t.records !== undefined ? Number(t.records) : 0);
           localStorage.setItem(`robin_record_count_${name}`, recordCount.toString());
           
           return {
@@ -64,13 +64,13 @@ const DataCatalog: React.FC = () => {
             database: db,
             schema: sch,
             description: hasDesc ? `User-curated description active for ${name}` : `Auto-discovered catalog item from ${db}.${sch}`,
-            terms: terms.length > 0 ? terms : (idx % 3 === 0 ? ['Sensitive', 'Personal Data'] : ['Internal Use']),
+            terms: terms.length > 0 ? terms : [],
             trustIndex: totalTrustScore > 60 ? 'Trusted' : 'Limited',
             trustScore: totalTrustScore,
             anomalies: '-',
             quality: qualityBase,
-            attributes: t.ATTRIBUTES !== undefined ? Number(t.ATTRIBUTES) : (t.attributes !== undefined ? Number(t.attributes) : 5 + (idx * 3) % 20),
-            records: t.RECORDS !== undefined ? Number(t.RECORDS) : (t.records !== undefined ? Number(t.records) : 1000 + (idx * 157) % 50000),
+            attributes: t.ATTRIBUTES !== undefined ? Number(t.ATTRIBUTES) : (t.attributes !== undefined ? Number(t.attributes) : 0),
+            records: t.RECORDS !== undefined ? Number(t.RECORDS) : (t.records !== undefined ? Number(t.records) : 0),
             origin: platform === 'snowflake' ? 'Snowflake' : 'Databricks'
           };
         });

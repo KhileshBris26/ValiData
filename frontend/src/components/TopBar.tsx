@@ -9,8 +9,8 @@ const TopBar: React.FC = () => {
   return (
     <header className="top-bar glass-panel">
       <div className="top-bar-left">
-        <div className="logo-icon">DV</div>
-        <h2>DATA Vision</h2>
+        <div className="logo-icon">VD</div>
+        <h2>ValiData</h2>
       </div>
       
       <div className="top-bar-right">

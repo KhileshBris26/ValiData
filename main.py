@@ -12,6 +12,8 @@ from core.lineage_engine import LineageEngine
 from core.usage_analyzer import UsageAnalyzer
 from connectors.snowflake_connector import SnowflakeConnector
 from connectors.databricks_connector import DatabricksConnector
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 # Load environment variables
 load_dotenv()
@@ -33,26 +35,57 @@ app.add_middleware(
 
 # Database Setup for Authentication
 DB_PATH = "users.db"
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+def get_db_connection():
+    if DATABASE_URL:
+        # Use PostgreSQL for Cloud (Render/Neon)
+        conn = psycopg2.connect(DATABASE_URL)
+        return conn, conn.cursor(cursor_factory=RealDictCursor)
+    else:
+        # Use SQLite for Local
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        return conn, conn.cursor()
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL
-        )
-    """)
-    # Pre-seed Khilesh account
-    password = "ValiData26"
-    pw_hash = hashlib.sha256(password.encode()).hexdigest()
+    conn, cursor = get_db_connection()
     try:
-        cursor.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", ("Khilesh", pw_hash))
-    except sqlite3.IntegrityError:
-        pass
-    conn.commit()
-    conn.close()
+        if DATABASE_URL:
+            # PostgreSQL syntax
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL
+                )
+            """)
+        else:
+            # SQLite syntax
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL
+                )
+            """)
+        
+        # Pre-seed Khilesh account
+        password = "ValiData26"
+        pw_hash = hashlib.sha256(password.encode()).hexdigest()
+        
+        # Check if user exists
+        cursor.execute("SELECT id FROM users WHERE username = %s" if DATABASE_URL else "SELECT id FROM users WHERE username = ?", ("Khilesh",))
+        if not cursor.fetchone():
+            cursor.execute(
+                "INSERT INTO users (username, password_hash) VALUES (%s, %s)" if DATABASE_URL else "INSERT INTO users (username, password_hash) VALUES (?, ?)", 
+                ("Khilesh", pw_hash)
+            )
+        conn.commit()
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+    finally:
+        conn.close()
 
 init_db()
 
@@ -62,31 +95,34 @@ class AuthRequest(BaseModel):
 
 @app.post("/api/v1/auth/register")
 async def register(request: AuthRequest):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    conn, cursor = get_db_connection()
     pw_hash = hashlib.sha256(request.password.encode()).hexdigest()
     try:
-        cursor.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (request.username, pw_hash))
+        query = "INSERT INTO users (username, password_hash) VALUES (%s, %s)" if DATABASE_URL else "INSERT INTO users (username, password_hash) VALUES (?, ?)"
+        cursor.execute(query, (request.username, pw_hash))
         conn.commit()
         return {"status": "success", "token": f"token_{request.username}_{pw_hash[:10]}"}
-    except sqlite3.IntegrityError:
-        raise HTTPException(status_code=400, detail="Username already exists")
+    except Exception as e:
+        print(f"Registration error: {e}")
+        raise HTTPException(status_code=400, detail="Username already exists or database error")
     finally:
         conn.close()
 
 @app.post("/api/v1/auth/login")
 async def login(request: AuthRequest):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    conn, cursor = get_db_connection()
     pw_hash = hashlib.sha256(request.password.encode()).hexdigest()
-    cursor.execute("SELECT * FROM users WHERE username = ? AND password_hash = ?", (request.username, pw_hash))
-    user = cursor.fetchone()
-    conn.close()
-    
-    if user:
-        return {"status": "success", "token": f"token_{request.username}_{pw_hash[:10]}"}
-    else:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+    try:
+        query = "SELECT * FROM users WHERE username = %s AND password_hash = %s" if DATABASE_URL else "SELECT * FROM users WHERE username = ? AND password_hash = ?"
+        cursor.execute(query, (request.username, pw_hash))
+        user = cursor.fetchone()
+        
+        if user:
+            return {"status": "success", "token": f"token_{request.username}_{pw_hash[:10]}"}
+        else:
+            raise HTTPException(status_code=401, detail="Invalid username or password")
+    finally:
+        conn.close()
 
 @app.post("/api/v1/auth/test-connection")
 async def test_connection(request: MetadataRequest):
@@ -308,13 +344,8 @@ async def get_catalog_tables(request: CatalogRequest):
                 databricks_engine.disconnect()
         except Exception as conn_err:
             print(f"Catalog connection failed: {conn_err}")
-            # Fallback to samples if connection fails or account_usage is empty
-            if request.platform == "snowflake":
-                result = [
-                    {"DATABASE": "DEMO_DB", "SCHEMA": "PUBLIC", "NAME": "SALES_DATA", "TYPE": "TABLE", "RECORDS": 15400, "ATTRIBUTES": 12},
-                    {"DATABASE": "DEMO_DB", "SCHEMA": "PUBLIC", "NAME": "CUSTOMER_MASTER", "TYPE": "TABLE", "RECORDS": 8200, "ATTRIBUTES": 8},
-                    {"DATABASE": "UTIL_DB", "SCHEMA": "LOGS", "NAME": "APP_EVENTS", "TYPE": "TABLE", "RECORDS": 120500, "ATTRIBUTES": 5}
-                ]
+            # Do not return mock data. Returning empty list will force user to check connections.
+            result = []
         return {"status": "success", "tables": result or []}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

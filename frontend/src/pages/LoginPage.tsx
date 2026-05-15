@@ -54,7 +54,7 @@ const LoginPage: React.FC = () => {
             <h1 className="brand-name">ValiData</h1>
           </div>
           <p className="login-subtitle">
-            {isLogin ? 'Welcome back to Data Vision' : 'Join the elite data ecosystem'}
+            {isLogin ? 'Welcome back to ValiData' : 'Join the elite data ecosystem'}
           </p>
         </div>
 

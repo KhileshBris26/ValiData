@@ -62,6 +62,7 @@ const DataQualityDetail: React.FC = () => {
     accuracy: number;
     columns: Record<string, string>;
   } | null>(null);
+  const [colProfiles, setColProfiles] = useState<Record<string, any>>({});
 
   const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 0 : parseInt(rowCount.toString().replace(/,/g, '')) || 0);
 
@@ -185,37 +186,16 @@ const DataQualityDetail: React.FC = () => {
             const isDate = colType.includes('DATE') || colType.includes('TIMESTAMP') || colType.includes('TIME');
 
             let tv: { label: string; pct: string }[] = [];
-            if (isNumeric) {
-              tv = [
-                { label: 'Min: 1,024.50', pct: 'Value' },
-                { label: 'Max: 85,400.00', pct: 'Value' },
-                { label: 'Avg: 42,712.25', pct: 'Value' }
-              ];
-            } else if (isDate) {
-              tv = [
-                { label: 'Min: 2023-01-01', pct: 'Date' },
-                { label: 'Max: 2023-12-31', pct: 'Date' },
-                { label: 'Span: 365 Days', pct: 'Range' }
-              ];
-            } else {
-              tv = [{ label: 'NA', pct: '-' }];
-            }
+            // To be populated by fetchColumnProfiles
+            tv = [{ label: 'Pending...', pct: '-' }];
 
             // Masking Logic: Only show if column name implies sensitive/masked data
             const colNameUpper = colName.toUpperCase();
             const isSensitive = colNameUpper.includes('EMAIL') || colNameUpper.includes('CARD') || colNameUpper.includes('PHONE') || colNameUpper.includes('SSN') || colNameUpper.includes('PASSWORD') || colNameUpper.includes('CONTACT');
             
-            const maskSamples = isSensitive ? [
-              { label: colNameUpper.includes('EMAIL') ? '****@****.com' : (colNameUpper.includes('CARD') ? 'XXXX-XXXX-XXXX' : 'XXXXXXXX'), pct: '12%' },
-              { label: 'all NULL', pct: '2%' }
-            ] : [];
+            const maskSamples: any[] = [];
 
-            // Top 3 Values (Frequent Values)
-            const topVals = [
-              { label: `${colName}_SAMPLE_1`, pct: '12%' },
-              { label: `${colName}_SAMPLE_2`, pct: '8%' },
-              { label: `${colName}_SAMPLE_3`, pct: '5%' }
-            ];
+            const topVals: any[] = [];
 
             return {
               attribute: colName,
@@ -241,6 +221,38 @@ const DataQualityDetail: React.FC = () => {
     fetchColumns();
     fetchPreview();
   }, [database, schema, table, platform]);
+
+  useEffect(() => {
+    const fetchAllProfiles = async () => {
+      if (dynamicColumns.length === 0) return;
+      
+      const saved = localStorage.getItem('robin_credentials');
+      let credentials = null;
+      if (saved) credentials = JSON.parse(saved)[platform];
+
+      // Fetch for all columns (limit to first 10 for performance if table is massive)
+      const targetCols = dynamicColumns.slice(0, 10);
+      
+      for (const col of targetCols) {
+        try {
+          const res = await axios.post(`${API_BASE}/metadata/profile`, {
+            platform,
+            database_name: database,
+            schema_name: schema,
+            table_name: table,
+            column_name: col.attribute,
+            credentials
+          });
+          if (res.data.profile) {
+            setColProfiles(prev => ({ ...prev, [col.attribute]: res.data.profile }));
+          }
+        } catch (err) {
+          console.error(`Profile failed for ${col.attribute}`, err);
+        }
+      }
+    };
+    fetchAllProfiles();
+  }, [dynamicColumns, database, schema, table, platform]);
 
   const activeColumnsList = useMemo(() => {
     return dynamicColumns.map(colItem => {
@@ -299,7 +311,28 @@ const DataQualityDetail: React.FC = () => {
         }
       }
 
-      return { ...colItem, overallDQ: dqPct, appliedRules: uniqueRules, profileSummary };
+      const profile = colProfiles[colItem.attribute];
+      let tv = colItem.minMax;
+      let topVals = colItem.topValues;
+
+      if (profile) {
+        if (profile.min_val || profile.max_val) {
+          tv = [
+            { label: `Min: ${profile.min_val || 'N/A'}`, pct: 'Value' },
+            { label: `Max: ${profile.max_val || 'N/A'}`, pct: 'Value' },
+            { label: `Avg: ${profile.avg_val ? parseFloat(profile.avg_val).toFixed(2) : 'N/A'}`, pct: 'Value' }
+          ];
+        }
+        if (profile.top_values) {
+          topVals = profile.top_values.split(',').map((v: string) => {
+            const [val, count] = v.split(':');
+            const pct = numericRowCount > 0 ? Math.round((parseInt(count) / numericRowCount) * 100) : 0;
+            return { label: val, pct: `${pct}%` };
+          });
+        }
+      }
+
+      return { ...colItem, overallDQ: dqPct, appliedRules: uniqueRules, profileSummary, minMax: tv, topValues: topVals };
     });
   }, [dynamicColumns, tablePreview, hasEvaluated, shutDownRules, deletedRules, database, schema, table]);
 
@@ -322,17 +355,42 @@ const DataQualityDetail: React.FC = () => {
   const handleSuggestRules = async () => {
     setSuggestingRules(true);
     try {
-      // Simulate multiple suggestions for all numeric/string columns
-      const suggested = dynamicColumns.slice(0, 5).map(col => ({
-        attribute: col.attribute,
-        name: col.attribute.includes('EMAIL') ? 'Email Format' : (col.type === 'num' ? 'Value Range' : 'Completeness'),
-        score: '100%',
-        status: 'valid' as const
-      }));
-      localStorage.setItem('robin_applied_rules', JSON.stringify(suggested));
+      const saved = localStorage.getItem('robin_credentials');
+      let credentials = null;
+      if (saved) credentials = JSON.parse(saved)[platform];
+
+      // Suggest for the first 3 columns to keep it manageable
+      const allSuggestions: any[] = [];
+      for (const col of dynamicColumns.slice(0, 3)) {
+        const res = await axios.post(`${API_BASE}/ai/suggest_rules`, {
+          platform,
+          table_name: table,
+          column_name: col.attribute,
+          credentials
+        });
+        
+        if (res.data.ai_suggestions) {
+          const rawText = res.data.ai_suggestions[0]?.ai_suggestion || "";
+          // Extract lines that look like rules (numbered list)
+          const lines = rawText.split('\n').filter((l: string) => /^\d+\./.test(l.trim()));
+          lines.forEach((l: string) => {
+            const ruleName = l.replace(/^\d+\.\s*/, '').trim();
+            if (ruleName) {
+              allSuggestions.push({
+                attribute: col.attribute,
+                name: ruleName,
+                score: '100%',
+                status: 'valid' as const
+              });
+            }
+          });
+        }
+      }
+      
+      localStorage.setItem('robin_applied_rules', JSON.stringify(allSuggestions));
       setHasEvaluated(true);
     } catch (e) {
-      console.error(e);
+      console.error("AI Suggestion failed", e);
     } finally {
       setSuggestingRules(false);
     }

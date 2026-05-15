@@ -404,7 +404,10 @@ class QueryGenerator:
             SELECT 
                 COUNT(*) as total_rows,
                 COUNT(DISTINCT {column}) as distinct_count,
-                SUM(CASE WHEN {column} IS NULL THEN 1 ELSE 0 END) as null_count
+                SUM(CASE WHEN {column} IS NULL THEN 1 ELSE 0 END) as null_count,
+                CAST(MIN({column}) AS STRING) as min_val,
+                CAST(MAX({column}) AS STRING) as max_val,
+                CAST(AVG(CASE WHEN TRY_CAST({column} AS FLOAT) IS NOT NULL THEN CAST({column} AS FLOAT) ELSE NULL END) AS STRING) as avg_val
             FROM {full_table}
         ),
         top_vals AS (
