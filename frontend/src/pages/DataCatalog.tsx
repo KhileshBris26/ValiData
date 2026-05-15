@@ -29,7 +29,7 @@ const DataCatalog: React.FC = () => {
         });
         
         // Enrich backend names with deterministic data synced with TableDetail
-        const enriched = (res.data.tables || []).map((t: any, idx: number) => {
+        const enriched = (res.data.tables || []).map((t: any) => {
           const name = t.NAME || t.name;
           const db = t.DATABASE || t.database;
           const sch = t.SCHEMA || t.schema;

@@ -191,7 +191,6 @@ const DataQualityDetail: React.FC = () => {
 
             // Masking Logic: Only show if column name implies sensitive/masked data
             const colNameUpper = colName.toUpperCase();
-            const isSensitive = colNameUpper.includes('EMAIL') || colNameUpper.includes('CARD') || colNameUpper.includes('PHONE') || colNameUpper.includes('SSN') || colNameUpper.includes('PASSWORD') || colNameUpper.includes('CONTACT');
             
             const maskSamples: any[] = [];
 
