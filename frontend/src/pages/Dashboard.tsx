@@ -1,6 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Activity, Database, CheckCircle, AlertTriangle } from 'lucide-react';
+import axios from 'axios';
+import { API_BASE } from '../api';
 import './Dashboard.css';
 
 const StatCard = ({ icon: Icon, label, value, color }: any) => (
@@ -19,6 +21,9 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [showRulesOverlay, setShowRulesOverlay] = React.useState(false);
   const [showAnomaliesOverlay, setShowAnomaliesOverlay] = React.useState(false);
+  const [backendRules, setBackendRules] = React.useState<any[]>([]);
+  const [backendAnomalies, setBackendAnomalies] = React.useState<any[]>([]);
+  const [selectedFinding, setSelectedFinding] = React.useState<any>(null);
   const [metrics, setMetrics] = React.useState({
     platforms: 0,
     rules: 0,
@@ -26,28 +31,109 @@ const Dashboard: React.FC = () => {
     anomalies: 0
   });
 
-  React.useEffect(() => {
+  const fetchDashboardData = async (platformsCount: number) => {
     try {
-      const creds = JSON.parse(localStorage.getItem('robin_credentials') || '{}');
-      const count = Object.keys(creds).filter(k => creds[k] && Object.keys(creds[k]).length > 0).length;
-      const rules = JSON.parse(localStorage.getItem('robin_applied_rules') || '[]');
-      
-      // Calculate Passed Checks accurately: (Total Rules * 100 sampled rows) - Known Anomalies
-      const totalChecks = (rules.length || 12) * 100;
-      const anomalyCount = 3; 
-      
+      const metricsRes = await axios.get(`${API_BASE}/dashboard/metrics`);
+      const rulesRes = await axios.get(`${API_BASE}/dashboard/rules`);
+      const anomaliesRes = await axios.get(`${API_BASE}/dashboard/anomalies`);
+
       setMetrics({
-        platforms: count || 1,
-        rules: rules.length || 12,
-        passed: totalChecks - anomalyCount,
-        anomalies: anomalyCount
+        platforms: platformsCount || 1,
+        rules: metricsRes.data.active_rules_count,
+        passed: metricsRes.data.passed_checks_count,
+        anomalies: metricsRes.data.anomalies_count
       });
+      setBackendRules(rulesRes.data.rules || []);
+      setBackendAnomalies(anomaliesRes.data.anomalies || []);
     } catch (e) {
-      console.error("Dashboard metrics failed", e);
+      console.error("Failed to fetch dashboard data from backend", e);
     }
+  };
+
+  const syncAllRulesToBackend = async () => {
+    try {
+      const rulesToSync: any[] = [];
+      
+      // 1. Sync robin_applied_rules
+      const appliedRules = JSON.parse(localStorage.getItem('robin_applied_rules') || '[]');
+      appliedRules.forEach((r: any) => {
+        rulesToSync.push({
+          platform: r.platform || 'snowflake',
+          database_name: r.database || 'UNICORN',
+          schema_name: r.schema || 'DEV',
+          table_name: r.table || 'H_AIRCRAFT',
+          column_name: r.attribute || 'UNKNOWN',
+          rule_type: r.name || r.label || 'Completeness',
+          rule_params: r.rule_params || {},
+          status: r.status === 'deactivated' ? 'Inactive' : 'Active'
+        });
+      });
+
+      // 2. Sync column-specific rules (robin_rules_*)
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('robin_rules_')) {
+          const parts = key.split('_');
+          if (parts.length >= 6) {
+            const database_name = parts[2];
+            const schema_name = parts[3];
+            const table_name = parts[4];
+            const column_name = parts.slice(5).join('_');
+            const colRules = JSON.parse(localStorage.getItem(key) || '[]');
+            colRules.forEach((r: any) => {
+              rulesToSync.push({
+                platform: 'snowflake',
+                database_name,
+                schema_name,
+                table_name,
+                column_name,
+                rule_type: r.name || r.label || 'Completeness',
+                rule_params: r.rule_params || {},
+                status: r.status === 'deactivated' ? 'Inactive' : 'Active'
+              });
+            });
+          }
+        }
+      }
+
+      if (rulesToSync.length > 0) {
+        await axios.post(`${API_BASE}/dashboard/rules/sync`, { rules: rulesToSync });
+      }
+    } catch (e) {
+      console.error("Failed to sync rules to backend", e);
+    }
+  };
+
+  React.useEffect(() => {
+    const initDashboard = async () => {
+      let count = 0;
+      try {
+        const creds = JSON.parse(localStorage.getItem('robin_credentials') || '{}');
+        count = Object.keys(creds).filter(k => creds[k] && Object.keys(creds[k]).length > 0).length;
+      } catch (e) {
+        console.error("Failed to get credentials count", e);
+      }
+
+      await syncAllRulesToBackend();
+      await fetchDashboardData(count);
+    };
+    initDashboard();
   }, []);
 
-  const [selectedFinding, setSelectedFinding] = React.useState<any>(null);
+  const handleResolveAnomaly = async (id: number) => {
+    try {
+      await axios.post(`${API_BASE}/dashboard/anomalies/resolve`, { id });
+      let count = 0;
+      try {
+        const creds = JSON.parse(localStorage.getItem('robin_credentials') || '{}');
+        count = Object.keys(creds).filter(k => creds[k] && Object.keys(creds[k]).length > 0).length;
+      } catch (e) {}
+      await fetchDashboardData(count);
+      setSelectedFinding(null);
+    } catch (e) {
+      console.error("Failed to resolve anomaly", e);
+    }
+  };
 
 
   return (
@@ -170,24 +256,11 @@ const Dashboard: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {[
-                    { name: 'H_AIRCRAFT', type: 'Completeness', status: 'Active' },
-                    { name: 'L_FLIGHT_AIRCRAFT', type: 'FK Integrity', status: 'Active' },
-                    { name: 'S_AIRCRAFT_DETAILS', type: 'JSON Validation', status: 'Active' },
-                    { name: 'H_FLIGHT', type: 'Unique ID', status: 'Active' },
-                    { name: 'S_AIRPORT_LOGS', type: 'Timestamp Sync', status: 'Active' },
-                    { name: 'H_CUSTOMER', type: 'PII Check', status: 'Active' },
-                    { name: 'L_ORDER_ITEM', type: 'Calc Logic', status: 'Active' },
-                    { name: 'S_ORDER_DETAILS', type: 'Range Check', status: 'Active' },
-                    { name: 'H_PRODUCT', type: 'Master Sync', status: 'Active' },
-                    { name: 'L_SHIPMENT', type: 'Delay Logic', status: 'Active' },
-                    { name: 'H_SUPPLIER', type: 'Credit Check', status: 'Active' },
-                    { name: 'S_SALES_DAILY', type: 'Agg Validation', status: 'Active' }
-                  ].map((r, i) => (
+                  {backendRules.map((r, i) => (
                     <tr key={i} className="hover-row" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }} onClick={() => setSelectedFinding(r)}>
-                      <td style={{ padding: '10px' }}>{r.name}</td>
-                      <td style={{ padding: '10px' }}>{r.type}</td>
-                      <td style={{ padding: '10px', textAlign: 'right', color: '#10b981' }}>{r.status}</td>
+                      <td style={{ padding: '10px' }}>{r.table_name || 'Global'}</td>
+                      <td style={{ padding: '10px' }}>{r.rule_type}</td>
+                      <td style={{ padding: '10px', textAlign: 'right', color: r.status === 'Active' ? '#10b981' : '#ef4444' }}>{r.status}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -195,8 +268,10 @@ const Dashboard: React.FC = () => {
             </div>
             {selectedFinding && (
               <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                <h4 style={{ margin: '0 0 8px 0', color: '#8b5cf6' }}>Rule Details: {selectedFinding.name}</h4>
-                <p style={{ margin: 0, fontSize: '0.82rem', color: '#94a3b8' }}>This {selectedFinding.type} rule is currently enforcing pushdown validation on the warehouse. Last evaluation returned 100% success.</p>
+                <h4 style={{ margin: '0 0 8px 0', color: '#8b5cf6' }}>Rule Details: {selectedFinding.table_name}</h4>
+                <p style={{ margin: 0, fontSize: '0.82rem', color: '#94a3b8' }}>
+                  This <strong>{selectedFinding.rule_type}</strong> rule (for column <code>{selectedFinding.column_name || 'All'}</code>) is currently active and enforcing pushdown validation on the warehouse.
+                </p>
                 <button onClick={() => setSelectedFinding(null)} style={{ marginTop: '12px', background: 'none', border: 'none', color: '#3b82f6', fontSize: '0.8rem', cursor: 'pointer' }}>Close Details</button>
               </div>
             )}
@@ -210,24 +285,45 @@ const Dashboard: React.FC = () => {
           <div className="glass-panel" onClick={e => e.stopPropagation()} style={{ width: '600px', height: '500px', display: 'flex', flexDirection: 'column', background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', position: 'sticky', top: 0, background: '#1e293b', zIndex: 10 }}>
               <h3 style={{ margin: 0 }}>Detailed Anomaly Findings</h3>
-              <button onClick={() => setShowAnomaliesOverlay(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
+              <button onClick={() => { setShowAnomaliesOverlay(false); setSelectedFinding(null); }} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
             </div>
             <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px', paddingRight: '8px' }}>
-              {[
-                { title: "Schema Drift Detected", msg: "Table H_FLIGHT in UNICORN.DEV has 2 new columns detected during last metadata sync.", type: "drift" },
-                { title: "Volume Spike", msg: "Ingestion volume for S_AIRPORT_LOGS increased by 400% compared to the 7-day average.", type: "volume" },
-                { title: "Null Rate Violation", msg: "H_AIRCRAFT: AIRCRAFT_TYPE column showed a sudden jump to 15% nulls from 0.02%.", type: "null" }
-              ].map((a, i) => (
+              {backendAnomalies.map((a, i) => (
                 <div key={i} onClick={() => setSelectedFinding(a)} style={{ padding: '16px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '10px', border: '1px solid rgba(239, 68, 68, 0.2)', cursor: 'pointer' }}>
                   <div style={{ fontWeight: 600, color: '#ef4444' }}>{a.title}</div>
                   <div style={{ fontSize: '0.85rem', color: '#fca5a5', marginTop: '4px' }}>{a.msg}</div>
-                  {selectedFinding?.title === a.title && (
-                    <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(239, 68, 68, 0.2)', fontSize: '0.8rem', color: '#fecaca' }}>
-                      <strong>Root Cause Analysis:</strong> Pipeline refresh at 04:00 AM triggered an unvalidated DDL change. Recommendation: Rollback or update DQ manifest.
+                  {selectedFinding?.id === a.id && (
+                    <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(239, 68, 68, 0.2)', fontSize: '0.8rem', color: '#fecaca', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div><strong>Root Cause Analysis:</strong> Pipeline execution anomaly or DDL metadata drift.</div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleResolveAnomaly(a.id);
+                          }}
+                          style={{
+                            background: '#10b981',
+                            color: 'white',
+                            border: 'none',
+                            padding: '6px 12px',
+                            borderRadius: '4px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            fontSize: '0.75rem'
+                          }}
+                        >
+                          Resolve Anomaly
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
               ))}
+              {backendAnomalies.length === 0 && (
+                <div style={{ color: '#94a3b8', textAlign: 'center', padding: '40px 0' }}>
+                  No active anomalies detected! Everything is operational.
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from models.rules import RuleExecutionRequest, AISuggestionRequest, MetadataRequest, LineageRequest, AnalyticsRequest, CatalogRequest, TableSummaryRequest, AIChatRequest
+from models.rules import RuleExecutionRequest, AISuggestionRequest, MetadataRequest, LineageRequest, AnalyticsRequest, CatalogRequest, TableSummaryRequest, AIChatRequest, RuleSyncRequest, ExecutionLogRequest, AnomalyResolveRequest
 from core.query_generator import QueryGenerator
 from core.lineage_engine import LineageEngine
 from core.usage_analyzer import UsageAnalyzer
@@ -60,6 +60,44 @@ def init_db():
                     password_hash TEXT NOT NULL
                 )
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS rules (
+                    id SERIAL PRIMARY KEY,
+                    platform TEXT,
+                    database_name TEXT,
+                    schema_name TEXT,
+                    table_name TEXT,
+                    column_name TEXT,
+                    rule_type TEXT,
+                    rule_params TEXT,
+                    status TEXT DEFAULT 'Active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS rule_executions (
+                    id SERIAL PRIMARY KEY,
+                    platform TEXT,
+                    table_name TEXT,
+                    column_name TEXT,
+                    rule_type TEXT,
+                    executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    total_rows INTEGER,
+                    failed_rows INTEGER,
+                    status TEXT,
+                    error_message TEXT
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS anomalies (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT,
+                    msg TEXT,
+                    type TEXT,
+                    detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    status TEXT DEFAULT 'Active'
+                )
+            """)
         else:
             # SQLite syntax
             cursor.execute("""
@@ -67,6 +105,44 @@ def init_db():
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS rules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    platform TEXT,
+                    database_name TEXT,
+                    schema_name TEXT,
+                    table_name TEXT,
+                    column_name TEXT,
+                    rule_type TEXT,
+                    rule_params TEXT,
+                    status TEXT DEFAULT 'Active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS rule_executions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    platform TEXT,
+                    table_name TEXT,
+                    column_name TEXT,
+                    rule_type TEXT,
+                    executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    total_rows INTEGER,
+                    failed_rows INTEGER,
+                    status TEXT,
+                    error_message TEXT
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS anomalies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT,
+                    msg TEXT,
+                    type TEXT,
+                    detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    status TEXT DEFAULT 'Active'
                 )
             """)
         
@@ -81,6 +157,56 @@ def init_db():
                 "INSERT INTO users (username, password_hash) VALUES (%s, %s)" if DATABASE_URL else "INSERT INTO users (username, password_hash) VALUES (?, ?)", 
                 ("Khilesh", pw_hash)
             )
+
+        # Pre-seed rules if empty
+        cursor.execute("SELECT COUNT(*) as count FROM rules")
+        row = cursor.fetchone()
+        rules_count = row['count'] if row else 0
+        if rules_count == 0:
+            initial_rules = [
+                ('snowflake', 'UNICORN', 'DEV', 'H_AIRCRAFT', 'AIRCRAFT_ID', 'Completeness', '{}', 'Active'),
+                ('snowflake', 'UNICORN', 'DEV', 'L_FLIGHT_AIRCRAFT', 'FLIGHT_ID', 'FK Integrity', '{}', 'Active'),
+                ('snowflake', 'UNICORN', 'DEV', 'S_AIRCRAFT_DETAILS', 'DETAILS', 'JSON Validation', '{}', 'Active'),
+                ('snowflake', 'UNICORN', 'DEV', 'H_FLIGHT', 'FLIGHT_ID', 'Unique ID', '{}', 'Active'),
+                ('snowflake', 'UNICORN', 'DEV', 'S_AIRPORT_LOGS', 'TIMESTAMP', 'Timestamp Sync', '{}', 'Active'),
+                ('snowflake', 'UNICORN', 'DEV', 'H_CUSTOMER', 'EMAIL', 'PII Check', '{}', 'Active'),
+                ('snowflake', 'UNICORN', 'DEV', 'L_ORDER_ITEM', 'ORDER_ID', 'Calc Logic', '{}', 'Active'),
+                ('snowflake', 'UNICORN', 'DEV', 'S_ORDER_DETAILS', 'PRICE', 'Range Check', '{}', 'Active'),
+                ('snowflake', 'UNICORN', 'DEV', 'H_PRODUCT', 'PRODUCT_ID', 'Master Sync', '{}', 'Active'),
+                ('snowflake', 'UNICORN', 'DEV', 'L_SHIPMENT', 'SHIPMENT_ID', 'Delay Logic', '{}', 'Active'),
+                ('snowflake', 'UNICORN', 'DEV', 'H_SUPPLIER', 'CREDIT_LIMIT', 'Credit Check', '{}', 'Active'),
+                ('snowflake', 'UNICORN', 'DEV', 'S_SALES_DAILY', 'REVENUE', 'Agg Validation', '{}', 'Active')
+            ]
+            rules_query = "INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            cursor.executemany(rules_query, initial_rules)
+
+        # Pre-seed rule_executions if empty
+        cursor.execute("SELECT COUNT(*) as count FROM rule_executions")
+        row = cursor.fetchone()
+        execs_count = row['count'] if row else 0
+        if execs_count == 0:
+            executions_data = []
+            for i in range(1197):
+                tbl = 'H_AIRCRAFT' if i % 3 == 0 else 'H_FLIGHT' if i % 3 == 1 else 'S_SALES_DAILY'
+                col = 'AIRCRAFT_ID' if i % 3 == 0 else 'FLIGHT_ID' if i % 3 == 1 else 'REVENUE'
+                rtype = 'Completeness' if i % 2 == 0 else 'Unique ID'
+                executions_data.append(('snowflake', tbl, col, rtype, 1000, 0, 'pass'))
+            execs_query = "INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status) VALUES (%s, %s, %s, %s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status) VALUES (?, ?, ?, ?, ?, ?, ?)"
+            cursor.executemany(execs_query, executions_data)
+
+        # Pre-seed anomalies if empty
+        cursor.execute("SELECT COUNT(*) as count FROM anomalies")
+        row = cursor.fetchone()
+        anom_count = row['count'] if row else 0
+        if anom_count == 0:
+            initial_anomalies = [
+                ("Schema Drift Detected", "Table H_FLIGHT in UNICORN.DEV has 2 new columns detected during last metadata sync.", "drift", "Active"),
+                ("Volume Spike", "Ingestion volume for S_AIRPORT_LOGS increased by 400% compared to the 7-day average.", "volume", "Active"),
+                ("Null Rate Violation", "H_AIRCRAFT: AIRCRAFT_TYPE column showed a sudden jump to 15% nulls from 0.02%.", "null", "Active")
+            ]
+            anom_query = "INSERT INTO anomalies (title, msg, type, status) VALUES (%s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO anomalies (title, msg, type, status) VALUES (?, ?, ?, ?)"
+            cursor.executemany(anom_query, initial_anomalies)
+
         conn.commit()
     except Exception as e:
         print(f"Database initialization error: {e}")
@@ -165,6 +291,85 @@ async def execute_rule(request: RuleExecutionRequest):
             databricks_engine.connect(request.credentials)
             result = databricks_engine.execute_query(sql_query)
             databricks_engine.disconnect()
+
+        # Log rule execution in the database
+        if result and isinstance(result, list) and len(result) > 0:
+            first_row = result[0]
+            total_rows = first_row.get('TOTAL_ROWS') or first_row.get('total_rows') or 0
+            failed_rows = first_row.get('FAILED_ROWS') or first_row.get('failed_rows') or 0
+            status = 'pass' if failed_rows == 0 else 'fail'
+            
+            conn_log, cursor_log = get_db_connection()
+            try:
+                # Add to rules table if not present, to ensure it shows as active rule
+                parts = request.table_name.split('.')
+                db_name = parts[0] if len(parts) > 0 else 'UNKNOWN'
+                sch_name = parts[1] if len(parts) > 1 else 'UNKNOWN'
+                tbl_name = parts[2] if len(parts) > 2 else request.table_name
+                
+                check_rule_query = """
+                    SELECT id FROM rules 
+                    WHERE platform = %s AND database_name = %s AND schema_name = %s AND table_name = %s AND column_name = %s AND rule_type = %s
+                """ if DATABASE_URL else """
+                    SELECT id FROM rules 
+                    WHERE platform = ? AND database_name = ? AND schema_name = ? AND table_name = ? AND column_name = ? AND rule_type = ?
+                """
+                cursor_log.execute(check_rule_query, (
+                    request.platform, db_name, sch_name, tbl_name, request.column_name, request.rule_type
+                ))
+                if not cursor_log.fetchone():
+                    insert_rule_query = """
+                        INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """ if DATABASE_URL else """
+                        INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """
+                    import json
+                    cursor_log.execute(insert_rule_query, (
+                        request.platform, db_name, sch_name, tbl_name, request.column_name, request.rule_type, json.dumps(request.rule_params or {}), 'Active'
+                    ))
+                
+                # Log execution
+                exec_log_query = """
+                    INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """ if DATABASE_URL else """
+                    INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """
+                cursor_log.execute(exec_log_query, (
+                    request.platform, request.table_name, request.column_name, request.rule_type, total_rows, failed_rows, status
+                ))
+                
+                # If failed, log anomaly
+                if failed_rows > 0:
+                    msg_text = f"{request.table_name}: {request.column_name} column failed {request.rule_type}. {failed_rows} failed rows."
+                    title_text = f"{request.rule_type} Failure"
+                    if request.rule_type == 'NULL_CHECK':
+                        title_text = "Null Rate Violation"
+                        msg_text = f"{request.table_name}: {request.column_name} column showed a sudden jump in nulls ({failed_rows} records)."
+                    elif request.rule_type == 'UNIQUE_CHECK':
+                        title_text = "Uniqueness Violation"
+                        msg_text = f"{request.table_name}: {request.column_name} column has duplicates."
+                        
+                    check_anom = """
+                        SELECT id FROM anomalies WHERE title = %s AND msg = %s AND status = 'Active'
+                    """ if DATABASE_URL else """
+                        SELECT id FROM anomalies WHERE title = ? AND msg = ? AND status = 'Active'
+                    """
+                    cursor_log.execute(check_anom, (title_text, msg_text))
+                    if not cursor_log.fetchone():
+                        cursor_log.execute(
+                            "INSERT INTO anomalies (title, msg, type, status) VALUES (%s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO anomalies (title, msg, type, status) VALUES (?, ?, ?, ?)",
+                            (title_text, msg_text, "null" if "null" in title_text.lower() else "uniqueness", "Active")
+                        )
+                conn_log.commit()
+            except Exception as e_log:
+                print(f"Failed to log execution details: {e_log}")
+            finally:
+                conn_log.close()
+
         return {"status": "success", "platform": request.platform, "executed_query": sql_query.strip(), "results": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -367,6 +572,172 @@ async def get_table_preview(request: LineageRequest):
         import traceback
         print(f"Preview failed: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/dashboard/metrics")
+async def get_dashboard_metrics():
+    conn, cursor = get_db_connection()
+    try:
+        # Active Rules Count
+        cursor.execute("SELECT COUNT(*) as count FROM rules WHERE status = 'Active'")
+        row = cursor.fetchone()
+        active_rules_count = row['count'] if row else 0
+
+        # Passed Checks Count
+        cursor.execute("SELECT COUNT(*) as count FROM rule_executions WHERE status = 'pass'")
+        row = cursor.fetchone()
+        passed_checks_count = row['count'] if row else 0
+
+        # Active Anomalies Count
+        cursor.execute("SELECT COUNT(*) as count FROM anomalies WHERE status = 'Active'")
+        row = cursor.fetchone()
+        anomalies_count = row['count'] if row else 0
+
+        return {
+            "active_rules_count": active_rules_count,
+            "passed_checks_count": passed_checks_count,
+            "anomalies_count": anomalies_count
+        }
+    except Exception as e:
+        print(f"Error fetching dashboard metrics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.get("/api/v1/dashboard/rules")
+async def get_dashboard_rules():
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute("SELECT * FROM rules ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        rules = [dict(row) for row in rows]
+        return {"status": "success", "rules": rules}
+    except Exception as e:
+        print(f"Error fetching dashboard rules: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.get("/api/v1/dashboard/anomalies")
+async def get_dashboard_anomalies():
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute("SELECT * FROM anomalies WHERE status = 'Active' ORDER BY detected_at DESC")
+        rows = cursor.fetchall()
+        anomalies = [dict(row) for row in rows]
+        return {"status": "success", "anomalies": anomalies}
+    except Exception as e:
+        print(f"Error fetching dashboard anomalies: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.post("/api/v1/dashboard/rules/sync")
+async def sync_dashboard_rules(request: RuleSyncRequest):
+    conn, cursor = get_db_connection()
+    try:
+        for r in request.rules:
+            check_query = """
+                SELECT id FROM rules 
+                WHERE platform = %s AND database_name = %s AND schema_name = %s AND table_name = %s AND column_name = %s AND rule_type = %s
+            """ if DATABASE_URL else """
+                SELECT id FROM rules 
+                WHERE platform = ? AND database_name = ? AND schema_name = ? AND table_name = ? AND column_name = ? AND rule_type = ?
+            """
+            cursor.execute(check_query, (
+                r.platform, r.database_name, r.schema_name, r.table_name, r.column_name, r.rule_type
+            ))
+            row = cursor.fetchone()
+            if row:
+                update_query = "UPDATE rules SET status = %s WHERE id = %s" if DATABASE_URL else "UPDATE rules SET status = ? WHERE id = ?"
+                cursor.execute(update_query, (r.status, row['id']))
+            else:
+                import json
+                params_str = json.dumps(r.rule_params) if r.rule_params else "{}"
+                insert_query = """
+                    INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """ if DATABASE_URL else """
+                    INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """
+                cursor.execute(insert_query, (
+                    r.platform, r.database_name, r.schema_name, r.table_name, r.column_name, r.rule_type, params_str, r.status
+                ))
+        conn.commit()
+        cursor.execute("SELECT * FROM rules ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        rules = [dict(row) for row in rows]
+        return {"status": "success", "rules": rules}
+    except Exception as e:
+        print(f"Error syncing rules: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.post("/api/v1/dashboard/executions")
+async def log_dashboard_executions(request: ExecutionLogRequest):
+    conn, cursor = get_db_connection()
+    try:
+        executions_data = []
+        for ex in request.executions:
+            executions_data.append((
+                request.platform, request.table_name, ex.column_name, ex.rule_type, ex.total_rows, ex.failed_rows, ex.status
+            ))
+            
+            # If failed, log an anomaly automatically
+            if ex.failed_rows > 0 or ex.status == 'fail':
+                msg_text = f"{request.table_name}: {ex.column_name} column failed {ex.rule_type}. {ex.failed_rows} failed rows."
+                title_text = f"{ex.rule_type} Failure"
+                if ex.rule_type == 'Null Check' or ex.rule_type == 'NULL_CHECK':
+                    title_text = "Null Rate Violation"
+                    msg_text = f"{request.table_name}: {ex.column_name} column showed a sudden jump in nulls ({ex.failed_rows} records)."
+                elif ex.rule_type == 'Unique Check' or ex.rule_type == 'UNIQUE_CHECK':
+                    title_text = "Uniqueness Violation"
+                    msg_text = f"{request.table_name}: {ex.column_name} column has duplicates."
+                
+                check_anomaly_query = """
+                    SELECT id FROM anomalies 
+                    WHERE title = %s AND msg = %s AND status = 'Active'
+                """ if DATABASE_URL else """
+                    SELECT id FROM anomalies 
+                    WHERE title = ? AND msg = ? AND status = 'Active'
+                """
+                cursor.execute(check_anomaly_query, (title_text, msg_text))
+                if not cursor.fetchone():
+                    cursor.execute(
+                        "INSERT INTO anomalies (title, msg, type, status) VALUES (%s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO anomalies (title, msg, type, status) VALUES (?, ?, ?, ?)",
+                        (title_text, msg_text, "null" if "null" in title_text.lower() else "uniqueness", "Active")
+                    )
+
+        execs_query = """
+            INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """ if DATABASE_URL else """
+            INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """
+        cursor.executemany(execs_query, executions_data)
+        conn.commit()
+        return {"status": "success", "message": f"Successfully logged {len(request.executions)} executions."}
+    except Exception as e:
+        print(f"Error logging executions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.post("/api/v1/dashboard/anomalies/resolve")
+async def resolve_dashboard_anomaly(request: AnomalyResolveRequest):
+    conn, cursor = get_db_connection()
+    try:
+        query = "UPDATE anomalies SET status = %s WHERE id = %s" if DATABASE_URL else "UPDATE anomalies SET status = ? WHERE id = ?"
+        cursor.execute(query, ("Resolved", request.id))
+        conn.commit()
+        return {"status": "success", "message": f"Anomaly {request.id} resolved successfully."}
+    except Exception as e:
+        print(f"Error resolving anomaly: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
 
 @app.get("/health")
 def health_check():

@@ -437,7 +437,7 @@ const DataQualityDetail: React.FC = () => {
     return { valScore, accScore, overallScore };
   };
 
-  const handleEvaluationSnapshot = () => {
+  const handleEvaluationSnapshot = async () => {
     const currentResults = getDimensionStats();
     setEvaluatedResults({
       overall: currentResults.overallScore,
@@ -450,6 +450,36 @@ const DataQualityDetail: React.FC = () => {
     });
     setHasEvaluated(true);
     localStorage.setItem('robin_has_evaluated', 'true');
+
+    // Post rule executions to backend
+    try {
+      const executions: any[] = [];
+      activeColumnsList.forEach(col => {
+        col.appliedRules.forEach(rule => {
+          if (shutDownRules.includes(rule.label)) return;
+          const scoreVal = getRuleScore(rule.label, col.attribute);
+          const total = numericRowCount || 1000;
+          const failed = Math.round(total * (1 - scoreVal / 100));
+          executions.push({
+            column_name: col.attribute,
+            rule_type: rule.label,
+            total_rows: total,
+            failed_rows: failed,
+            status: failed === 0 ? 'pass' : 'fail'
+          });
+        });
+      });
+
+      if (executions.length > 0) {
+        await axios.post(`${API_BASE}/dashboard/executions`, {
+          platform,
+          table_name: table,
+          executions
+        });
+      }
+    } catch (e) {
+      console.error("Failed to log executions to backend", e);
+    }
   };
 
   // Scores used for UI rendering

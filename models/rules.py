@@ -50,3 +50,32 @@ class AIChatRequest(BaseModel):
     messages: list[Dict[str, str]]
     context_table: Optional[str] = None
     credentials: Optional[Dict[str, Any]] = None
+
+class RuleSyncItem(BaseModel):
+    platform: str
+    database_name: str
+    schema_name: str
+    table_name: str
+    column_name: str
+    rule_type: str
+    rule_params: Optional[Dict[str, Any]] = None
+    status: Optional[str] = "Active"
+
+class RuleSyncRequest(BaseModel):
+    rules: list[RuleSyncItem]
+
+class ExecutionLogItem(BaseModel):
+    column_name: str
+    rule_type: str
+    total_rows: int
+    failed_rows: int
+    status: str
+
+class ExecutionLogRequest(BaseModel):
+    platform: str
+    table_name: str
+    executions: list[ExecutionLogItem]
+
+class AnomalyResolveRequest(BaseModel):
+    id: int
+
