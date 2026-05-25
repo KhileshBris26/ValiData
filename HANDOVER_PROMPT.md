@@ -9,7 +9,7 @@ You are continuing the development of "Project Robin" (rebranded as **ValiData**
 - **Deployment**:
   - **Live Frontend (Vercel)**: `https://vali-data-hcw9962hh-khilesh-s-projects.vercel.app/`
   - **Live Backend (Render)**: `https://validata-backend-u26p.onrender.com/`
-  - **Codebase (GitHub)**: `KhileshBris26/ValiData` (Private Repo)
+  - **Codebase (GitHub)**: `KhileshBris26/ValiData` (Public Repo)
 
 ## 🔐 Security & Auth
 - **Login System**: Implemented using a SQLite (`users.db`) backend with hashed passwords.
