@@ -158,54 +158,16 @@ def init_db():
                 ("Khilesh", pw_hash)
             )
 
-        # Pre-seed rules if empty
-        cursor.execute("SELECT COUNT(*) as count FROM rules")
+        # One-time clean up of legacy mock data if present
+        cursor.execute("SELECT COUNT(*) as count FROM rules WHERE database_name = %s" if DATABASE_URL else "SELECT COUNT(*) as count FROM rules WHERE database_name = ?", ("UNICORN",))
         row = cursor.fetchone()
-        rules_count = row['count'] if row else 0
-        if rules_count == 0:
-            initial_rules = [
-                ('snowflake', 'UNICORN', 'DEV', 'H_AIRCRAFT', 'AIRCRAFT_ID', 'Completeness', '{}', 'Active'),
-                ('snowflake', 'UNICORN', 'DEV', 'L_FLIGHT_AIRCRAFT', 'FLIGHT_ID', 'FK Integrity', '{}', 'Active'),
-                ('snowflake', 'UNICORN', 'DEV', 'S_AIRCRAFT_DETAILS', 'DETAILS', 'JSON Validation', '{}', 'Active'),
-                ('snowflake', 'UNICORN', 'DEV', 'H_FLIGHT', 'FLIGHT_ID', 'Unique ID', '{}', 'Active'),
-                ('snowflake', 'UNICORN', 'DEV', 'S_AIRPORT_LOGS', 'TIMESTAMP', 'Timestamp Sync', '{}', 'Active'),
-                ('snowflake', 'UNICORN', 'DEV', 'H_CUSTOMER', 'EMAIL', 'PII Check', '{}', 'Active'),
-                ('snowflake', 'UNICORN', 'DEV', 'L_ORDER_ITEM', 'ORDER_ID', 'Calc Logic', '{}', 'Active'),
-                ('snowflake', 'UNICORN', 'DEV', 'S_ORDER_DETAILS', 'PRICE', 'Range Check', '{}', 'Active'),
-                ('snowflake', 'UNICORN', 'DEV', 'H_PRODUCT', 'PRODUCT_ID', 'Master Sync', '{}', 'Active'),
-                ('snowflake', 'UNICORN', 'DEV', 'L_SHIPMENT', 'SHIPMENT_ID', 'Delay Logic', '{}', 'Active'),
-                ('snowflake', 'UNICORN', 'DEV', 'H_SUPPLIER', 'CREDIT_LIMIT', 'Credit Check', '{}', 'Active'),
-                ('snowflake', 'UNICORN', 'DEV', 'S_SALES_DAILY', 'REVENUE', 'Agg Validation', '{}', 'Active')
-            ]
-            rules_query = "INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-            cursor.executemany(rules_query, initial_rules)
-
-        # Pre-seed rule_executions if empty
-        cursor.execute("SELECT COUNT(*) as count FROM rule_executions")
-        row = cursor.fetchone()
-        execs_count = row['count'] if row else 0
-        if execs_count == 0:
-            executions_data = []
-            for i in range(1197):
-                tbl = 'H_AIRCRAFT' if i % 3 == 0 else 'H_FLIGHT' if i % 3 == 1 else 'S_SALES_DAILY'
-                col = 'AIRCRAFT_ID' if i % 3 == 0 else 'FLIGHT_ID' if i % 3 == 1 else 'REVENUE'
-                rtype = 'Completeness' if i % 2 == 0 else 'Unique ID'
-                executions_data.append(('snowflake', tbl, col, rtype, 1000, 0, 'pass'))
-            execs_query = "INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status) VALUES (%s, %s, %s, %s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status) VALUES (?, ?, ?, ?, ?, ?, ?)"
-            cursor.executemany(execs_query, executions_data)
-
-        # Pre-seed anomalies if empty
-        cursor.execute("SELECT COUNT(*) as count FROM anomalies")
-        row = cursor.fetchone()
-        anom_count = row['count'] if row else 0
-        if anom_count == 0:
-            initial_anomalies = [
-                ("Schema Drift Detected", "Table H_FLIGHT in UNICORN.DEV has 2 new columns detected during last metadata sync.", "drift", "Active"),
-                ("Volume Spike", "Ingestion volume for S_AIRPORT_LOGS increased by 400% compared to the 7-day average.", "volume", "Active"),
-                ("Null Rate Violation", "H_AIRCRAFT: AIRCRAFT_TYPE column showed a sudden jump to 15% nulls from 0.02%.", "null", "Active")
-            ]
-            anom_query = "INSERT INTO anomalies (title, msg, type, status) VALUES (%s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO anomalies (title, msg, type, status) VALUES (?, ?, ?, ?)"
-            cursor.executemany(anom_query, initial_anomalies)
+        has_mock_data = (row['count'] > 0) if row else False
+        if has_mock_data:
+            print("Legacy mock data detected. Cleaning up rules, executions, and anomalies...")
+            cursor.execute("DELETE FROM rules")
+            cursor.execute("DELETE FROM rule_executions")
+            cursor.execute("DELETE FROM anomalies")
+            print("Cleanup complete.")
 
         conn.commit()
     except Exception as e:
@@ -582,8 +544,14 @@ async def get_dashboard_metrics():
         row = cursor.fetchone()
         active_rules_count = row['count'] if row else 0
 
-        # Passed Checks Count
-        cursor.execute("SELECT COUNT(*) as count FROM rule_executions WHERE status = 'pass'")
+        # Passed Checks Count (Latest execution status of each rule)
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM rule_executions 
+            WHERE id IN (
+                SELECT MAX(id) FROM rule_executions 
+                GROUP BY platform, table_name, column_name, rule_type
+            ) AND status = 'pass'
+        """)
         row = cursor.fetchone()
         passed_checks_count = row['count'] if row else 0
 
@@ -635,34 +603,22 @@ async def get_dashboard_anomalies():
 async def sync_dashboard_rules(request: RuleSyncRequest):
     conn, cursor = get_db_connection()
     try:
+        # Clear existing rules to perfectly synchronize with client local state
+        cursor.execute("DELETE FROM rules")
+        
         for r in request.rules:
-            check_query = """
-                SELECT id FROM rules 
-                WHERE platform = %s AND database_name = %s AND schema_name = %s AND table_name = %s AND column_name = %s AND rule_type = %s
+            import json
+            params_str = json.dumps(r.rule_params) if r.rule_params else "{}"
+            insert_query = """
+                INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """ if DATABASE_URL else """
-                SELECT id FROM rules 
-                WHERE platform = ? AND database_name = ? AND schema_name = ? AND table_name = ? AND column_name = ? AND rule_type = ?
+                INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """
-            cursor.execute(check_query, (
-                r.platform, r.database_name, r.schema_name, r.table_name, r.column_name, r.rule_type
+            cursor.execute(insert_query, (
+                r.platform, r.database_name, r.schema_name, r.table_name, r.column_name, r.rule_type, params_str, r.status
             ))
-            row = cursor.fetchone()
-            if row:
-                update_query = "UPDATE rules SET status = %s WHERE id = %s" if DATABASE_URL else "UPDATE rules SET status = ? WHERE id = ?"
-                cursor.execute(update_query, (r.status, row['id']))
-            else:
-                import json
-                params_str = json.dumps(r.rule_params) if r.rule_params else "{}"
-                insert_query = """
-                    INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """ if DATABASE_URL else """
-                    INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """
-                cursor.execute(insert_query, (
-                    r.platform, r.database_name, r.schema_name, r.table_name, r.column_name, r.rule_type, params_str, r.status
-                ))
         conn.commit()
         cursor.execute("SELECT * FROM rules ORDER BY created_at DESC")
         rows = cursor.fetchall()
