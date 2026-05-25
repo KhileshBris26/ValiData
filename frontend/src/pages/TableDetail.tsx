@@ -259,10 +259,10 @@ const TableDetail: React.FC = () => {
 
           const currentLineageNode = mapNode(currentNode);
           
-          // Get ALL upstreams, not just the first one
-          const upstreamEdges = edges.filter((e: any) => e.target.toUpperCase() === tKey);
-          const upstreams = upstreamEdges.map((ue: any) => {
-            const uNode = nodes.find((n: any) => n.id === ue.source) || { id: ue.source, data: { label: ue.source } };
+          // Get ALL upstreams, but filter down to unique source tables
+          const uniqueUpstreamSources = Array.from(new Set(edges.filter((e: any) => e.target.toUpperCase() === tKey).map((e: any) => e.source)));
+          const upstreams = uniqueUpstreamSources.map((sourceId: any) => {
+            const uNode = nodes.find((n: any) => n.id === sourceId) || { id: sourceId, data: { label: sourceId } };
             return mapNode(uNode);
           });
 
@@ -281,16 +281,28 @@ const TableDetail: React.FC = () => {
             return { node: dLineageNode, farNode: fLineageNode };
           });
 
+          // Group edges to aggregate multiple column flows between the same source and target
+          const aggregatedEdgesMap = new Map<string, { from: string; to: string; flows: any[] }>();
+          edges.forEach((e: any) => {
+            const key = `${e.source}->${e.target}`;
+            if (!aggregatedEdgesMap.has(key)) {
+              aggregatedEdgesMap.set(key, { from: e.source, to: e.target, flows: [] });
+            }
+            if (e.data?.col1) {
+              aggregatedEdgesMap.get(key)!.flows.push({ 
+                src: e.data.col1, 
+                tgt: e.data.col2, 
+                expr: e.data.match_type === 'exact' ? undefined : e.data.match_type 
+              });
+            }
+          });
+
           setDynamicLineage({
             upstreams: upstreams.length > 0 ? upstreams : [{ id: 'SOURCE', title: 'Data Source', icon: '📥', completeness: '100', completenessColor: '#10b981', attrs: [] }],
             current: currentLineageNode,
             downstream: downstreamConfigs,
             failedCol: null,
-            edges: edges.map((e: any) => ({
-              from: e.source,
-              to: e.target,
-              flows: e.data?.col1 ? [{ src: e.data.col1, tgt: e.data.col2 }] : []
-            }))
+            edges: Array.from(aggregatedEdgesMap.values())
           });
         } else {
           setLineageError(`Table "${table}" not found in discovered lineage.`);
