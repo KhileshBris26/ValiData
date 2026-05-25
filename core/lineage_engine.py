@@ -6,7 +6,8 @@ class LineageEngine:
     IGNORE_COLUMNS = {
         'id', 'created_at', 'updated_at', 'created_by', 'updated_by', 'is_active', 'is_deleted', 
         'name', 'status', 'type', 'description',
-        'load_date_ts', 'load_date', 'record_source', 'load_cycle_id', 'hash_diff'
+        'load_date_ts', 'load_date', 'record_source', 'load_cycle_id', 'hash_diff',
+        'last_update'
     }
 
     @staticmethod
@@ -89,7 +90,13 @@ class LineageEngine:
                     # For now, skip same-layer edges to keep it clean
                     continue
 
-                source, target = (t1, t2) if score1 <= score2 else (t2, t1)
+                if score1 < score2:
+                    source, target = t1, t2
+                elif score2 < score1:
+                    source, target = t2, t1
+                else:
+                    # Tie-breaker: alphabetical to ensure deterministic direction
+                    source, target = (t1, t2) if t1 < t2 else (t2, t1)
                 
                 cols1 = tables[source]
                 cols2 = tables[target]
