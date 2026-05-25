@@ -43,11 +43,11 @@ const Connections: React.FC = () => {
       }
     } else {
       // If no session, save the defaults to session immediately so RuleStudio can use them
-      handleSave();
+      handleSaveDefaults();
     }
   }, []);
 
-  const handleSave = () => {
+  const handleSaveDefaults = () => {
     const credentials = {
       databricks: {
         server_hostname: dbHostname,
@@ -62,8 +62,21 @@ const Connections: React.FC = () => {
         warehouse: sfWarehouse
       }
     };
-    
     localStorage.setItem('robin_credentials', JSON.stringify(credentials));
+  };
+
+  const handleSave = () => {
+    handleSaveDefaults();
+    
+    // Explicit save: add active platform to connected platforms list
+    let connected = [];
+    try {
+      connected = JSON.parse(localStorage.getItem('robin_connected_platforms') || '[]');
+    } catch (e) {}
+    if (!connected.includes(platform)) {
+      connected.push(platform);
+    }
+    localStorage.setItem('robin_connected_platforms', JSON.stringify(connected));
     
     setSavedMessage('Credentials saved securely to your session!');
     setTimeout(() => setSavedMessage(''), 3000);
@@ -102,6 +115,7 @@ const Connections: React.FC = () => {
 
   const handleClear = () => {
     localStorage.removeItem('robin_credentials');
+    localStorage.removeItem('robin_connected_platforms');
     setDbHostname(''); setDbHttpPath(''); setDbToken('');
     setSfAccount(''); setSfUser(''); setSfPassword(''); setSfRole('');
     setSfWarehouse('');

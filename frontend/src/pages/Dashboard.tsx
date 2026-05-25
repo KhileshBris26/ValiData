@@ -38,7 +38,7 @@ const Dashboard: React.FC = () => {
       const anomaliesRes = await axios.get(`${API_BASE}/dashboard/anomalies`);
 
       setMetrics({
-        platforms: platformsCount || 1,
+        platforms: platformsCount,
         rules: metricsRes.data.active_rules_count,
         passed: metricsRes.data.passed_checks_count,
         anomalies: metricsRes.data.anomalies_count
@@ -108,10 +108,10 @@ const Dashboard: React.FC = () => {
     const initDashboard = async () => {
       let count = 0;
       try {
-        const creds = JSON.parse(localStorage.getItem('robin_credentials') || '{}');
-        count = Object.keys(creds).filter(k => creds[k] && Object.keys(creds[k]).length > 0).length;
+        const connected = JSON.parse(localStorage.getItem('robin_connected_platforms') || '[]');
+        count = connected.length;
       } catch (e) {
-        console.error("Failed to get credentials count", e);
+        console.error("Failed to get connected platforms count", e);
       }
 
       await syncAllRulesToBackend();
