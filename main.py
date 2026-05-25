@@ -333,21 +333,17 @@ async def get_catalog_tables(request: CatalogRequest):
     try:
         sql_query = QueryGenerator.generate_catalog_sql(request.platform)
         result = None
-        try:
-            if request.platform == "snowflake":
-                snowflake_engine.connect(request.credentials)
-                result = snowflake_engine.execute_query(sql_query)
-                snowflake_engine.disconnect()
-            elif request.platform == "databricks":
-                databricks_engine.connect(request.credentials)
-                result = databricks_engine.execute_query(sql_query)
-                databricks_engine.disconnect()
-        except Exception as conn_err:
-            print(f"Catalog connection failed: {conn_err}")
-            # Do not return mock data. Returning empty list will force user to check connections.
-            result = []
+        if request.platform == "snowflake":
+            snowflake_engine.connect(request.credentials)
+            result = snowflake_engine.execute_query(sql_query)
+            snowflake_engine.disconnect()
+        elif request.platform == "databricks":
+            databricks_engine.connect(request.credentials)
+            result = databricks_engine.execute_query(sql_query)
+            databricks_engine.disconnect()
         return {"status": "success", "tables": result or []}
     except Exception as e:
+        print(f"Catalog connection failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/v1/metadata/preview")

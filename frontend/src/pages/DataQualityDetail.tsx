@@ -63,6 +63,7 @@ const DataQualityDetail: React.FC = () => {
     columns: Record<string, string>;
   } | null>(null);
   const [colProfiles, setColProfiles] = useState<Record<string, any>>({});
+  const [error, setError] = useState<string | null>(null);
 
   const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 0 : parseInt(rowCount.toString().replace(/,/g, '')) || 0);
 
@@ -138,8 +139,9 @@ const DataQualityDetail: React.FC = () => {
         credentials
       });
       if (res.data.rows) setTablePreview(res.data.rows);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to fetch preview", err);
+      setError(err.response?.data?.detail || err.message || "Failed to connect to the warehouse. Please verify your credentials.");
     }
   };
 
@@ -209,8 +211,9 @@ const DataQualityDetail: React.FC = () => {
           });
           setDynamicColumns(parsedCols);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to fetch columns", err);
+        setError(err.response?.data?.detail || err.message || "Failed to fetch columns. Please check your connection details.");
       } finally {
         setIsLoadingCols(false);
       }
@@ -477,6 +480,17 @@ const DataQualityDetail: React.FC = () => {
         <ChevronRight size={14} className="separator" />
         <span className="breadcrumb-current">Primary</span>
       </div>
+
+      {error && (
+        <div className="catalog-error" style={{ margin: '1rem', padding: '2rem' }}>
+          <AlertCircle size={48} className="error-icon" />
+          <h3>Connection Failed</h3>
+          <p>{error}</p>
+          <Link to="/connections" className="btn btn-primary" style={{ marginTop: '1rem', textDecoration: 'none', display: 'inline-block' }}>
+            Verify Credentials
+          </Link>
+        </div>
+      )}
 
       <div className="dq-hero">
         <div className="dq-hero-top">

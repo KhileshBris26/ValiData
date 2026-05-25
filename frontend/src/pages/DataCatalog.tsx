@@ -12,6 +12,7 @@ const DataCatalog: React.FC = () => {
   const [activeTab, setActiveTab] = useState('Published');
   const [tables, setTables] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchCatalog = async () => {
@@ -75,8 +76,9 @@ const DataCatalog: React.FC = () => {
           };
         });
         setTables(enriched);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error fetching catalog", err);
+        setError(err.response?.data?.detail || err.message || "Failed to fetch catalog. Please check connection settings.");
       }
       setLoading(false);
     };
@@ -357,7 +359,16 @@ const DataCatalog: React.FC = () => {
         </div>
 
         <div className="catalog-table-wrapper">
-          {loading ? (
+          {error ? (
+            <div className="catalog-error">
+              <AlertCircle size={48} className="error-icon" />
+              <h3>Connection Failed</h3>
+              <p>{error}</p>
+              <Link to="/connections" className="btn btn-primary" style={{ marginTop: '1rem', textDecoration: 'none' }}>
+                Verify Credentials
+              </Link>
+            </div>
+          ) : loading ? (
             <div className="catalog-loader">
               <Loader2 className="spinner" size={48} />
               <p>Scanning {platform} account for metadata...</p>

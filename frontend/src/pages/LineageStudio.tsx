@@ -72,6 +72,7 @@ const LineageStudio: React.FC = () => {
   
   const [loadingInfer, setLoadingInfer] = useState(false);
   const [viewMode, setViewMode] = useState<'graph' | 'table'>('graph');
+  const [globalError, setGlobalError] = useState<string | null>(null);
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -108,7 +109,10 @@ const LineageStudio: React.FC = () => {
       try {
         const dbs = await fetchMetadata('databases', {});
         setDatabases(dbs);
-      } catch (err) {}
+        setGlobalError(null);
+      } catch (err: any) {
+        setGlobalError(err.response?.data?.detail || err.message || "Failed to load databases.");
+      }
       setLoadingMeta('none');
     };
     loadDatabases();
@@ -122,7 +126,10 @@ const LineageStudio: React.FC = () => {
       try {
         const schs = await fetchMetadata('schemas', { database_name: database });
         setSchemas(schs);
-      } catch (err) {}
+        setGlobalError(null);
+      } catch (err: any) {
+        setGlobalError(err.response?.data?.detail || err.message || "Failed to load schemas.");
+      }
       setLoadingMeta('none');
     };
     loadSchemas();
@@ -136,7 +143,10 @@ const LineageStudio: React.FC = () => {
       try {
         const tbls = await fetchMetadata('tables', { database_name: database, schema_name: schema });
         setTables(tbls);
-      } catch (err) {}
+        setGlobalError(null);
+      } catch (err: any) {
+        setGlobalError(err.response?.data?.detail || err.message || "Failed to load tables.");
+      }
       setLoadingMeta('none');
     };
     loadTables();
@@ -192,9 +202,10 @@ const LineageStudio: React.FC = () => {
 
       setNodes(layoutedNodes);
       setEdges(layoutedEdges);
-    } catch (err) {
+      setGlobalError(null);
+    } catch (err: any) {
       console.error(err);
-      alert("Failed to infer lineage");
+      setGlobalError(err.response?.data?.detail || err.message || "Failed to infer lineage. Check connection or table availability.");
     }
     setLoadingInfer(false);
   };
@@ -203,6 +214,15 @@ const LineageStudio: React.FC = () => {
     <div className="lineage-studio">
       <h1 className="page-title">Lineage & Relationships</h1>
       
+      {globalError && (
+        <div className="catalog-error" style={{ margin: '0 0 1.5rem 0', padding: '1rem', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ef4444', fontWeight: 600, marginBottom: '0.5rem' }}>
+            Connection Error
+          </div>
+          <p style={{ margin: 0, fontSize: '0.9rem', color: '#f8fafc' }}>{globalError}</p>
+        </div>
+      )}
+
       <div className="lineage-header glass-panel">
         <div className="controls-row">
           <div className="control-group">
