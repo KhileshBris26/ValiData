@@ -410,6 +410,16 @@ class QueryGenerator:
                 CAST(AVG(CASE WHEN TRY_CAST({column} AS FLOAT) IS NOT NULL THEN CAST({column} AS FLOAT) ELSE NULL END) AS STRING) as avg_val
             FROM {full_table}
         ),
+        unique_stats AS (
+            SELECT COUNT(*) as unique_count
+            FROM (
+                SELECT {column}
+                FROM {full_table}
+                WHERE {column} IS NOT NULL
+                GROUP BY {column}
+                HAVING COUNT(*) = 1
+            ) a
+        ),
         top_vals AS (
             SELECT CAST({column} AS STRING) as val, COUNT(*) as val_count
             FROM {full_table}
@@ -420,6 +430,8 @@ class QueryGenerator:
         )
         SELECT 
             s.*,
+            COALESCE(u.unique_count, 0) as unique_count,
             (SELECT {agg_func} FROM top_vals) as top_values
         FROM stats s
+        CROSS JOIN unique_stats u
         """

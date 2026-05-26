@@ -70,11 +70,31 @@ const DataQualityDetail: React.FC = () => {
   const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 0 : parseInt(rowCount.toString().replace(/,/g, '')) || 0);
 
   const getRuleScore = (ruleName: string, colName: string) => {
+    const lbl = ruleName.toUpperCase();
+    const profile = colProfiles[colName];
+
+    // 1. Use real backend metrics if available
+    if (profile && profile.total_rows) {
+      const total = parseInt(profile.total_rows) || 1;
+      
+      if (lbl.includes('NULL')) {
+        const nulls = parseInt(profile.null_count) || 0;
+        const nonNulls = total - nulls;
+        return Math.round((nonNulls / total) * 100);
+      }
+      
+      if (lbl.includes('UNIQUE')) {
+        const uniques = parseInt(profile.unique_count) || 0;
+        return Math.round((uniques / total) * 100);
+      }
+    }
+
+    // 2. Fallback to sample preview data
     if (!tablePreview || tablePreview.length === 0) return 100;
     
-    const lbl = ruleName.toUpperCase();
     const total = tablePreview.length;
-    const vals = tablePreview.map(r => r[colName]);
+    // Handle case sensitivity issues from different SQL dialects
+    const vals = tablePreview.map(r => r[colName] ?? r[colName.toLowerCase()] ?? r[colName.toUpperCase()]);
 
     if (lbl.includes('NULL')) {
       const nonNulls = vals.filter(v => v !== null && v !== undefined && v !== '').length;
@@ -104,12 +124,11 @@ const DataQualityDetail: React.FC = () => {
     }
 
     if (lbl.includes('FRESHNESS')) {
-      // For POC, freshness is 100% if column is populated
       const hasData = vals.some(v => v !== null && v !== undefined && v !== '');
       return hasData ? 100 : 0;
     }
 
-    return 100; // Default to 100 if no specific logic
+    return 100;
   };
 
   const getRuleHoverDetails = (ruleName: string, colName: string) => {
@@ -272,16 +291,28 @@ const DataQualityDetail: React.FC = () => {
         return acc;
       }, []);
 
-      // Calculate Profiling Summary from tablePreview
+      // Calculate Profiling Summary
       let profileSummary = [
         { label: 'Not Null', pct: '100%' },
         { label: 'Distinct', pct: '100%' },
         { label: 'Unique', pct: '100%' }
       ];
 
-      if (tablePreview.length > 0) {
+      const profile = colProfiles[colItem.attribute];
+      if (profile && profile.total_rows) {
+        const total = parseInt(profile.total_rows) || 1;
+        const nulls = parseInt(profile.null_count) || 0;
+        const distinct = parseInt(profile.distinct_count) || 0;
+        const unique = parseInt(profile.unique_count) || 0;
+        
+        profileSummary = [
+          { label: 'Not Null', pct: `${Math.round(((total - nulls) / total) * 100)}%` },
+          { label: 'Distinct', pct: `${Math.round((distinct / total) * 100)}%` },
+          { label: 'Unique', pct: `${Math.round((unique / total) * 100)}%` }
+        ];
+      } else if (tablePreview.length > 0) {
         const total = tablePreview.length;
-        const vals = tablePreview.map(r => r[colItem.attribute]);
+        const vals = tablePreview.map(r => r[colItem.attribute] ?? r[colItem.attribute.toLowerCase()] ?? r[colItem.attribute.toUpperCase()]);
         const nonNulls = vals.filter(v => v !== null && v !== undefined && v !== '').length;
         const distinctSet = new Set(vals.filter(v => v !== null && v !== undefined && v !== ''));
         const distinctCount = distinctSet.size;
@@ -847,14 +878,15 @@ const DataQualityDetail: React.FC = () => {
                             </div>
                             {row.appliedRules.map((rule, ri) => {
                               const isShut = rule.status === 'deactivated';
-                              const isHovered = hoveredRule === rule.label;
+                              const isHovered = hoveredRule === `${row.attribute}-${rule.label}`;
                               const hoverDetails = getRuleHoverDetails(rule.label, row.attribute);
+                              const dynamicScore = getRuleScore(rule.label, row.attribute);
 
                               return (
                                 <div 
                                   className="applied-rule-badge" 
                                   key={ri}
-                                  onMouseEnter={() => setHoveredRule(rule.label)}
+                                  onMouseEnter={() => setHoveredRule(`${row.attribute}-${rule.label}`)}
                                   onMouseLeave={() => setHoveredRule(null)}
                                   onClick={() => setSelectedRuleForPanel(rule.label)}
                                   style={{
@@ -912,7 +944,7 @@ const DataQualityDetail: React.FC = () => {
                                       <div style={{ position: 'absolute', bottom: '-6px', left: '50%', transform: 'translateX(-50%) rotate(45deg)', width: '12px', height: '12px', background: '#ffffff', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }} />
                                     </div>
                                   )}
-                                  <span style={{ padding: '0.2rem 0.5rem', fontWeight: 600, color: isShut ? '#64748b' : '#38bdf8', borderRight: '1px solid rgba(255, 255, 255, 0.08)' }}>{rule.score}</span>
+                                  <span style={{ padding: '0.2rem 0.5rem', fontWeight: 600, color: isShut ? '#64748b' : '#38bdf8', borderRight: '1px solid rgba(255, 255, 255, 0.08)' }}>{dynamicScore}%</span>
                                   <span style={{ padding: '0.2rem 0.55rem', color: isShut ? '#64748b' : '#f8fafc', borderRight: '1px solid rgba(255, 255, 255, 0.08)', textDecoration: isShut ? 'line-through' : 'none' }}>{rule.label}</span>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); handleToggleRule(row.attribute, rule.label); }}
