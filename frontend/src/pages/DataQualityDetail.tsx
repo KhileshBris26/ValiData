@@ -366,7 +366,7 @@ const DataQualityDetail: React.FC = () => {
 
       return { ...colItem, overallDQ: dqPct, appliedRules: uniqueRules, profileSummary, minMax: tv, topValues: topVals };
     });
-  }, [dynamicColumns, tablePreview, hasEvaluated, database, schema, table, refreshTrigger]);
+  }, [dynamicColumns, tablePreview, hasEvaluated, database, schema, table, refreshTrigger, colProfiles]);
 
   const handleAddRuleClick = (attr: string) => {
     setOpenAddRule(openAddRule === attr ? null : attr);
