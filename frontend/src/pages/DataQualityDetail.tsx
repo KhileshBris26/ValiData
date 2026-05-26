@@ -69,22 +69,29 @@ const DataQualityDetail: React.FC = () => {
 
   const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 0 : parseInt(rowCount.toString().replace(/,/g, '')) || 0);
 
+  // Helper to read a profile field with case-insensitivity (Snowflake returns UPPERCASE, Databricks lowercase)
+  const getProfileField = (profile: any, field: string): string | null => {
+    if (!profile) return null;
+    return profile[field] ?? profile[field.toUpperCase()] ?? profile[field.toLowerCase()] ?? null;
+  };
+
   const getRuleScore = (ruleName: string, colName: string) => {
     const lbl = ruleName.toUpperCase();
     const profile = colProfiles[colName];
 
     // 1. Use real backend metrics if available
-    if (profile && profile.total_rows) {
-      const total = parseInt(profile.total_rows) || 1;
+    const totalRaw = getProfileField(profile, 'total_rows');
+    if (profile && totalRaw != null) {
+      const total = parseInt(totalRaw as string) || 1;
       
       if (lbl.includes('NULL')) {
-        const nulls = parseInt(profile.null_count) || 0;
+        const nulls = parseInt(getProfileField(profile, 'null_count') || '0') || 0;
         const nonNulls = total - nulls;
         return Math.round((nonNulls / total) * 100);
       }
       
       if (lbl.includes('UNIQUE')) {
-        const uniques = parseInt(profile.unique_count) || 0;
+        const uniques = parseInt(getProfileField(profile, 'unique_count') || '0') || 0;
         return Math.round((uniques / total) * 100);
       }
     }
@@ -305,11 +312,12 @@ const DataQualityDetail: React.FC = () => {
       ];
 
       const profile = colProfiles[colItem.attribute];
-      if (profile && profile.total_rows) {
-        const total = parseInt(profile.total_rows) || 1;
-        const nulls = parseInt(profile.null_count) || 0;
-        const distinct = parseInt(profile.distinct_count) || 0;
-        const unique = parseInt(profile.unique_count) || 0;
+      const profileTotal = getProfileField(profile, 'total_rows');
+      if (profile && profileTotal != null) {
+        const total = parseInt(profileTotal) || 1;
+        const nulls = parseInt(getProfileField(profile, 'null_count') || '0') || 0;
+        const distinct = parseInt(getProfileField(profile, 'distinct_count') || '0') || 0;
+        const unique = parseInt(getProfileField(profile, 'unique_count') || '0') || 0;
         
         profileSummary = [
           { label: 'Not Null', pct: `${Math.round(((total - nulls) / total) * 100)}%` },
@@ -477,15 +485,17 @@ const DataQualityDetail: React.FC = () => {
     // Step 3: Compute dimension scores using the fresh profiles
     const getRuleScoreWithProfiles = (ruleName: string, colName: string, profiles: Record<string, any>) => {
       const lbl = ruleName.toUpperCase();
-      const profile = profiles[colName];
-      if (profile && profile.total_rows) {
-        const total = parseInt(profile.total_rows) || 1;
+      const p = profiles[colName];
+      const pGet = (field: string) => p?.[field] ?? p?.[field.toUpperCase()] ?? p?.[field.toLowerCase()] ?? null;
+      const totalRaw = pGet('total_rows');
+      if (p && totalRaw != null) {
+        const total = parseInt(totalRaw) || 1;
         if (lbl.includes('NULL')) {
-          const nulls = parseInt(profile.null_count) || 0;
+          const nulls = parseInt(pGet('null_count') || '0') || 0;
           return Math.round(((total - nulls) / total) * 100);
         }
         if (lbl.includes('UNIQUE')) {
-          const uniques = parseInt(profile.unique_count) || 0;
+          const uniques = parseInt(pGet('unique_count') || '0') || 0;
           return Math.round((uniques / total) * 100);
         }
       }

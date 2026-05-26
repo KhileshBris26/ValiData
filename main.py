@@ -450,9 +450,19 @@ async def get_column_profile(request: ProfileRequest):
             databricks_engine.connect(request.credentials)
             res = databricks_engine.execute_query(sql_query)
             databricks_engine.disconnect()
-        return {"status": "success", "profile": res[0] if res else {}}
+        else:
+            res = []
+        
+        # Normalize all keys to lowercase so frontend can reliably read them
+        # regardless of Snowflake (UPPERCASE) vs Databricks (lowercase) conventions
+        if res and isinstance(res, list) and len(res) > 0:
+            raw = res[0]
+            normalized = {k.lower(): v for k, v in raw.items()} if raw else {}
+            print(f"Profile result for {request.column_name}: {normalized}")
+            return {"status": "success", "profile": normalized}
+        return {"status": "success", "profile": {}}
     except Exception as e:
-        print(f"Profile endpoint error: {e}")
+        print(f"Profile endpoint error for {request.column_name}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/v1/lineage/infer")
