@@ -466,46 +466,6 @@ const DataQualityDetail: React.FC = () => {
     }
   };
 
-  const getDimensionStats = () => {
-    if (!hasEvaluated) return { valScore: 100, accScore: 100, overallScore: 100 };
-
-    const activeRules = activeColumnsList.flatMap(c => 
-      c.appliedRules.filter(r => r.status !== 'deactivated')
-    );
-
-    const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Freshness', 'Validity'];
-    const accuracyLabels = ['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY'];
-
-    const valRules = activeRules.filter(r => validityLabels.some(lbl => r.label.toUpperCase().includes(lbl.toUpperCase())));
-    const accRules = activeRules.filter(r => accuracyLabels.some(lbl => r.label.toUpperCase().includes(lbl.toUpperCase())));
-
-    const getScore = (rules: any[]) => {
-      if (rules.length === 0) return 100;
-      // Note: activeRules here is a flatMap of column rules, so we need to know which column each rule belongs to.
-      // But getDimensionStats is called within handleEvaluationSnapshot which uses activeColumnsList.
-      // I'll refactor getScore to iterate over activeColumnsList directly to be safe.
-      let total = 0;
-      let count = 0;
-      activeColumnsList.forEach(col => {
-        col.appliedRules.filter(r => r.status !== 'deactivated').forEach(r => {
-          if (rules.some(rule => rule.label === r.label)) {
-             total += getRuleScore(r.label, col.attribute);
-             count++;
-          }
-        });
-      });
-      return count > 0 ? Math.round(total / count) : 100;
-    };
-
-    const valScore = getScore(valRules);
-    const accScore = getScore(accRules);
-    
-    // Overall score is the average of all column DQ scores that are not 100% (or average of all active rules)
-    const overallScore = activeRules.length > 0 ? getScore(activeRules) : 100;
-
-    return { valScore, accScore, overallScore };
-  };
-
   const handleEvaluationSnapshot = async () => {
     // Step 1: Re-fetch real-time profiling data from Snowflake/Databricks
     const freshProfiles = await fetchProfiles(dynamicColumns);
