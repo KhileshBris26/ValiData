@@ -7,7 +7,7 @@ import {
   ChevronRight, ChevronLeft, Database, ShieldCheck, AlertCircle, 
   BarChart2, Clock, Grid, 
   Edit3, RotateCw, Users, Info, 
-  MoreVertical, Hash, Type, Plus, Loader2, Save, X, Search, Power, HelpCircle, ChevronUp, ChevronDown
+  MoreVertical, Hash, Type, Plus, Loader2, Save, X, Search, Power, HelpCircle
 } from 'lucide-react';
 import './TableDetail.css';
 
