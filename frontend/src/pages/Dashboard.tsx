@@ -57,16 +57,16 @@ const Dashboard: React.FC = () => {
       // 1. Clear any legacy cache
       localStorage.removeItem('robin_applied_rules');
 
-      // 2. Sync column-specific rules (robin_rules_*)
+      // 2. Sync column-specific rules (robin_rule_v2|*)
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key.startsWith('robin_rules_')) {
-          const parts = key.split('_');
-          if (parts.length >= 6) {
-            const database_name = parts[2];
-            const schema_name = parts[3];
-            const table_name = parts[4];
-            const column_name = parts.slice(5).join('_');
+        if (key && key.startsWith('robin_rule_v2|')) {
+          const parts = key.split('|');
+          if (parts.length >= 5) {
+            const database_name = parts[1];
+            const schema_name = parts[2];
+            const table_name = parts[3];
+            const column_name = parts.slice(4).join('|');
             const colRules = JSON.parse(localStorage.getItem(key) || '[]');
             colRules.forEach((r: any) => {
               rulesToSync.push({

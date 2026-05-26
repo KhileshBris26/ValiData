@@ -258,7 +258,7 @@ const DataQualityDetail: React.FC = () => {
 
   const activeColumnsList = useMemo(() => {
     return dynamicColumns.map(colItem => {
-      const storageKey = `robin_rules_${database}_${schema}_${table}_${colItem.attribute}`;
+      const storageKey = `robin_rule_v2|${database}|${schema}|${table}|${colItem.attribute}`;
       const storedRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
       
       // Combine rules and filter out deleted ones
@@ -343,7 +343,7 @@ const DataQualityDetail: React.FC = () => {
 
   const handleApplyRule = (attr: string, ruleName: string) => {
     const newRule = { label: ruleName, score: '100%', status: 'valid' as const, platform };
-    const storageKey = `robin_rules_${database}_${schema}_${table}_${attr}`;
+    const storageKey = `robin_rule_v2|${database}|${schema}|${table}|${attr}`;
     const existingRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
     if (!existingRules.some((r: any) => r.label === ruleName)) {
       existingRules.push(newRule);
@@ -375,7 +375,7 @@ const DataQualityDetail: React.FC = () => {
           // Extract lines that look like rules (numbered list)
           const lines = rawText.split('\n').filter((l: string) => /^\d+\./.test(l.trim()));
           
-          const storageKey = `robin_rules_${database}_${schema}_${table}_${col.attribute}`;
+          const storageKey = `robin_rule_v2|${database}|${schema}|${table}|${col.attribute}`;
           const existingRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
           let changed = false;
 
