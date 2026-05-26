@@ -56,6 +56,9 @@ const DataQualityDetail: React.FC = () => {
   const [lastScanDate] = useState(new Date().toLocaleString('en-US', { 
     month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true 
   }));
+  // State for invalid records UI
+  const [invalidRecords, setInvalidRecords] = useState<any[]>([]);
+  const [invalidLoading, setInvalidLoading] = useState(false);
 
   // Snapshot results state
   const [evaluatedResults, setEvaluatedResults] = useState<{

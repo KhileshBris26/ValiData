@@ -657,7 +657,27 @@ async def get_dashboard_rules():
         cursor.execute("SELECT * FROM rules ORDER BY created_at DESC")
         rows = cursor.fetchall()
         rules = [dict(row) for row in rows]
-        return {"status": "success", "rules": rules}
+return {"status": "success", "rules": rules}
+
+# New endpoint to fetch records that failed DQ rules
+@app.get("/api/v1/dashboard/invalid_records")
+async def get_invalid_records(table_name: str):
+    conn, cursor = get_db_connection()
+    try:
+        query = (
+            "SELECT column_name, rule_type, failed_rows, status FROM rule_executions WHERE table_name = %s AND failed_rows > 0"
+        ) if DATABASE_URL else (
+            "SELECT column_name, rule_type, failed_rows, status FROM rule_executions WHERE table_name = ? AND failed_rows > 0"
+        )
+        cursor.execute(query, (table_name,))
+        rows = cursor.fetchall()
+        records = [dict(row) for row in rows]
+        return {"status": "success", "records": records}
+    except Exception as e:
+        print(f"Error fetching invalid records: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
     except Exception as e:
         print(f"Error fetching dashboard rules: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -87,3 +87,12 @@ class ExecutionLogRequest(BaseModel):
 class AnomalyResolveRequest(BaseModel):
     id: int
 
+
+class InvalidRecord(BaseModel):
+    column_name: str
+    rule_type: str
+    failed_rows: int
+    status: str
+
+class InvalidRecordsResponse(BaseModel):
+    records: list[InvalidRecord]
