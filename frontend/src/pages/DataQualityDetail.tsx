@@ -61,10 +61,6 @@ const DataQualityDetail: React.FC = () => {
   const [invalidLoading, setInvalidLoading] = useState(false);
 
   // Snapshot results state
-  // Dummy usage to avoid unused variable warnings
-  if (false) {
-    console.log(invalidRecords, invalidLoading);
-  }
   const [evaluatedResults, setEvaluatedResults] = useState<{
     table?: string;
     overall: number;
