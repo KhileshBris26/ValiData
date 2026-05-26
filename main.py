@@ -175,7 +175,11 @@ def init_db():
     finally:
         conn.close()
 
+def setup_app_state():
+    print("Initializing application state...")
+
 init_db()
+setup_app_state()
 
 class AuthRequest(BaseModel):
     username: str
@@ -673,11 +677,7 @@ async def get_invalid_records(table_name: str):
         rows = cursor.fetchall()
         records = [dict(row) for row in rows]
         return {"status": "success", "records": records}
-    except Exception as e:
-        print(f"Error fetching invalid records: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        conn.close()
+
     except Exception as e:
         print(f"Error fetching dashboard rules: {e}")
         raise HTTPException(status_code=500, detail=str(e))
