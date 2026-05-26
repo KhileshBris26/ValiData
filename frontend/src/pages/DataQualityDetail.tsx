@@ -37,8 +37,6 @@ const DataQualityDetail: React.FC = () => {
   const [activeTab, setActiveTab] = useState('Profiling & Rules');
   const [hasEvaluated, setHasEvaluated] = useState(() => localStorage.getItem('robin_has_evaluated') === 'true');
   const [isEvaluating, setIsEvaluating] = useState(false);
-  const [shutDownRules, setShutDownRules] = useState<string[]>([]);
-  const [deletedRules, setDeletedRules] = useState<string[]>([]);
   const [hoveredRule, setHoveredRule] = useState<string | null>(null);
   const [selectedRuleForPanel, setSelectedRuleForPanel] = useState<string | null>(null);
   const [panelTab, setPanelTab] = useState('Configuration');
@@ -261,11 +259,11 @@ const DataQualityDetail: React.FC = () => {
       const storageKey = `robin_rule_v2|${database}|${schema}|${table}|${colItem.attribute}`;
       const storedRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
       
-      // Combine rules and filter out deleted ones
+      // Combine rules and deduplicate
       const allApplied = [...colItem.appliedRules, ...storedRules];
       const uniqueRules = allApplied.reduce((acc: any[], curr: any) => {
         const label = curr.label || curr.name;
-        if (!acc.some(r => (r.label || r.name) === label) && !deletedRules.includes(label)) {
+        if (!acc.some(r => (r.label || r.name) === label)) {
           acc.push({ ...curr, label });
         }
         return acc;
@@ -303,7 +301,7 @@ const DataQualityDetail: React.FC = () => {
 
       let dqPct = '100%';
       if (hasEvaluated) {
-        const activeRules = uniqueRules.filter(r => !shutDownRules.includes(r.label));
+        const activeRules = uniqueRules.filter(r => r.status !== 'deactivated');
         if (activeRules.length > 0) {
         const totalScore = activeRules.reduce((acc, r) => {
           return acc + getRuleScore(r.label, colItem.attribute);
@@ -335,7 +333,7 @@ const DataQualityDetail: React.FC = () => {
 
       return { ...colItem, overallDQ: dqPct, appliedRules: uniqueRules, profileSummary, minMax: tv, topValues: topVals };
     });
-  }, [dynamicColumns, tablePreview, hasEvaluated, shutDownRules, deletedRules, database, schema, table, refreshTrigger]);
+  }, [dynamicColumns, tablePreview, hasEvaluated, database, schema, table, refreshTrigger]);
 
   const handleAddRuleClick = (attr: string) => {
     setOpenAddRule(openAddRule === attr ? null : attr);
@@ -350,6 +348,27 @@ const DataQualityDetail: React.FC = () => {
       localStorage.setItem(storageKey, JSON.stringify(existingRules));
     }
     setOpenAddRule(null);
+    setRefreshTrigger(prev => prev + 1);
+  };
+
+  const handleToggleRule = (attr: string, ruleName: string) => {
+    const storageKey = `robin_rule_v2|${database}|${schema}|${table}|${attr}`;
+    const existingRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    const updatedRules = existingRules.map((r: any) => {
+      if (r.label === ruleName) {
+        return { ...r, status: r.status === 'deactivated' ? 'valid' : 'deactivated' };
+      }
+      return r;
+    });
+    localStorage.setItem(storageKey, JSON.stringify(updatedRules));
+    setRefreshTrigger(prev => prev + 1);
+  };
+
+  const handleDeleteRule = (attr: string, ruleName: string) => {
+    const storageKey = `robin_rule_v2|${database}|${schema}|${table}|${attr}`;
+    const existingRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    const updatedRules = existingRules.filter((r: any) => r.label !== ruleName);
+    localStorage.setItem(storageKey, JSON.stringify(updatedRules));
     setRefreshTrigger(prev => prev + 1);
   };
 
@@ -412,7 +431,7 @@ const DataQualityDetail: React.FC = () => {
     if (!hasEvaluated) return { valScore: 100, accScore: 100, overallScore: 100 };
 
     const activeRules = activeColumnsList.flatMap(c => 
-      c.appliedRules.filter(r => !shutDownRules.includes(r.label))
+      c.appliedRules.filter(r => r.status !== 'deactivated')
     );
 
     const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Freshness', 'Validity'];
@@ -429,7 +448,7 @@ const DataQualityDetail: React.FC = () => {
       let total = 0;
       let count = 0;
       activeColumnsList.forEach(col => {
-        col.appliedRules.filter(r => !shutDownRules.includes(r.label)).forEach(r => {
+        col.appliedRules.filter(r => r.status !== 'deactivated').forEach(r => {
           if (rules.some(rule => rule.label === r.label)) {
              total += getRuleScore(r.label, col.attribute);
              count++;
@@ -467,7 +486,7 @@ const DataQualityDetail: React.FC = () => {
       const executions: any[] = [];
       activeColumnsList.forEach(col => {
         col.appliedRules.forEach(rule => {
-          if (shutDownRules.includes(rule.label)) return;
+          if (rule.status === 'deactivated') return;
           const scoreVal = getRuleScore(rule.label, col.attribute);
           const total = numericRowCount || 1000;
           const failed = Math.round(total * (1 - scoreVal / 100));
@@ -823,8 +842,8 @@ const DataQualityDetail: React.FC = () => {
                                 </div>
                               )}
                             </div>
-                            {row.appliedRules.filter(rule => !deletedRules.includes(rule.label)).map((rule, ri) => {
-                              const isShut = shutDownRules.includes(rule.label);
+                            {row.appliedRules.map((rule, ri) => {
+                              const isShut = rule.status === 'deactivated';
                               const isHovered = hoveredRule === rule.label;
                               const hoverDetails = getRuleHoverDetails(rule.label, row.attribute);
 
@@ -893,13 +912,13 @@ const DataQualityDetail: React.FC = () => {
                                   <span style={{ padding: '0.2rem 0.5rem', fontWeight: 600, color: isShut ? '#64748b' : '#38bdf8', borderRight: '1px solid rgba(255, 255, 255, 0.08)' }}>{rule.score}</span>
                                   <span style={{ padding: '0.2rem 0.55rem', color: isShut ? '#64748b' : '#f8fafc', borderRight: '1px solid rgba(255, 255, 255, 0.08)', textDecoration: isShut ? 'line-through' : 'none' }}>{rule.label}</span>
                                   <button
-                                    onClick={(e) => { e.stopPropagation(); if (isShut) { setShutDownRules(shutDownRules.filter(r => r !== rule.label)); } else { setShutDownRules([...shutDownRules, rule.label]); } }}
+                                    onClick={(e) => { e.stopPropagation(); handleToggleRule(row.attribute, rule.label); }}
                                     style={{ background: 'transparent', border: 'none', borderRight: '1px solid rgba(255, 255, 255, 0.08)', color: isShut ? '#f43f5e' : '#94a3b8', padding: '0.2rem 0.45rem', cursor: 'pointer' }}
                                   >
                                     <Power size={14} />
                                   </button>
                                   <button
-                                    onClick={(e) => { e.stopPropagation(); setDeletedRules([...deletedRules, rule.label]); }}
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteRule(row.attribute, rule.label); }}
                                     style={{ background: 'transparent', border: 'none', color: '#ef4444', padding: '0.2rem 0.45rem', cursor: 'pointer' }}
                                   >
                                     <X size={14} />
