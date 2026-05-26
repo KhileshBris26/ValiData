@@ -1969,7 +1969,7 @@ const TableDetail: React.FC = () => {
                 ))}
               </div>
 
-              <div className="glossary-add-container">
+              <div className="glossary-add-container" ref={glossaryRef}>
                 <button className="btn-small add-term-btn" onClick={() => setIsGlossaryOpen(!isGlossaryOpen)}>
                   <Plus size={12} /> Add Term
                 </button>
