@@ -59,12 +59,45 @@ const DataQualityDetail: React.FC = () => {
 
   // Snapshot results state
   const [evaluatedResults, setEvaluatedResults] = useState<{
+    table?: string;
     overall: number;
     validity: number;
     accuracy: number;
     columns: Record<string, string>;
-  } | null>(null);
-  const [colProfiles, setColProfiles] = useState<Record<string, any>>({});
+  } | null>(() => {
+    try {
+      const saved = localStorage.getItem(`robin_evaluated_results_${table}`);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [colProfiles, setColProfiles] = useState<Record<string, any>>(() => {
+    try {
+      const saved = localStorage.getItem(`robin_col_profiles_${table}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    if (table) {
+      try {
+        const savedResults = localStorage.getItem(`robin_evaluated_results_${table}`);
+        setEvaluatedResults(savedResults ? JSON.parse(savedResults) : null);
+      } catch {
+        setEvaluatedResults(null);
+      }
+      try {
+        const savedProfiles = localStorage.getItem(`robin_col_profiles_${table}`);
+        setColProfiles(savedProfiles ? JSON.parse(savedProfiles) : {});
+      } catch {
+        setColProfiles({});
+      }
+    }
+  }, [table]);
+
   const [error, setError] = useState<string | null>(null);
 
   const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 0 : parseInt(rowCount.toString().replace(/,/g, '')) || 0);
@@ -546,12 +579,16 @@ const DataQualityDetail: React.FC = () => {
       columnDQMap[col.attribute] = `${Math.round(colSum / activeRules.length)}%`;
     });
 
-    setEvaluatedResults({
+    const results = {
+      table,
       overall: totalRuleCount > 0 ? Math.round(totalScoreSum / totalRuleCount) : 100,
       validity: valCount > 0 ? Math.round(valSum / valCount) : 100,
       accuracy: accCount > 0 ? Math.round(accSum / accCount) : 100,
       columns: columnDQMap
-    });
+    };
+    setEvaluatedResults(results);
+    localStorage.setItem(`robin_evaluated_results_${table}`, JSON.stringify(results));
+    localStorage.setItem(`robin_table_quality_${table}`, results.overall.toString());
     setHasEvaluated(true);
     localStorage.setItem('robin_has_evaluated', 'true');
 
@@ -586,15 +623,15 @@ const DataQualityDetail: React.FC = () => {
   };
 
   // Scores used for UI rendering
-  const displayOverall = evaluatedResults?.overall ?? 100;
-  const displayValidity = evaluatedResults?.validity ?? 100;
-  const displayAccuracy = evaluatedResults?.accuracy ?? 100;
+  const displayOverall = (evaluatedResults && evaluatedResults.table === table) ? evaluatedResults.overall : 100;
+  const displayValidity = (evaluatedResults && evaluatedResults.table === table) ? evaluatedResults.validity : 100;
+  const displayAccuracy = (evaluatedResults && evaluatedResults.table === table) ? evaluatedResults.accuracy : 100;
 
   useEffect(() => {
-    if (table) {
+    if (table && evaluatedResults && evaluatedResults.table === table) {
       localStorage.setItem(`robin_table_quality_${table}`, displayOverall.toString());
     }
-  }, [table, displayOverall]);
+  }, [table, displayOverall, evaluatedResults]);
 
   const lastRunChange = useMemo(() => {
     if (numericRowCount === 0) return '0';
