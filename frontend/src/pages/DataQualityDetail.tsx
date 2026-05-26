@@ -51,6 +51,7 @@ const DataQualityDetail: React.FC = () => {
   });
   const [tablePreview, setTablePreview] = useState<any[]>([]);
   const [openAddRule, setOpenAddRule] = useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [lastScanDate] = useState(new Date().toLocaleString('en-US', { 
     month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true 
   }));
@@ -259,10 +260,9 @@ const DataQualityDetail: React.FC = () => {
     return dynamicColumns.map(colItem => {
       const storageKey = `robin_rules_${database}_${schema}_${table}_${colItem.attribute}`;
       const storedRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
-      const agentRules = JSON.parse(localStorage.getItem('robin_applied_rules') || '[]');
       
       // Combine rules and filter out deleted ones
-      const allApplied = [...colItem.appliedRules, ...storedRules, ...agentRules.filter((ar: any) => ar.attribute === colItem.attribute)];
+      const allApplied = [...colItem.appliedRules, ...storedRules];
       const uniqueRules = allApplied.reduce((acc: any[], curr: any) => {
         const label = curr.label || curr.name;
         if (!acc.some(r => (r.label || r.name) === label) && !deletedRules.includes(label)) {
@@ -335,14 +335,14 @@ const DataQualityDetail: React.FC = () => {
 
       return { ...colItem, overallDQ: dqPct, appliedRules: uniqueRules, profileSummary, minMax: tv, topValues: topVals };
     });
-  }, [dynamicColumns, tablePreview, hasEvaluated, shutDownRules, deletedRules, database, schema, table]);
+  }, [dynamicColumns, tablePreview, hasEvaluated, shutDownRules, deletedRules, database, schema, table, refreshTrigger]);
 
   const handleAddRuleClick = (attr: string) => {
     setOpenAddRule(openAddRule === attr ? null : attr);
   };
 
   const handleApplyRule = (attr: string, ruleName: string) => {
-    const newRule = { label: ruleName, score: '100%', status: 'valid' as const };
+    const newRule = { label: ruleName, score: '100%', status: 'valid' as const, platform };
     const storageKey = `robin_rules_${database}_${schema}_${table}_${attr}`;
     const existingRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
     if (!existingRules.some((r: any) => r.label === ruleName)) {
@@ -350,6 +350,7 @@ const DataQualityDetail: React.FC = () => {
       localStorage.setItem(storageKey, JSON.stringify(existingRules));
     }
     setOpenAddRule(null);
+    setRefreshTrigger(prev => prev + 1);
   };
 
   const [suggestingRules, setSuggestingRules] = useState(false);
@@ -361,7 +362,6 @@ const DataQualityDetail: React.FC = () => {
       if (saved) credentials = JSON.parse(saved)[platform];
 
       // Suggest for the first 3 columns to keep it manageable
-      const allSuggestions: any[] = [];
       for (const col of dynamicColumns.slice(0, 3)) {
         const res = await axios.post(`${API_BASE}/ai/suggest_rules`, {
           platform,
@@ -374,22 +374,33 @@ const DataQualityDetail: React.FC = () => {
           const rawText = res.data.ai_suggestions[0]?.ai_suggestion || "";
           // Extract lines that look like rules (numbered list)
           const lines = rawText.split('\n').filter((l: string) => /^\d+\./.test(l.trim()));
+          
+          const storageKey = `robin_rules_${database}_${schema}_${table}_${col.attribute}`;
+          const existingRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
+          let changed = false;
+
           lines.forEach((l: string) => {
             const ruleName = l.replace(/^\d+\.\s*/, '').trim();
-            if (ruleName) {
-              allSuggestions.push({
-                attribute: col.attribute,
-                name: ruleName,
+            if (ruleName && !existingRules.some((r: any) => r.label === ruleName)) {
+              existingRules.push({
+                label: ruleName,
                 score: '100%',
-                status: 'valid' as const
+                status: 'valid' as const,
+                platform
               });
+              changed = true;
             }
           });
+          
+          if (changed) {
+            localStorage.setItem(storageKey, JSON.stringify(existingRules));
+          }
         }
       }
       
-      localStorage.setItem('robin_applied_rules', JSON.stringify(allSuggestions));
+      localStorage.removeItem('robin_applied_rules'); // Clear legacy cache
       setHasEvaluated(true);
+      setRefreshTrigger(prev => prev + 1);
     } catch (e) {
       console.error("AI Suggestion failed", e);
     } finally {

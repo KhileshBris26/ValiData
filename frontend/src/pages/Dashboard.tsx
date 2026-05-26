@@ -54,20 +54,8 @@ const Dashboard: React.FC = () => {
     try {
       const rulesToSync: any[] = [];
       
-      // 1. Sync robin_applied_rules
-      const appliedRules = JSON.parse(localStorage.getItem('robin_applied_rules') || '[]');
-      appliedRules.forEach((r: any) => {
-        rulesToSync.push({
-          platform: r.platform || 'snowflake',
-          database_name: r.database || 'UNICORN',
-          schema_name: r.schema || 'DEV',
-          table_name: r.table || 'H_AIRCRAFT',
-          column_name: r.attribute || 'UNKNOWN',
-          rule_type: r.name || r.label || 'Completeness',
-          rule_params: r.rule_params || {},
-          status: r.status === 'deactivated' ? 'Inactive' : 'Active'
-        });
-      });
+      // 1. Clear any legacy cache
+      localStorage.removeItem('robin_applied_rules');
 
       // 2. Sync column-specific rules (robin_rules_*)
       for (let i = 0; i < localStorage.length; i++) {
@@ -82,7 +70,7 @@ const Dashboard: React.FC = () => {
             const colRules = JSON.parse(localStorage.getItem(key) || '[]');
             colRules.forEach((r: any) => {
               rulesToSync.push({
-                platform: 'snowflake',
+                platform: r.platform || 'snowflake',
                 database_name,
                 schema_name,
                 table_name,
@@ -96,9 +84,7 @@ const Dashboard: React.FC = () => {
         }
       }
 
-      if (rulesToSync.length > 0) {
-        await axios.post(`${API_BASE}/dashboard/rules/sync`, { rules: rulesToSync });
-      }
+      await axios.post(`${API_BASE}/dashboard/rules/sync`, { rules: rulesToSync });
     } catch (e) {
       console.error("Failed to sync rules to backend", e);
     }
