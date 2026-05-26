@@ -100,6 +100,103 @@ const DataQualityDetail: React.FC = () => {
 
   const [error, setError] = useState<string | null>(null);
 
+  const pullRulesFromBackend = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/dashboard/rules`);
+      const backendRules = res.data.rules || [];
+
+      // Clear all existing local storage rule keys for this table to avoid stale rules
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(`robin_rule_v2|${database}|${schema}|${table}|`)) {
+          localStorage.removeItem(key);
+        }
+      }
+
+      // Populate local storage with backend rules for this table
+      const rulesByKey: Record<string, any[]> = {};
+      backendRules.forEach((br: any) => {
+        if (br.database_name === database && br.schema_name === schema && br.table_name === table) {
+          const key = `robin_rule_v2|${br.database_name}|${br.schema_name}|${br.table_name}|${br.column_name}`;
+          if (!rulesByKey[key]) {
+            rulesByKey[key] = [];
+          }
+          rulesByKey[key].push({
+            label: br.rule_type,
+            status: br.status === 'Inactive' ? 'deactivated' : 'valid',
+            platform: br.platform
+          });
+        }
+      });
+
+      Object.entries(rulesByKey).forEach(([key, val]) => {
+        localStorage.setItem(key, JSON.stringify(val));
+      });
+    } catch (e) {
+      console.error("Failed to pull rules from backend:", e);
+    }
+  };
+
+  const pushRulesToBackend = async () => {
+    try {
+      // 1. Fetch all rules first to preserve other tables' rules!
+      const res = await axios.get(`${API_BASE}/dashboard/rules`);
+      const allBackendRules = res.data.rules || [];
+
+      // Filter out rules for the current table (we will replace them with the local rules)
+      const rulesToSync: any[] = allBackendRules
+        .filter((br: any) => !(br.database_name === database && br.schema_name === schema && br.table_name === table))
+        .map((br: any) => ({
+          platform: br.platform || 'snowflake',
+          database_name: br.database_name,
+          schema_name: br.schema_name,
+          table_name: br.table_name,
+          column_name: br.column_name,
+          rule_type: br.rule_type,
+          rule_params: br.rule_params ? (typeof br.rule_params === 'string' ? JSON.parse(br.rule_params) : br.rule_params) : {},
+          status: br.status || 'Active'
+        }));
+
+      // 2. Add all local rules for the current table
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(`robin_rule_v2|${database}|${schema}|${table}|`)) {
+          const parts = key.split('|');
+          if (parts.length >= 5) {
+            const column_name = parts.slice(4).join('|');
+            const colRules = JSON.parse(localStorage.getItem(key) || '[]');
+            colRules.forEach((r: any) => {
+              rulesToSync.push({
+                platform: r.platform || platform || 'snowflake',
+                database_name: database,
+                schema_name: schema,
+                table_name: table,
+                column_name,
+                rule_type: r.label || 'Completeness',
+                rule_params: r.rule_params || {},
+                status: r.status === 'deactivated' ? 'Inactive' : 'Active'
+              });
+            });
+          }
+        }
+      }
+
+      await axios.post(`${API_BASE}/dashboard/rules/sync`, { rules: rulesToSync });
+    } catch (e) {
+      console.error("Failed to push rules to backend:", e);
+    }
+  };
+
+  useEffect(() => {
+    const initRules = async () => {
+      await pullRulesFromBackend();
+      setRefreshTrigger(prev => prev + 1);
+    };
+    if (database && schema && table) {
+      initRules();
+    }
+  }, [database, schema, table]);
+
   const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 0 : parseInt(rowCount.toString().replace(/,/g, '')) || 0);
 
   // Helper to read a profile field with case-insensitivity (Snowflake returns UPPERCASE, Databricks lowercase)
@@ -435,7 +532,7 @@ const DataQualityDetail: React.FC = () => {
     setOpenAddRule(openAddRule === attr ? null : attr);
   };
 
-  const handleApplyRule = (attr: string, ruleName: string) => {
+  const handleApplyRule = async (attr: string, ruleName: string) => {
     const newRule = { label: ruleName, score: '100%', status: 'valid' as const, platform };
     const storageKey = `robin_rule_v2|${database}|${schema}|${table}|${attr}`;
     const existingRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
@@ -445,9 +542,10 @@ const DataQualityDetail: React.FC = () => {
     }
     setOpenAddRule(null);
     setRefreshTrigger(prev => prev + 1);
+    await pushRulesToBackend();
   };
 
-  const handleToggleRule = (attr: string, ruleName: string) => {
+  const handleToggleRule = async (attr: string, ruleName: string) => {
     const storageKey = `robin_rule_v2|${database}|${schema}|${table}|${attr}`;
     const existingRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
     const updatedRules = existingRules.map((r: any) => {
@@ -458,14 +556,16 @@ const DataQualityDetail: React.FC = () => {
     });
     localStorage.setItem(storageKey, JSON.stringify(updatedRules));
     setRefreshTrigger(prev => prev + 1);
+    await pushRulesToBackend();
   };
 
-  const handleDeleteRule = (attr: string, ruleName: string) => {
+  const handleDeleteRule = async (attr: string, ruleName: string) => {
     const storageKey = `robin_rule_v2|${database}|${schema}|${table}|${attr}`;
     const existingRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
     const updatedRules = existingRules.filter((r: any) => r.label !== ruleName);
     localStorage.setItem(storageKey, JSON.stringify(updatedRules));
     setRefreshTrigger(prev => prev + 1);
+    await pushRulesToBackend();
   };
 
   const [suggestingRules, setSuggestingRules] = useState(false);
@@ -516,6 +616,7 @@ const DataQualityDetail: React.FC = () => {
       localStorage.removeItem('robin_applied_rules'); // Clear legacy cache
       setHasEvaluated(true);
       setRefreshTrigger(prev => prev + 1);
+      await pushRulesToBackend();
     } catch (e) {
       console.error("AI Suggestion failed", e);
     } finally {

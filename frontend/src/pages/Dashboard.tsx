@@ -52,12 +52,35 @@ const Dashboard: React.FC = () => {
 
   const syncAllRulesToBackend = async () => {
     try {
-      const rulesToSync: any[] = [];
-      
-      // 1. Clear any legacy cache
+      // 1. Fetch backend rules first to avoid overwriting database with empty client states
+      const res = await axios.get(`${API_BASE}/dashboard/rules`);
+      const backendRules = res.data.rules || [];
+
+      // 2. Clear any legacy cache
       localStorage.removeItem('robin_applied_rules');
 
-      // 2. Sync column-specific rules (robin_rule_v2|*)
+      // 3. Merge backend rules into localStorage
+      if (backendRules.length > 0) {
+        const rulesByKey: Record<string, any[]> = {};
+        backendRules.forEach((br: any) => {
+          const key = `robin_rule_v2|${br.database_name}|${br.schema_name}|${br.table_name}|${br.column_name}`;
+          if (!rulesByKey[key]) {
+            rulesByKey[key] = [];
+          }
+          rulesByKey[key].push({
+            label: br.rule_type,
+            status: br.status === 'Inactive' ? 'deactivated' : 'valid',
+            platform: br.platform
+          });
+        });
+
+        Object.entries(rulesByKey).forEach(([key, val]) => {
+          localStorage.setItem(key, JSON.stringify(val));
+        });
+      }
+
+      // 4. Gather all local rules and synchronize them back to the database
+      const rulesToSync: any[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key && key.startsWith('robin_rule_v2|')) {

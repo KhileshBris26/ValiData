@@ -615,7 +615,16 @@ async def sync_dashboard_rules(request: RuleSyncRequest):
     conn, cursor = get_db_connection()
     try:
         # Clear existing rules to perfectly synchronize with client local state
-        cursor.execute("DELETE FROM rules")
+        # Determine distinct tables to clear existing rules for those tables only
+        tables_to_clear = set()
+        for r in request.rules:
+            tables_to_clear.add((r.database_name, r.schema_name, r.table_name))
+        for db_name, sch_name, tbl_name in tables_to_clear:
+            cursor.execute(
+                "DELETE FROM rules WHERE database_name = %s AND schema_name = %s AND table_name = %s" if DATABASE_URL else
+                "DELETE FROM rules WHERE database_name = ? AND schema_name = ? AND table_name = ?",
+                (db_name, sch_name, tbl_name)
+            )
         
         for r in request.rules:
             import json
@@ -637,6 +646,20 @@ async def sync_dashboard_rules(request: RuleSyncRequest):
         return {"status": "success", "rules": rules}
     except Exception as e:
         print(f"Error syncing rules: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.get("/api/v1/dashboard/rules")
+async def get_dashboard_rules():
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute("SELECT * FROM rules ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        rules = [dict(row) for row in rows]
+        return {"status": "success", "rules": rules}
+    except Exception as e:
+        print(f"Error fetching dashboard rules: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
