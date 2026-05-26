@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from models.rules import RuleExecutionRequest, AISuggestionRequest, MetadataRequest, LineageRequest, AnalyticsRequest, CatalogRequest, TableSummaryRequest, AIChatRequest, RuleSyncRequest, ExecutionLogRequest, AnomalyResolveRequest
+from models.rules import RuleExecutionRequest, ProfileRequest, AISuggestionRequest, MetadataRequest, LineageRequest, AnalyticsRequest, CatalogRequest, TableSummaryRequest, AIChatRequest, RuleSyncRequest, ExecutionLogRequest, AnomalyResolveRequest
 from core.query_generator import QueryGenerator
 from core.lineage_engine import LineageEngine
 from core.usage_analyzer import UsageAnalyzer
@@ -433,7 +433,7 @@ async def get_table_row_count(request: TableSummaryRequest):
         return {"status": "success", "row_count": 0}
 
 @app.post("/api/v1/metadata/profile")
-async def get_column_profile(request: RuleExecutionRequest):
+async def get_column_profile(request: ProfileRequest):
     try:
         sql_query = QueryGenerator.generate_profiling_sql(
             platform=request.platform,
@@ -452,6 +452,7 @@ async def get_column_profile(request: RuleExecutionRequest):
             databricks_engine.disconnect()
         return {"status": "success", "profile": res[0] if res else {}}
     except Exception as e:
+        print(f"Profile endpoint error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/v1/lineage/infer")

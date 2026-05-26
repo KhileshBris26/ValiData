@@ -9,6 +9,14 @@ class RuleExecutionRequest(BaseModel):
     rule_params: Optional[Dict[str, Any]] = None
     credentials: Optional[Dict[str, Any]] = None
 
+class ProfileRequest(BaseModel):
+    platform: Literal["snowflake", "databricks"]
+    database_name: str
+    schema_name: str
+    table_name: str
+    column_name: str
+    credentials: Optional[Dict[str, Any]] = None
+
 class AISuggestionRequest(BaseModel):
     platform: Literal["snowflake", "databricks"]
     table_name: str

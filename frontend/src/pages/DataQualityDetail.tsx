@@ -244,36 +244,42 @@ const DataQualityDetail: React.FC = () => {
     fetchPreview();
   }, [database, schema, table, platform]);
 
-  useEffect(() => {
-    const fetchAllProfiles = async () => {
-      if (dynamicColumns.length === 0) return;
-      
-      const saved = localStorage.getItem('robin_credentials');
-      let credentials = null;
-      if (saved) credentials = JSON.parse(saved)[platform];
+  // Standalone function for fetching profiles - can be called manually
+  const fetchProfiles = async (columns: typeof dynamicColumns) => {
+    if (columns.length === 0) return;
+    const saved = localStorage.getItem('robin_credentials');
+    let credentials = null;
+    if (saved) credentials = JSON.parse(saved)[platform];
 
-      // Fetch for all columns (limit to first 10 for performance if table is massive)
-      const targetCols = dynamicColumns.slice(0, 10);
-      
-      for (const col of targetCols) {
-        try {
-          const res = await axios.post(`${API_BASE}/metadata/profile`, {
-            platform,
-            database_name: database,
-            schema_name: schema,
-            table_name: table,
-            column_name: col.attribute,
-            credentials
-          });
-          if (res.data.profile) {
-            setColProfiles(prev => ({ ...prev, [col.attribute]: res.data.profile }));
-          }
-        } catch (err) {
-          console.error(`Profile failed for ${col.attribute}`, err);
+    const targetCols = columns.slice(0, 10);
+    const newProfiles: Record<string, any> = {};
+
+    for (const col of targetCols) {
+      try {
+        const res = await axios.post(`${API_BASE}/metadata/profile`, {
+          platform,
+          database_name: database,
+          schema_name: schema,
+          table_name: table,
+          column_name: col.attribute,
+          credentials
+        });
+        if (res.data && res.data.profile) {
+          newProfiles[col.attribute] = res.data.profile;
         }
+      } catch (err: any) {
+        console.error(`Profile failed for ${col.attribute}:`, err?.response?.data || err?.message);
       }
-    };
-    fetchAllProfiles();
+    }
+    // Set all at once so useMemo fires one re-render
+    if (Object.keys(newProfiles).length > 0) {
+      setColProfiles(prev => ({ ...prev, ...newProfiles }));
+    }
+    return newProfiles;
+  };
+
+  useEffect(() => {
+    fetchProfiles(dynamicColumns);
   }, [dynamicColumns, database, schema, table, platform]);
 
   const activeColumnsList = useMemo(() => {
@@ -501,26 +507,75 @@ const DataQualityDetail: React.FC = () => {
   };
 
   const handleEvaluationSnapshot = async () => {
-    const currentResults = getDimensionStats();
+    // Step 1: Re-fetch real-time profiling data from Snowflake/Databricks
+    const freshProfiles = await fetchProfiles(dynamicColumns);
+    
+    // Step 2: Merge fresh profiles into colProfiles for score computation
+    // (fetchProfiles already calls setColProfiles, but we need the value synchronously)
+    const mergedProfiles = { ...colProfiles, ...(freshProfiles || {}) };
+
+    // Step 3: Compute dimension scores using the fresh profiles
+    const getRuleScoreWithProfiles = (ruleName: string, colName: string, profiles: Record<string, any>) => {
+      const lbl = ruleName.toUpperCase();
+      const profile = profiles[colName];
+      if (profile && profile.total_rows) {
+        const total = parseInt(profile.total_rows) || 1;
+        if (lbl.includes('NULL')) {
+          const nulls = parseInt(profile.null_count) || 0;
+          return Math.round(((total - nulls) / total) * 100);
+        }
+        if (lbl.includes('UNIQUE')) {
+          const uniques = parseInt(profile.unique_count) || 0;
+          return Math.round((uniques / total) * 100);
+        }
+      }
+      // Fallback: use tablePreview sample
+      return getRuleScore(ruleName, colName);
+    };
+
+    let totalScoreSum = 0;
+    let totalRuleCount = 0;
+    let valSum = 0; let valCount = 0;
+    let accSum = 0; let accCount = 0;
+    const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Freshness', 'Validity'];
+    const accuracyLabels = ['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY'];
+
+    const columnDQMap: Record<string, string> = {};
+    activeColumnsList.forEach(col => {
+      const activeRules = col.appliedRules.filter(r => r.status !== 'deactivated');
+      if (activeRules.length === 0) return;
+      let colSum = 0;
+      activeRules.forEach(rule => {
+        const s = getRuleScoreWithProfiles(rule.label, col.attribute, mergedProfiles);
+        colSum += s;
+        totalScoreSum += s;
+        totalRuleCount++;
+        if (validityLabels.some(lbl => rule.label.toUpperCase().includes(lbl.toUpperCase()))) {
+          valSum += s; valCount++;
+        }
+        if (accuracyLabels.some(lbl => rule.label.toUpperCase().includes(lbl.toUpperCase()))) {
+          accSum += s; accCount++;
+        }
+      });
+      columnDQMap[col.attribute] = `${Math.round(colSum / activeRules.length)}%`;
+    });
+
     setEvaluatedResults({
-      overall: currentResults.overallScore,
-      validity: currentResults.valScore,
-      accuracy: currentResults.accScore,
-      columns: activeColumnsList.reduce((acc, col) => {
-        acc[col.attribute] = col.overallDQ;
-        return acc;
-      }, {} as Record<string, string>)
+      overall: totalRuleCount > 0 ? Math.round(totalScoreSum / totalRuleCount) : 100,
+      validity: valCount > 0 ? Math.round(valSum / valCount) : 100,
+      accuracy: accCount > 0 ? Math.round(accSum / accCount) : 100,
+      columns: columnDQMap
     });
     setHasEvaluated(true);
     localStorage.setItem('robin_has_evaluated', 'true');
 
-    // Post rule executions to backend
+    // Step 4: Post rule executions to backend
     try {
       const executions: any[] = [];
       activeColumnsList.forEach(col => {
         col.appliedRules.forEach(rule => {
           if (rule.status === 'deactivated') return;
-          const scoreVal = getRuleScore(rule.label, col.attribute);
+          const scoreVal = getRuleScoreWithProfiles(rule.label, col.attribute, mergedProfiles);
           const total = numericRowCount || 1000;
           const failed = Math.round(total * (1 - scoreVal / 100));
           executions.push({
@@ -532,7 +587,6 @@ const DataQualityDetail: React.FC = () => {
           });
         });
       });
-
       if (executions.length > 0) {
         await axios.post(`${API_BASE}/dashboard/executions`, {
           platform,
@@ -603,12 +657,13 @@ const DataQualityDetail: React.FC = () => {
             <span className="invalid-records-link">See all invalid records <ExternalLink size={14} /></span>
             <button 
               className="btn-profile-evaluate"
-              onClick={() => {
+              onClick={async () => {
                 setIsEvaluating(true);
-                setTimeout(() => {
+                try {
+                  await handleEvaluationSnapshot();
+                } finally {
                   setIsEvaluating(false);
-                  handleEvaluationSnapshot();
-                }, 1000);
+                }
               }}
               disabled={isEvaluating}
             >
