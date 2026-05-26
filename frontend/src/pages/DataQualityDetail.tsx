@@ -258,26 +258,28 @@ const DataQualityDetail: React.FC = () => {
     let credentials = null;
     if (saved) credentials = JSON.parse(saved)[platform];
 
-    const targetCols = columns.slice(0, 10);
     const newProfiles: Record<string, any> = {};
 
-    for (const col of targetCols) {
-      try {
-        const res = await axios.post(`${API_BASE}/metadata/profile`, {
-          platform,
-          database_name: database,
-          schema_name: schema,
-          table_name: table,
-          column_name: col.attribute,
-          credentials
-        });
-        if (res.data && res.data.profile) {
-          newProfiles[col.attribute] = res.data.profile;
+    await Promise.all(
+      columns.map(async (col) => {
+        try {
+          const res = await axios.post(`${API_BASE}/metadata/profile`, {
+            platform,
+            database_name: database,
+            schema_name: schema,
+            table_name: table,
+            column_name: col.attribute,
+            credentials
+          });
+          if (res.data && res.data.profile) {
+            newProfiles[col.attribute] = res.data.profile;
+          }
+        } catch (err: any) {
+          console.error(`Profile failed for ${col.attribute}:`, err?.response?.data || err?.message);
         }
-      } catch (err: any) {
-        console.error(`Profile failed for ${col.attribute}:`, err?.response?.data || err?.message);
-      }
-    }
+      })
+    );
+
     // Set all at once so useMemo fires one re-render
     if (Object.keys(newProfiles).length > 0) {
       setColProfiles(prev => ({ ...prev, ...newProfiles }));
@@ -362,18 +364,32 @@ const DataQualityDetail: React.FC = () => {
       let topVals = colItem.topValues;
 
       if (profile) {
-        if (profile.min_val || profile.max_val) {
+        const minVal = getProfileField(profile, 'min_val');
+        const maxVal = getProfileField(profile, 'max_val');
+        const avgVal = getProfileField(profile, 'avg_val');
+        const topValues = getProfileField(profile, 'top_values');
+
+        if (minVal !== null || maxVal !== null) {
+          let avgLabel = 'N/A';
+          if (avgVal !== null && avgVal !== 'None' && avgVal !== '') {
+            const parsed = parseFloat(avgVal);
+            if (!isNaN(parsed)) {
+              avgLabel = parsed.toFixed(2);
+            }
+          }
           tv = [
-            { label: `Min: ${profile.min_val || 'N/A'}`, pct: 'Value' },
-            { label: `Max: ${profile.max_val || 'N/A'}`, pct: 'Value' },
-            { label: `Avg: ${profile.avg_val ? parseFloat(profile.avg_val).toFixed(2) : 'N/A'}`, pct: 'Value' }
+            { label: `Min: ${minVal ?? 'N/A'}`, pct: 'Value' },
+            { label: `Max: ${maxVal ?? 'N/A'}`, pct: 'Value' },
+            { label: `Avg: ${avgLabel}`, pct: 'Value' }
           ];
         }
-        if (profile.top_values) {
-          topVals = profile.top_values.split(',').map((v: string) => {
-            const [val, count] = v.split(':');
-            const pct = numericRowCount > 0 ? Math.round((parseInt(count) / numericRowCount) * 100) : 0;
-            return { label: val, pct: `${pct}%` };
+        if (topValues) {
+          topVals = topValues.split(',').map((v: string) => {
+            const parts = v.split(':');
+            const val = parts[0];
+            const count = parts[1];
+            const pct = (numericRowCount > 0 && count) ? Math.round((parseInt(count) || 0) / numericRowCount * 100) : 0;
+            return { label: val || 'N/A', pct: `${pct}%` };
           });
         }
       }

@@ -407,7 +407,7 @@ class QueryGenerator:
                 SUM(CASE WHEN {column} IS NULL THEN 1 ELSE 0 END) as null_count,
                 CAST(MIN({column}) AS STRING) as min_val,
                 CAST(MAX({column}) AS STRING) as max_val,
-                CAST(AVG(CASE WHEN TRY_CAST({column} AS FLOAT) IS NOT NULL THEN CAST({column} AS FLOAT) ELSE NULL END) AS STRING) as avg_val
+                CAST(AVG(CASE WHEN TRY_CAST(CAST({column} AS STRING) AS FLOAT) IS NOT NULL THEN CAST(CAST({column} AS STRING) AS FLOAT) ELSE NULL END) AS STRING) as avg_val
             FROM {full_table}
         ),
         unique_stats AS (
