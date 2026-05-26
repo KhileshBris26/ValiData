@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { usePlatform } from '../context/PlatformContext';
+import { useClickOutside } from '../hooks/useClickOutside';
 import { Search, ChevronDown, MoreHorizontal, ChevronLeft, ChevronRight, Tag, ShieldCheck, AlertCircle, Hash, Layers, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import './DataCatalog.css';
@@ -92,6 +93,8 @@ const DataCatalog: React.FC = () => {
 
   // Advanced Top Filters State
   const [openFilter, setOpenFilter] = useState<string | null>(null);
+  const topFiltersRef = useRef<HTMLDivElement>(null);
+  useClickOutside(topFiltersRef, () => setOpenFilter(null));
   const [selectedTerms, setSelectedTerms] = useState<string[]>([]);
   const [selectedQuality, setSelectedQuality] = useState<string | null>(null);
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
@@ -143,8 +146,10 @@ const DataCatalog: React.FC = () => {
 
   const FilterDropdown = ({ options, selected, onToggle, label }: { options: string[], selected: string[], onToggle: (v: string) => void, label: string }) => {
     const [open, setOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+    useClickOutside(dropdownRef, () => setOpen(false));
     return (
-      <div className="filter-dropdown-container">
+      <div className="filter-dropdown-container" ref={dropdownRef}>
         <div className="filter-header" onClick={() => setOpen(!open)}>
           <span>{label}</span>
           <ChevronDown size={14} className={open ? 'rotate' : ''} />
@@ -224,7 +229,7 @@ const DataCatalog: React.FC = () => {
           />
         </div>
 
-        <div className="filters-container">
+        <div className="filters-container" ref={topFiltersRef}>
           {filters.map(f => (
             <div key={f.name} style={{ position: 'relative' }}>
               <button 

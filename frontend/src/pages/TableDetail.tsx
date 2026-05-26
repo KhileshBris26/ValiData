@@ -1,12 +1,13 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { useClickOutside } from '../hooks/useClickOutside';
 import { usePlatform } from '../context/PlatformContext';
 import { 
   ChevronRight, ChevronLeft, Database, ShieldCheck, AlertCircle, 
   BarChart2, Clock, Grid, 
   Edit3, RotateCw, Users, Info, 
-  MoreVertical, Hash, Type, Plus, Loader2, Save, X, Search, Power, HelpCircle
+  MoreVertical, Hash, Type, Plus, Loader2, Save, X, Search, Power, HelpCircle, ChevronUp, ChevronDown
 } from 'lucide-react';
 import './TableDetail.css';
 
@@ -147,7 +148,9 @@ const TableDetail: React.FC = () => {
       localStorage.setItem(`robin_terms_${table}`, JSON.stringify(selectedTerms));
     }
   }, [table, summary, hasSavedDescription, shutDownRules, deletedRules, selectedTerms]);
+  const glossaryRef = useRef<HTMLDivElement>(null);
   const [isGlossaryOpen, setIsGlossaryOpen] = useState(false);
+  useClickOutside(glossaryRef, () => setIsGlossaryOpen(false));
   const [glossarySearch, setGlossarySearch] = useState('');
 
   const [dynamicLineage, setDynamicLineage] = useState<LineageConfig | null>(null);

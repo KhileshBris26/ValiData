@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 
 import { 
@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { usePlatform } from '../context/PlatformContext';
+import { useClickOutside } from '../hooks/useClickOutside';
 import './DataQualityDetail.css';
 
 import { API_BASE } from '../api';
@@ -49,6 +50,8 @@ const DataQualityDetail: React.FC = () => {
   });
   const [tablePreview, setTablePreview] = useState<any[]>([]);
   const [openAddRule, setOpenAddRule] = useState<string | null>(null);
+  const addRuleRef = useRef<HTMLDivElement>(null);
+  useClickOutside(addRuleRef, () => setOpenAddRule(null));
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [lastScanDate] = useState(new Date().toLocaleString('en-US', { 
     month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true 
@@ -774,7 +777,7 @@ const DataQualityDetail: React.FC = () => {
                             ))}
                           </td>
                           <td className="applied-rules-cell">
-                            <div style={{ position: 'relative', display: 'inline-block' }}>
+                            <div style={{ position: 'relative', display: 'inline-block' }} ref={openAddRule === row.attribute ? addRuleRef : null}>
                               <button className="btn-add-rule" onClick={() => handleAddRuleClick(row.attribute)}>
                                 <Plus size={12} /> Add
                               </button>
