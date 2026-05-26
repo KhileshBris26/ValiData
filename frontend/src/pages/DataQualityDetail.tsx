@@ -344,7 +344,6 @@ const DataQualityDetail: React.FC = () => {
         }
       }
 
-      const profile = colProfiles[colItem.attribute];
       let tv = colItem.minMax;
       let topVals = colItem.topValues;
 
