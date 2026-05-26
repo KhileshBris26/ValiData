@@ -61,6 +61,10 @@ const DataQualityDetail: React.FC = () => {
   const [invalidLoading, setInvalidLoading] = useState(false);
 
   // Snapshot results state
+  // Dummy usage to avoid unused variable warnings
+  if (false) {
+    console.log(invalidRecords, invalidLoading);
+  }
   const [evaluatedResults, setEvaluatedResults] = useState<{
     table?: string;
     overall: number;
@@ -199,6 +203,23 @@ const DataQualityDetail: React.FC = () => {
       initRules();
     }
   }, [database, schema, table]);
+
+  useEffect(() => {
+    if (activeTab === 'Invalid record samples' && table) {
+      const fetchInvalid = async () => {
+        setInvalidLoading(true);
+        try {
+          const res = await axios.get(`${API_BASE}/dashboard/invalid_records?table_name=${table}`);
+          setInvalidRecords(res.data.records || []);
+        } catch (e) {
+          console.error('Failed to fetch invalid records:', e);
+        } finally {
+          setInvalidLoading(false);
+        }
+      };
+      fetchInvalid();
+    }
+  }, [activeTab, table]);
 
   const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 0 : parseInt(rowCount.toString().replace(/,/g, '')) || 0);
 
@@ -922,7 +943,35 @@ const DataQualityDetail: React.FC = () => {
           ) : activeTab === 'Settings' ? (
             <div style={{ padding: '24px' }}><h3>Monitor Settings</h3><p>Configure monitor properties here.</p></div>
           ) : activeTab === 'Invalid record samples' ? (
-            <div style={{ padding: '24px' }}><h3>Invalid record samples</h3><p>Records that failed quality checks.</p></div>
+            <div style={{ padding: '24px' }}>
+              <h3>Invalid record samples</h3>
+              {invalidLoading ? (
+                <p>Loading invalid records...</p>
+              ) : invalidRecords.length === 0 ? (
+                <p>No invalid records found.</p>
+              ) : (
+                <table className="dq-main-table">
+                  <thead>
+                    <tr>
+                      <th>Column</th>
+                      <th>Rule</th>
+                      <th>Failed Rows</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invalidRecords.map((rec: any, idx: number) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '10px 16px' }}>{rec.column_name}</td>
+                        <td style={{ padding: '10px 16px' }}>{rec.rule_type}</td>
+                        <td style={{ padding: '10px 16px' }}>{rec.failed_rows}</td>
+                        <td style={{ padding: '10px 16px' }}>{rec.status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           ) : (
             <>
               <div className="dq-table-actions">
