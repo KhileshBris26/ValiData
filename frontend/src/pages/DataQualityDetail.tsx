@@ -128,6 +128,8 @@ const DataQualityDetail: React.FC = () => {
         setColProfiles({});
       }
     }
+  }, [table]);
+
   // Local state for Custom Scheduling Modal
   const [customUnit, setCustomUnit] = useState('minutes');
   const [customValue, setCustomValue] = useState(15);
