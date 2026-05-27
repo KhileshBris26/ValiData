@@ -44,37 +44,26 @@ const Dashboard: React.FC = () => {
   const [lastRefreshed, setLastRefreshed] = React.useState<string>('');
 
 
-  const fetchDashboardData = async (platformsCount: number) => {
-    try {
-      const metricsRes = await axios.get(`${API_BASE}/dashboard/metrics`);
-      const rulesRes = await axios.get(`${API_BASE}/dashboard/rules`);
-      const anomaliesRes = await axios.get(`${API_BASE}/dashboard/anomalies`);
-
-      setMetrics({
-        platforms: platformsCount,
-        rules: metricsRes.data.active_rules_count,
-        passed: metricsRes.data.passed_checks_count,
-        anomalies: metricsRes.data.anomalies_count
-      });
-      setBackendRules(rulesRes.data.rules || []);
-      setBackendAnomalies(anomaliesRes.data.anomalies || []);
-    } catch (e) {
-      console.error("Failed to fetch dashboard data from backend", e);
-    }
-  };
-
-  const fetchDashboardWidgets = async () => {
+  const refreshDashboard = async () => {
     setIsLoadingWidgets(true);
+    let count = 0;
+    try {
+      const connected = JSON.parse(localStorage.getItem('robin_connected_platforms') || '[]');
+      count = connected.length;
+    } catch (e) {}
+
     try {
       const saved = localStorage.getItem('robin_credentials');
       const credentials = saved ? JSON.parse(saved)[platform] : null;
-      
       const payload = { platform, credentials };
       
-      const [analyticsRes, logsRes, lineageRes] = await Promise.all([
+      const [analyticsRes, logsRes, lineageRes, metricsRes, rulesRes, anomaliesRes] = await Promise.all([
         axios.post(`${API_BASE}/dashboard/warehouse_analytics`, payload),
         axios.post(`${API_BASE}/dashboard/query_logs`, payload),
-        axios.post(`${API_BASE}/dashboard/lineage`, payload)
+        axios.post(`${API_BASE}/dashboard/lineage`, payload),
+        axios.get(`${API_BASE}/dashboard/metrics`),
+        axios.get(`${API_BASE}/dashboard/rules`),
+        axios.get(`${API_BASE}/dashboard/anomalies`)
       ]);
       
       if (analyticsRes.data.status === 'success') {
@@ -86,24 +75,29 @@ const Dashboard: React.FC = () => {
       if (lineageRes.data.status === 'success') {
         setLineageFlow(lineageRes.data);
       }
+      setMetrics({
+        platforms: count,
+        rules: metricsRes.data.active_rules_count,
+        passed: metricsRes.data.passed_checks_count,
+        anomalies: metricsRes.data.anomalies_count
+      });
+      setBackendRules(rulesRes.data.rules || []);
+      setBackendAnomalies(anomaliesRes.data.anomalies || []);
       setLastRefreshed(new Date().toLocaleTimeString());
     } catch (e) {
-      console.error("Failed to fetch dashboard widgets:", e);
+      console.error("Failed to refresh dashboard:", e);
     } finally {
       setIsLoadingWidgets(false);
     }
   };
 
   const handleManualRefresh = async () => {
-    let count = 0;
     try {
-      const connected = JSON.parse(localStorage.getItem('robin_connected_platforms') || '[]');
-      count = connected.length;
-    } catch (e) {}
-    await Promise.all([
-      fetchDashboardWidgets(),
-      fetchDashboardData(count)
-    ]);
+      await syncAllRulesToBackend();
+    } catch (e) {
+      console.error("Rules sync failed during manual refresh:", e);
+    }
+    await refreshDashboard();
   };
 
 
@@ -172,23 +166,16 @@ const Dashboard: React.FC = () => {
 
   React.useEffect(() => {
     const initDashboard = async () => {
-      let count = 0;
       try {
-        const connected = JSON.parse(localStorage.getItem('robin_connected_platforms') || '[]');
-        count = connected.length;
+        await syncAllRulesToBackend();
       } catch (e) {
-        console.error("Failed to get connected platforms count", e);
+        console.error("Initial rules sync failed:", e);
       }
-
-      await syncAllRulesToBackend();
-      await fetchDashboardData(count);
+      await refreshDashboard();
     };
     initDashboard();
-  }, []);
 
-  React.useEffect(() => {
-    fetchDashboardWidgets();
-    const interval = setInterval(fetchDashboardWidgets, 60000);
+    const interval = setInterval(refreshDashboard, 60000);
     return () => clearInterval(interval);
   }, [platform]);
 
@@ -196,12 +183,7 @@ const Dashboard: React.FC = () => {
   const handleResolveAnomaly = async (id: number) => {
     try {
       await axios.post(`${API_BASE}/dashboard/anomalies/resolve`, { id });
-      let count = 0;
-      try {
-        const creds = JSON.parse(localStorage.getItem('robin_credentials') || '{}');
-        count = Object.keys(creds).filter(k => creds[k] && Object.keys(creds[k]).length > 0).length;
-      } catch (e) {}
-      await fetchDashboardData(count);
+      await refreshDashboard();
       setSelectedFinding(null);
     } catch (e) {
       console.error("Failed to resolve anomaly", e);
@@ -244,14 +226,14 @@ const Dashboard: React.FC = () => {
       
       <div className="stats-grid">
         <div onClick={() => navigate('/connections')} style={{ cursor: 'pointer' }}>
-          <StatCard icon={Database} label="Connected Platforms" value={metrics.platforms} color="#3b82f6" />
+          <StatCard icon={Database} label="Connected Platforms" value={isLoadingWidgets ? '...' : metrics.platforms} color="#3b82f6" />
         </div>
         <div onClick={() => setShowRulesOverlay(true)} style={{ cursor: 'pointer' }}>
-          <StatCard icon={Activity} label="Active Rules" value={metrics.rules} color="#8b5cf6" />
+          <StatCard icon={Activity} label="Active Rules" value={isLoadingWidgets ? '...' : metrics.rules} color="#8b5cf6" />
         </div>
-        <StatCard icon={CheckCircle} label="Passed Checks" value={metrics.passed.toLocaleString()} color="#10b981" />
+        <StatCard icon={CheckCircle} label="Passed Checks" value={isLoadingWidgets ? '...' : metrics.passed.toLocaleString()} color="#10b981" />
         <div onClick={() => setShowAnomaliesOverlay(true)} style={{ cursor: 'pointer' }}>
-          <StatCard icon={AlertTriangle} label="Anomalies Detected" value={metrics.anomalies} color="#ef4444" />
+          <StatCard icon={AlertTriangle} label="Anomalies Detected" value={isLoadingWidgets ? '...' : metrics.anomalies} color="#ef4444" />
         </div>
       </div>
 

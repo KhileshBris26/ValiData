@@ -679,6 +679,21 @@ async def get_dashboard_metrics():
         conn.close()
 
 
+@app.get("/api/v1/dashboard/rules")
+async def get_dashboard_rules():
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute("SELECT * FROM rules ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        rules = [dict(row) for row in rows]
+        return {"status": "success", "rules": rules}
+    except Exception as e:
+        print(f"Error fetching dashboard rules: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
 @app.get("/api/v1/dashboard/anomalies")
 async def get_dashboard_anomalies():
     conn, cursor = get_db_connection()
