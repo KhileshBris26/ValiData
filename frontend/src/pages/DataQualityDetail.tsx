@@ -941,7 +941,6 @@ const DataQualityDetail: React.FC = () => {
                       const execKey = `${col.attribute}|${rule.label}`;
                       const execData = ruleExecutionResults[execKey];
 
-                      const total   = execData ? execData.total  : (numericRowCount || 0);
                       const passed  = execData ? execData.passed : 0;
                       const failed  = execData ? execData.failed : 0;
                       const score   = execData ? execData.score  : 0;
