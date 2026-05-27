@@ -65,6 +65,19 @@ const DataQualityDetail: React.FC = () => {
   }[]>([]);
   const [invalidLoading, setInvalidLoading] = useState(false);
 
+  // Per-rule execution results keyed "colName|ruleLabel" → { total, passed, failed, score }
+  const [ruleExecutionResults, setRuleExecutionResults] = useState<Record<string, {
+    total: number;
+    passed: number;
+    failed: number;
+    score: number;
+  }>>(() => {
+    try {
+      const saved = localStorage.getItem(`robin_rule_exec_results_${table}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+
   // Snapshot results state
   const [evaluatedResults, setEvaluatedResults] = useState<{
     table?: string;
@@ -703,15 +716,20 @@ const DataQualityDetail: React.FC = () => {
     setHasEvaluated(true);
     localStorage.setItem('robin_has_evaluated', 'true');
 
-    // Step 4: Post rule executions to backend
+    // Step 4: Build per-rule execution map and post to backend
     try {
       const executions: any[] = [];
+      const newRuleExecResults: Record<string, { total: number; passed: number; failed: number; score: number }> = {};
+
       activeColumnsList.forEach(col => {
         col.appliedRules.forEach(rule => {
           if (rule.status === 'deactivated') return;
           const scoreVal = getRuleScoreWithProfiles(rule.label, col.attribute, mergedProfiles);
           const total = numericRowCount || 1000;
           const failed = Math.round(total * (1 - scoreVal / 100));
+          const passed = total - failed;
+          const key = `${col.attribute}|${rule.label}`;
+          newRuleExecResults[key] = { total, passed, failed, score: scoreVal };
           executions.push({
             column_name: col.attribute,
             rule_type: rule.label,
@@ -721,6 +739,11 @@ const DataQualityDetail: React.FC = () => {
           });
         });
       });
+
+      // Persist so values survive tab switches
+      setRuleExecutionResults(newRuleExecResults);
+      localStorage.setItem(`robin_rule_exec_results_${table}`, JSON.stringify(newRuleExecResults));
+
       if (executions.length > 0) {
         await axios.post(`${API_BASE}/dashboard/executions`, {
           platform,
@@ -757,6 +780,7 @@ const DataQualityDetail: React.FC = () => {
     } catch (e) {
       console.error("Failed to log executions to backend", e);
     }
+
   };
 
   // Scores used for UI rendering
@@ -889,11 +913,16 @@ const DataQualityDetail: React.FC = () => {
         <div className="dq-table-container glass-panel">
           {activeTab === 'Detailed results' ? (
             <div style={{ padding: '24px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#0f172a', marginBottom: '16px' }}>Detailed Rule Results</h3>
-              <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#0f172a', marginBottom: '4px' }}>Detailed Rule Results</h3>
+              {!hasEvaluated && (
+                <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '16px' }}>
+                  Run <strong>Profile and Evaluate</strong> to populate real-time results.
+                </p>
+              )}
+              <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '12px' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                   <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 600 }}>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 600 }}>
                       <th style={{ padding: '10px 16px', textAlign: 'left' }}>Attribute</th>
                       <th style={{ padding: '10px 16px', textAlign: 'left' }}>Rule Name</th>
                       <th style={{ padding: '10px 16px', textAlign: 'left' }}>Dimension</th>
@@ -907,22 +936,81 @@ const DataQualityDetail: React.FC = () => {
                     {activeColumnsList.flatMap((col) => col.appliedRules.map((rule, ri) => {
                       const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Freshness', 'Validity'];
                       const isValidity = validityLabels.some(lbl => rule.label.includes(lbl));
-                      const scoreVal = parseInt(rule.score) || 100;
-                      const pCount = Math.floor(numericRowCount * (scoreVal / 100));
-                      const fCount = numericRowCount - pCount;
+
+                      // --- Real execution data ---
+                      const execKey = `${col.attribute}|${rule.label}`;
+                      const execData = ruleExecutionResults[execKey];
+
+                      const total   = execData ? execData.total  : (numericRowCount || 0);
+                      const passed  = execData ? execData.passed : 0;
+                      const failed  = execData ? execData.failed : 0;
+                      const score   = execData ? execData.score  : 0;
+
+                      // Status: 3-way
+                      let statusLabel: string;
+                      let statusColor: string;
+                      let StatusIcon: React.ReactNode;
+                      if (!hasEvaluated || !execData) {
+                        statusLabel = '—';
+                        statusColor = '#94a3b8';
+                        StatusIcon = null;
+                      } else if (failed === 0) {
+                        statusLabel = 'Passed';
+                        statusColor = '#16a34a';
+                        StatusIcon = <CheckCircle2 size={15} />;
+                      } else if (passed === 0) {
+                        statusLabel = 'Failed';
+                        statusColor = '#dc2626';
+                        StatusIcon = <XCircle size={15} />;
+                      } else {
+                        statusLabel = 'Partially Passed';
+                        statusColor = '#d97706';
+                        StatusIcon = <AlertCircle size={15} />;
+                      }
 
                       return (
-                        <tr key={`${col.attribute}-${ri}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '10px 16px', fontWeight: 500 }}>{ri === 0 ? col.attribute : ''}</td>
-                          <td style={{ padding: '10px 16px' }}>{rule.label}</td>
-                          <td style={{ padding: '10px 16px' }}><span className={`dim-badge ${isValidity ? 'validity' : 'accuracy'}`}>{isValidity ? 'Validity' : 'Accuracy'}</span></td>
-                          <td style={{ padding: '10px 16px', color: '#15803d' }}>{hasEvaluated ? pCount.toLocaleString() : '-'}</td>
-                          <td style={{ padding: '10px 16px', color: '#b91c1c' }}>{hasEvaluated ? fCount.toLocaleString() : '-'}</td>
-                          <td style={{ padding: '10px 16px', fontWeight: 600 }}>{rule.score}</td>
+                        <tr key={`${col.attribute}-${ri}`} style={{
+                          borderBottom: '1px solid #f1f5f9',
+                          background: ri % 2 === 0 ? '#ffffff' : '#fafafa'
+                        }}>
+                          <td style={{ padding: '10px 16px', fontWeight: 600, color: '#1e293b' }}>
+                            {ri === 0 ? col.attribute : ''}
+                          </td>
+                          <td style={{ padding: '10px 16px', color: '#374151' }}>{rule.label}</td>
                           <td style={{ padding: '10px 16px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: scoreVal > 80 ? '#16a34a' : '#dc2626' }}>
-                              {scoreVal > 80 ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
-                              <span>{scoreVal > 80 ? 'Pass' : 'Fail'}</span>
+                            <span className={`dim-badge ${isValidity ? 'validity' : 'accuracy'}`}>
+                              {isValidity ? 'Validity' : 'Accuracy'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 16px', color: '#15803d', fontWeight: 500 }}>
+                            {hasEvaluated && execData ? passed.toLocaleString() : '—'}
+                          </td>
+                          <td style={{ padding: '10px 16px', color: failed > 0 ? '#b91c1c' : '#15803d', fontWeight: 500 }}>
+                            {hasEvaluated && execData ? failed.toLocaleString() : '—'}
+                          </td>
+                          <td style={{ padding: '10px 16px' }}>
+                            {hasEvaluated && execData ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <div style={{
+                                  width: '56px', height: '6px', borderRadius: '3px',
+                                  background: '#e2e8f0', overflow: 'hidden'
+                                }}>
+                                  <div style={{
+                                    height: '100%', borderRadius: '3px',
+                                    width: `${score}%`,
+                                    background: score >= 80 ? '#10b981' : score >= 50 ? '#f59e0b' : '#ef4444'
+                                  }} />
+                                </div>
+                                <span style={{ fontWeight: 700, color: score >= 80 ? '#16a34a' : score >= 50 ? '#d97706' : '#dc2626', minWidth: '38px' }}>
+                                  {score}%
+                                </span>
+                              </div>
+                            ) : '—'}
+                          </td>
+                          <td style={{ padding: '10px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: statusColor, fontWeight: 500 }}>
+                              {StatusIcon}
+                              <span>{statusLabel}</span>
                             </div>
                           </td>
                         </tr>
@@ -932,6 +1020,7 @@ const DataQualityDetail: React.FC = () => {
                 </table>
               </div>
             </div>
+
           ) : activeTab === 'Records' ? (
             <div style={{ padding: '24px' }}>
               <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#0f172a' }}>Record Browser</h3>
