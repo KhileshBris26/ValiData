@@ -56,8 +56,13 @@ const DataQualityDetail: React.FC = () => {
   const [lastScanDate] = useState(new Date().toLocaleString('en-US', { 
     month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true 
   }));
-  // State for invalid records UI
-  const [invalidRecords, setInvalidRecords] = useState<any[]>([]);
+  // State for invalid record samples (populated on Profile & Evaluate)
+  const [sampleGroups, setSampleGroups] = useState<{
+    column_name: string;
+    rule_type: string;
+    columns: string[];
+    rows: string[][];
+  }[]>([]);
   const [invalidLoading, setInvalidLoading] = useState(false);
 
   // Snapshot results state
@@ -200,22 +205,7 @@ const DataQualityDetail: React.FC = () => {
     }
   }, [database, schema, table]);
 
-  useEffect(() => {
-    if (activeTab === 'Invalid record samples' && table) {
-      const fetchInvalid = async () => {
-        setInvalidLoading(true);
-        try {
-          const res = await axios.get(`${API_BASE}/dashboard/invalid_records?table_name=${table}`);
-          setInvalidRecords(res.data.records || []);
-        } catch (e) {
-          console.error('Failed to fetch invalid records:', e);
-        } finally {
-          setInvalidLoading(false);
-        }
-      };
-      fetchInvalid();
-    }
-  }, [activeTab, table]);
+
 
   const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 0 : parseInt(rowCount.toString().replace(/,/g, '')) || 0);
 
@@ -737,6 +727,32 @@ const DataQualityDetail: React.FC = () => {
           table_name: table,
           executions
         });
+
+        // Step 5: Fetch live sample failed records from Snowflake for Null/Unique failures
+        try {
+          const failedChecks = executions
+            .filter(ex => ex.failed_rows > 0 && (ex.rule_type.toUpperCase().includes('NULL') || ex.rule_type.toUpperCase().includes('UNIQUE')))
+            .map(ex => ({ column_name: ex.column_name, rule_type: ex.rule_type }));
+
+          if (failedChecks.length > 0) {
+            setInvalidLoading(true);
+            const saved = localStorage.getItem('robin_credentials');
+            const credentials = saved ? JSON.parse(saved)[platform] : null;
+            const sampleRes = await axios.post(`${API_BASE}/dashboard/sample_failed_records`, {
+              platform,
+              table_name: `${database}.${schema}.${table}`,
+              failed_checks: failedChecks,
+              credentials
+            });
+            setSampleGroups(sampleRes.data.groups || []);
+          } else {
+            setSampleGroups([]);
+          }
+        } catch (sampleErr) {
+          console.error('Failed to fetch sample failed records:', sampleErr);
+        } finally {
+          setInvalidLoading(false);
+        }
       }
     } catch (e) {
       console.error("Failed to log executions to backend", e);
@@ -940,34 +956,92 @@ const DataQualityDetail: React.FC = () => {
             <div style={{ padding: '24px' }}><h3>Monitor Settings</h3><p>Configure monitor properties here.</p></div>
           ) : activeTab === 'Invalid record samples' ? (
             <div style={{ padding: '24px' }}>
-              <h3>Invalid record samples</h3>
-              {invalidLoading ? (
-                <p>Loading invalid records...</p>
-              ) : invalidRecords.length === 0 ? (
-                <p>No invalid records found.</p>
-              ) : (
-                <table className="dq-main-table">
-                  <thead>
-                    <tr>
-                      <th>Column</th>
-                      <th>Rule</th>
-                      <th>Failed Rows</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {invalidRecords.map((rec: any, idx: number) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '10px 16px' }}>{rec.column_name}</td>
-                        <td style={{ padding: '10px 16px' }}>{rec.rule_type}</td>
-                        <td style={{ padding: '10px 16px' }}>{rec.failed_rows}</td>
-                        <td style={{ padding: '10px 16px' }}>{rec.status}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
+            <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>Invalid Record Samples</h3>
+            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>
+              Showing up to 5 live sample rows per failed check. Click <strong>Profile and Evaluate</strong> to refresh.
+            </p>
+            {invalidLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '32px 0', color: '#6366f1' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
+                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                </svg>
+                <span style={{ fontSize: '14px' }}>Fetching live samples from Snowflake...</span>
+              </div>
+            ) : sampleGroups.length === 0 ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
+                <div style={{ fontSize: '36px', marginBottom: '12px' }}>✅</div>
+                <p style={{ fontWeight: 600, color: '#475569' }}>No Invalid Records Found</p>
+                <p style={{ marginTop: '6px' }}>All DQ checks passed, or no Null/Unique failures were detected.</p>
+                <p style={{ marginTop: '4px', fontSize: '12px' }}>Click <strong>Profile and Evaluate</strong> to run a live check.</p>
+              </div>
+            ) : (
+              sampleGroups.map((group, gi) => (
+                <div key={gi} style={{ marginBottom: '32px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      padding: '3px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 600,
+                      background: group.rule_type === 'Unique Check' ? '#fef3c7' : '#fee2e2',
+                      color: group.rule_type === 'Unique Check' ? '#92400e' : '#991b1b'
+                    }}>
+                      {group.rule_type === 'Unique Check' ? '⚠️' : '🚫'} {group.rule_type}
+                    </span>
+                    <span style={{ fontSize: '14px', fontWeight: 600, color: '#1e293b' }}>on column</span>
+                    <code style={{
+                      background: '#f1f5f9', padding: '2px 8px', borderRadius: '6px',
+                      fontSize: '13px', fontWeight: 700, color: '#6366f1'
+                    }}>{group.column_name}</code>
+                    <span style={{ fontSize: '12px', color: '#94a3b8', marginLeft: 'auto' }}>
+                      {group.rows.length} sample row{group.rows.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                          {group.columns.map((col, ci) => (
+                            <th key={ci} style={{
+                              padding: '10px 14px', textAlign: 'left', fontWeight: 600,
+                              color: ci < 2 ? '#6366f1' : '#475569',
+                              whiteSpace: 'nowrap',
+                              textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.04em',
+                              borderRight: ci === 1 ? '2px solid #c7d2fe' : 'none'
+                            }}>
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.rows.map((row, ri) => (
+                          <tr key={ri} style={{
+                            borderBottom: '1px solid #f1f5f9',
+                            background: ri % 2 === 0 ? '#ffffff' : '#fafafa',
+                            transition: 'background 0.15s'
+                          }}>
+                            {row.map((cell, ci) => (
+                              <td key={ci} style={{
+                                padding: '9px 14px',
+                                color: ci < 2 ? '#4f46e5' : '#374151',
+                                fontWeight: ci === 0 ? 600 : 400,
+                                fontFamily: ci >= 2 ? 'monospace' : 'inherit',
+                                maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                borderRight: ci === 1 ? '2px solid #e0e7ff' : 'none'
+                              }} title={cell}>
+                                {cell === 'None' || cell === 'null' ? (
+                                  <span style={{ color: '#ef4444', fontStyle: 'italic', fontSize: '12px' }}>NULL</span>
+                                ) : cell}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
           ) : (
             <>
               <div className="dq-table-actions">

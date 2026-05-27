@@ -1,7 +1,7 @@
 import os
 import sqlite3
 import hashlib
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -587,22 +587,6 @@ async def get_dashboard_metrics():
         conn.close()
 
 
-    except Exception as e:
-        print(f"Error fetching dashboard rules: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        conn.close()
-    except Exception as e:
-        print(f"Error fetching dashboard rules: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        conn.close()
-    except Exception as e:
-        print(f"Error fetching dashboard rules: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        conn.close()
-
 @app.get("/api/v1/dashboard/anomalies")
 async def get_dashboard_anomalies():
     conn, cursor = get_db_connection()
@@ -659,46 +643,127 @@ async def sync_dashboard_rules(request: RuleSyncRequest):
 
 
 
-# New endpoint to fetch records that failed DQ rules
+# ── Lightweight summary endpoint (used by old code paths) ──────────────────
 @app.get("/api/v1/dashboard/invalid_records")
 async def get_invalid_records(table_name: str):
-    # If Snowflake connection is configured, query Snowflake directly
-    if DATABASE_URL:
-        try:
-            sql = f"""
-                SELECT column_name, rule_type, failed_rows, status
-                FROM rule_executions
-                WHERE table_name = '{table_name}' AND failed_rows > 0
-            """
-            snowflake_engine.connect({})
-            raw = snowflake_engine.execute_query(sql)
-            records = [
-                {"column_name": r[0], "rule_type": r[1], "failed_rows": r[2], "status": r[3]}
-                for r in raw
-            ]
-            return {"status": "success", "records": records}
-        except Exception as e:
-            print(f"Error fetching invalid records from Snowflake: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-        finally:
-            snowflake_engine.disconnect()
-    else:
-        conn, cursor = get_db_connection()
-        try:
-            query = (
-                "SELECT column_name, rule_type, failed_rows, status FROM rule_executions WHERE table_name = %s AND failed_rows > 0"
-            ) if DATABASE_URL else (
-                "SELECT column_name, rule_type, failed_rows, status FROM rule_executions WHERE table_name = ? AND failed_rows > 0"
-            )
-            cursor.execute(query, (table_name,))
-            rows = cursor.fetchall()
-            records = [dict(row) for row in rows]
-            return {"status": "success", "records": records}
-        except Exception as e:
-            print(f"Error fetching invalid records: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-        finally:
-            conn.close()
+    """Return aggregated failed-rows counts from local DB."""
+    conn, cursor = get_db_connection()
+    try:
+        ph = "%s" if DATABASE_URL else "?"
+        cursor.execute(
+            f"SELECT column_name, rule_type, failed_rows, status FROM rule_executions WHERE table_name = {ph} AND failed_rows > 0",
+            (table_name,)
+        )
+        rows = cursor.fetchall()
+        records = [dict(row) for row in rows]
+        return {"status": "success", "records": records}
+    except Exception as e:
+        print(f"Error fetching invalid records: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+class FailedCheckItem(BaseModel):
+    column_name: str
+    rule_type: str   # 'Null Check' | 'Unique Check' (or their _CHECK variants)
+
+class SampleFailedRecordsRequest(BaseModel):
+    platform: str
+    table_name: str
+    failed_checks: list[FailedCheckItem]
+    credentials: Optional[Dict[str, Any]] = None
+
+
+@app.post("/api/v1/dashboard/sample_failed_records")
+async def sample_failed_records(request: SampleFailedRecordsRequest):
+    """
+    For each failed DQ check (Unique / Null), run a live Snowflake query that
+    returns up to 5 sample rows that caused the failure.
+
+    Response shape:
+    {
+      "status": "success",
+      "groups": [
+        {
+          "column_name": "FIRST_NAME",
+          "rule_type": "Unique Check",
+          "columns": ["ATTRIBUTE_NAME", "DQ_CHECK", "ACTOR_ID", "FIRST_NAME", ...],
+          "rows": [["FIRST_NAME", "Unique Check", 1, "NICK", ...], ...]
+        },
+        ...
+      ]
+    }
+    """
+    groups = []
+
+    if request.platform != "snowflake":
+        # Databricks support can be added later
+        return {"status": "success", "groups": []}
+
+    creds = request.credentials or {}
+    try:
+        snowflake_engine.connect(creds)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Snowflake connection failed: {e}")
+
+    try:
+        for check in request.failed_checks:
+            col = check.column_name
+            rule = check.rule_type.upper()
+
+            if "UNIQUE" in rule:
+                sql = f"""
+                    SELECT
+                        '{col}' AS ATTRIBUTE_NAME,
+                        'Unique Check' AS DQ_CHECK,
+                        a.*
+                    FROM {request.table_name} a
+                    JOIN (
+                        SELECT {col}
+                        FROM {request.table_name}
+                        GROUP BY {col}
+                        HAVING COUNT(*) > 1
+                    ) d
+                    ON a.{col} = d.{col}
+                    ORDER BY a.{col}
+                    LIMIT 5
+                """
+            elif "NULL" in rule:
+                sql = f"""
+                    SELECT
+                        '{col}' AS ATTRIBUTE_NAME,
+                        'Null Check' AS DQ_CHECK,
+                        *
+                    FROM {request.table_name}
+                    WHERE {col} IS NULL
+                    LIMIT 5
+                """
+            else:
+                # Skip unsupported rule types for now
+                continue
+
+            try:
+                raw_rows = snowflake_engine.execute_query(sql)
+                if not raw_rows:
+                    continue
+                # DictCursor returns list of dicts – normalise to lower-case keys
+                columns = [k.lower() for k in raw_rows[0].keys()]
+                rows = [[str(row[k]) for k in raw_rows[0].keys()] for row in raw_rows]
+                groups.append({
+                    "column_name": col,
+                    "rule_type": "Unique Check" if "UNIQUE" in rule else "Null Check",
+                    "columns": columns,
+                    "rows": rows
+                })
+            except Exception as e:
+                print(f"Sample query failed for {col} / {rule}: {e}")
+                # Continue with remaining checks even if one fails
+                continue
+    finally:
+        snowflake_engine.disconnect()
+
+    return {"status": "success", "groups": groups}
 
 @app.post("/api/v1/dashboard/executions")
 async def log_dashboard_executions(request: ExecutionLogRequest):
