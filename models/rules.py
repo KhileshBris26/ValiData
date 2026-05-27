@@ -83,6 +83,19 @@ class ExecutionLogRequest(BaseModel):
     platform: str
     table_name: str
     executions: list[ExecutionLogItem]
+    executed_by: Optional[str] = "User"
+
+class ScheduleCreateUpdate(BaseModel):
+    platform: str
+    database_name: str
+    schema_name: str
+    table_name: str
+    run_type: str
+    frequency: str
+    custom_config: Optional[Dict[str, Any]] = None
+    start_time: str
+    timezone: Optional[str] = "UTC"
+    enabled: bool
 
 class AnomalyResolveRequest(BaseModel):
     id: int
@@ -96,3 +109,4 @@ class InvalidRecord(BaseModel):
 
 class InvalidRecordsResponse(BaseModel):
     records: list[InvalidRecord]
+

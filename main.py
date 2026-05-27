@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from models.rules import RuleExecutionRequest, ProfileRequest, AISuggestionRequest, MetadataRequest, LineageRequest, AnalyticsRequest, CatalogRequest, TableSummaryRequest, AIChatRequest, RuleSyncRequest, ExecutionLogRequest, AnomalyResolveRequest
+from models.rules import RuleExecutionRequest, ProfileRequest, AISuggestionRequest, MetadataRequest, LineageRequest, AnalyticsRequest, CatalogRequest, TableSummaryRequest, AIChatRequest, RuleSyncRequest, ExecutionLogRequest, AnomalyResolveRequest, ScheduleCreateUpdate
 from core.query_generator import QueryGenerator
 from core.lineage_engine import LineageEngine
 from core.usage_analyzer import UsageAnalyzer
@@ -114,6 +114,36 @@ def init_db():
                     executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS schedules (
+                    id SERIAL PRIMARY KEY,
+                    platform TEXT,
+                    database_name TEXT,
+                    schema_name TEXT,
+                    table_name TEXT,
+                    run_type TEXT,
+                    frequency TEXT,
+                    custom_config TEXT,
+                    start_time TEXT,
+                    timezone TEXT,
+                    status TEXT DEFAULT 'Active',
+                    last_run_time TEXT,
+                    next_run_time TEXT,
+                    enabled INTEGER DEFAULT 0,
+                    last_error TEXT
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS column_profiles (
+                    platform TEXT,
+                    database_name TEXT,
+                    schema_name TEXT,
+                    table_name TEXT,
+                    profile_data TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (platform, database_name, schema_name, table_name)
+                )
+            """)
         else:
             # SQLite syntax
             cursor.execute("""
@@ -175,6 +205,36 @@ def init_db():
                     executed_by TEXT DEFAULT 'User',
                     duration_ms INTEGER DEFAULT 0,
                     executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS schedules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    platform TEXT,
+                    database_name TEXT,
+                    schema_name TEXT,
+                    table_name TEXT,
+                    run_type TEXT,
+                    frequency TEXT,
+                    custom_config TEXT,
+                    start_time TEXT,
+                    timezone TEXT,
+                    status TEXT DEFAULT 'Active',
+                    last_run_time TEXT,
+                    next_run_time TEXT,
+                    enabled INTEGER DEFAULT 0,
+                    last_error TEXT
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS column_profiles (
+                    platform TEXT,
+                    database_name TEXT,
+                    schema_name TEXT,
+                    table_name TEXT,
+                    profile_data TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (platform, database_name, schema_name, table_name)
                 )
             """)
         
@@ -879,7 +939,7 @@ async def log_dashboard_executions(request: ExecutionLogRequest):
             cursor.execute(history_query, (
                 request.table_name, run_date, run_time, dq_score,
                 total_rows_agg, passed_rows_agg, failed_rows_agg,
-                run_status, 'User', duration_ms
+                run_status, request.executed_by or 'User', duration_ms
             ))
 
         conn.commit()
@@ -930,6 +990,699 @@ async def get_run_history(table_name: str):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
+# ──────────────────────────────────────────────────────────────────────
+# AUTOMATED SCHEDULING SYSTEM
+# ──────────────────────────────────────────────────────────────────────
+
+import datetime
+import json
+import traceback
+import threading
+import time
+
+def parse_iso_or_time(time_str: str) -> datetime.time:
+    try:
+        if "T" in time_str:
+            dt = datetime.datetime.fromisoformat(time_str.replace("Z", ""))
+            return dt.time()
+        parts = time_str.split(":")
+        h = int(parts[0])
+        m = int(parts[1]) if len(parts) > 1 else 0
+        s = int(parts[2]) if len(parts) > 2 else 0
+        return datetime.time(h, m, s)
+    except:
+        return datetime.time(0, 0, 0)
+
+def calculate_next_run_time(frequency: str, custom_config_str: Optional[str], start_time_str: str, timezone_str: Optional[str] = "UTC", last_run_dt: Optional[datetime.datetime] = None) -> Optional[datetime.datetime]:
+    current_utc = datetime.datetime.utcnow()
+    
+    if frequency in ("Disabled", "Not Scheduled", ""):
+        return None
+        
+    presets = {
+        "5 minutes": datetime.timedelta(minutes=5),
+        "10 minutes": datetime.timedelta(minutes=10),
+        "20 minutes": datetime.timedelta(minutes=20),
+        "30 minutes": datetime.timedelta(minutes=30),
+        "1 hour": datetime.timedelta(hours=1),
+        "4 hours": datetime.timedelta(hours=4),
+        "6 hours": datetime.timedelta(hours=6),
+        "12 hours": datetime.timedelta(hours=12),
+        "24 hours": datetime.timedelta(hours=24)
+    }
+    
+    if frequency in presets:
+        delta = presets[frequency]
+        if last_run_dt:
+            return last_run_dt + delta
+        else:
+            try:
+                start_dt = datetime.datetime.fromisoformat(start_time_str.replace("Z", ""))
+                if start_dt > current_utc:
+                    return start_dt
+            except:
+                pass
+            return current_utc + delta
+
+    if frequency == "Other" and custom_config_str:
+        try:
+            config = json.loads(custom_config_str)
+            unit = config.get("type")
+            val = int(config.get("value", 1))
+            
+            if unit == "minutes":
+                base = last_run_dt or current_utc
+                return base + datetime.timedelta(minutes=val)
+            elif unit == "hours":
+                base = last_run_dt or current_utc
+                return base + datetime.timedelta(hours=val)
+            elif unit == "days":
+                base = last_run_dt or current_utc
+                return base + datetime.timedelta(days=val)
+            
+            elif unit == "weekly":
+                target_days = config.get("days", [])
+                interval = int(config.get("interval", 1))
+                t = parse_iso_or_time(start_time_str)
+                start_search = last_run_dt + datetime.timedelta(minutes=1) if last_run_dt else current_utc
+                
+                day_map = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6}
+                target_wdays = [day_map[d.lower()] for d in target_days if d.lower() in day_map]
+                if not target_wdays:
+                    target_wdays = [0]
+                
+                for i in range(1, 30):
+                    candidate = start_search + datetime.timedelta(days=i)
+                    if candidate.weekday() in target_wdays:
+                        next_dt = datetime.datetime.combine(candidate.date(), t)
+                        if next_dt > current_utc:
+                            return next_dt
+                return current_utc + datetime.timedelta(days=7 * interval)
+                
+            elif unit == "monthly":
+                mode = config.get("mode", "date")
+                t = parse_iso_or_time(start_time_str)
+                start_search = last_run_dt + datetime.timedelta(minutes=1) if last_run_dt else current_utc
+                
+                if mode == "date":
+                    day_of_month = int(config.get("date", 1))
+                    for m_offset in range(12):
+                        year = start_search.year
+                        month = start_search.month + m_offset
+                        while month > 12:
+                            month -= 12
+                            year += 1
+                        try:
+                            candidate_date = datetime.date(year, month, day_of_month)
+                            next_dt = datetime.datetime.combine(candidate_date, t)
+                            if next_dt > current_utc:
+                                return next_dt
+                        except ValueError:
+                            pass
+                else:
+                    index = int(config.get("index", 1))
+                    day_name = config.get("day", "Monday")
+                    day_map = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6}
+                    target_wday = day_map.get(day_name.lower(), 0)
+                    
+                    for m_offset in range(12):
+                        year = start_search.year
+                        month = start_search.month + m_offset
+                        while month > 12:
+                            month -= 12
+                            year += 1
+                            
+                        matching_dates = []
+                        for d in range(1, 32):
+                            try:
+                                dt = datetime.date(year, month, d)
+                                if dt.weekday() == target_wday:
+                                    matching_dates.append(dt)
+                            except ValueError:
+                                break
+                        
+                        if matching_dates:
+                            if index == -1:
+                                target_date = matching_dates[-1]
+                            else:
+                                idx = min(index - 1, len(matching_dates) - 1)
+                                target_date = matching_dates[idx]
+                                
+                            next_dt = datetime.datetime.combine(target_date, t)
+                            if next_dt > current_utc:
+                                return next_dt
+            
+        except Exception as e:
+            print(f"Error calculating custom config scheduling: {e}")
+            
+    return current_utc + datetime.timedelta(days=1)
+
+
+def execute_schedule_job(schedule_id: int):
+    conn, cursor = get_db_connection()
+    try:
+        query = "SELECT * FROM schedules WHERE id = %s" if DATABASE_URL else "SELECT * FROM schedules WHERE id = ?"
+        cursor.execute(query, (schedule_id,))
+        schedule = cursor.fetchone()
+        if not schedule or not schedule["enabled"]:
+            return
+            
+        platform = schedule["platform"]
+        db_name = schedule["database_name"]
+        sch_name = schedule["schema_name"]
+        tbl_name = schedule["table_name"]
+        run_type = schedule["run_type"]
+        frequency = schedule["frequency"]
+        custom_config = schedule["custom_config"]
+        start_time = schedule["start_time"]
+        timezone = schedule["timezone"]
+        
+        engine = snowflake_engine if platform == "snowflake" else databricks_engine
+        
+    except Exception as e:
+        print(f"Error initializing job {schedule_id}: {e}")
+        return
+    finally:
+        conn.close()
+        
+    run_start = datetime.datetime.utcnow()
+    
+    try:
+        # Connect using env credentials
+        engine.connect(None)
+        
+        if run_type == "profile":
+            sql_query = QueryGenerator.generate_metadata_sql(platform, 'columns', db_name, sch_name, tbl_name)
+            result = engine.execute_query(sql_query)
+            
+            columns = []
+            if result:
+                if platform == "snowflake":
+                    for row in result:
+                        val = row.get('column_name') or row.get('COLUMN_NAME')
+                        if val: columns.append(val)
+                elif platform == "databricks":
+                    for row in result:
+                        val = row.get('col_name') or row.get('COL_NAME')
+                        if val: columns.append(val)
+            
+            col_profiles = {}
+            for col in columns:
+                if not col:
+                    continue
+                prof_query = QueryGenerator.generate_profiling_sql(platform, db_name, sch_name, tbl_name, col)
+                res = engine.execute_query(prof_query)
+                if res:
+                    raw = res[0]
+                    normalized = {k.lower(): v for k, v in raw.items()} if raw else {}
+                    col_profiles[col] = normalized
+            
+            count_query = f"SELECT COUNT(*) as row_count FROM {db_name}.{sch_name}.{tbl_name}"
+            count_res = engine.execute_query(count_query)
+            row_count = count_res[0].get('row_count') or count_res[0].get('ROW_COUNT') or 0
+            
+            conn_db, cursor_db = get_db_connection()
+            try:
+                profiles_json = json.dumps(col_profiles)
+                if DATABASE_URL:
+                    upsert_query = """
+                        INSERT INTO column_profiles (platform, database_name, schema_name, table_name, profile_data, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                        ON CONFLICT (platform, database_name, schema_name, table_name)
+                        DO UPDATE SET profile_data = EXCLUDED.profile_data, updated_at = CURRENT_TIMESTAMP
+                    """
+                else:
+                    upsert_query = """
+                        INSERT OR REPLACE INTO column_profiles (platform, database_name, schema_name, table_name, profile_data, updated_at)
+                        VALUES (?, ?, ?, ?, ?, datetime('now'))
+                    """
+                cursor_db.execute(upsert_query, (platform, db_name, sch_name, tbl_name, profiles_json))
+                
+                run_end = datetime.datetime.utcnow()
+                duration_ms = int((run_end - run_start).total_seconds() * 1000)
+                run_date = run_end.strftime('%Y-%m-%d')
+                run_time = run_end.strftime('%H:%M:%S UTC')
+                
+                history_query = """
+                    INSERT INTO dq_run_history
+                        (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """ if DATABASE_URL else """
+                    INSERT INTO dq_run_history
+                        (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """
+                cursor_db.execute(history_query, (
+                    tbl_name, run_date, run_time, 100.0,
+                    row_count, row_count, 0,
+                    'Passed', 'Scheduled', duration_ms
+                ))
+                conn_db.commit()
+            finally:
+                conn_db.close()
+                
+        elif run_type == "evaluate":
+            conn_db, cursor_db = get_db_connection()
+            rules = []
+            try:
+                query_rules = """
+                    SELECT * FROM rules 
+                    WHERE database_name = %s AND schema_name = %s AND table_name = %s AND status = 'Active'
+                """ if DATABASE_URL else """
+                    SELECT * FROM rules 
+                    WHERE database_name = ? AND schema_name = ? AND table_name = ? AND status = 'Active'
+                """
+                cursor_db.execute(query_rules, (db_name, sch_name, tbl_name))
+                rules = [dict(r) for r in cursor_db.fetchall()]
+            finally:
+                conn_db.close()
+                
+            executions = []
+            for rule in rules:
+                params = json.loads(rule["rule_params"]) if isinstance(rule["rule_params"], str) else (rule["rule_params"] or {})
+                sql = QueryGenerator.generate_dq_rule_sql(
+                    platform=platform,
+                    table=f"{db_name}.{sch_name}.{tbl_name}",
+                    column=rule["column_name"],
+                    rule_type=rule["rule_type"],
+                    rule_params=params
+                )
+                res = engine.execute_query(sql)
+                if res and len(res) > 0:
+                    first_row = res[0]
+                    total_rows = first_row.get('TOTAL_ROWS') or first_row.get('total_rows') or 0
+                    failed_rows = first_row.get('FAILED_ROWS') or first_row.get('failed_rows') or 0
+                    status = 'pass' if failed_rows == 0 else 'fail'
+                    executions.append({
+                        "column_name": rule["column_name"],
+                        "rule_type": rule["rule_type"],
+                        "total_rows": total_rows,
+                        "failed_rows": failed_rows,
+                        "status": status
+                    })
+            
+            if executions:
+                conn_db, cursor_db = get_db_connection()
+                try:
+                    executions_data = []
+                    for ex in executions:
+                        executions_data.append((
+                            platform, tbl_name, ex["column_name"], ex["rule_type"], ex["total_rows"], ex["failed_rows"], ex["status"]
+                        ))
+                        
+                        if ex["failed_rows"] > 0:
+                            msg_text = f"{tbl_name}: {ex['column_name']} column failed {ex['rule_type']}. {ex['failed_rows']} failed rows."
+                            title_text = f"{ex['rule_type']} Failure"
+                            if ex['rule_type'] in ('Null Check', 'NULL_CHECK'):
+                                title_text = "Null Rate Violation"
+                                msg_text = f"{tbl_name}: {ex['column_name']} column showed a sudden jump in nulls ({ex['failed_rows']} records)."
+                            elif ex['rule_type'] in ('Unique Check', 'UNIQUE_CHECK'):
+                                title_text = "Uniqueness Violation"
+                                msg_text = f"{tbl_name}: {ex['column_name']} column has duplicates."
+                                
+                            check_anomaly = """
+                                SELECT id FROM anomalies WHERE title = %s AND msg = %s AND status = 'Active'
+                            """ if DATABASE_URL else """
+                                SELECT id FROM anomalies WHERE title = ? AND msg = ? AND status = 'Active'
+                            """
+                            cursor_db.execute(check_anomaly, (title_text, msg_text))
+                            if not cursor_db.fetchone():
+                                cursor_db.execute(
+                                    "INSERT INTO anomalies (title, msg, type, status) VALUES (%s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO anomalies (title, msg, type, status) VALUES (?, ?, ?, ?)",
+                                    (title_text, msg_text, "null" if "null" in title_text.lower() else "uniqueness", "Active")
+                                )
+                    
+                    execs_query = """
+                        INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """ if DATABASE_URL else """
+                        INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """
+                    cursor_db.executemany(execs_query, executions_data)
+                    
+                    total_rows_agg = max((ex["total_rows"] for ex in executions), default=0)
+                    failed_rows_agg = sum(ex["failed_rows"] for ex in executions)
+                    passed_rows_agg = total_rows_agg - failed_rows_agg
+                    scores = [
+                        round((1 - ex["failed_rows"] / ex["total_rows"]) * 100, 1) if ex["total_rows"] > 0 else 100
+                        for ex in executions
+                    ]
+                    dq_score = round(sum(scores) / len(scores), 1) if scores else 100
+                    
+                    if failed_rows_agg == 0:
+                        run_status = 'Passed'
+                    elif passed_rows_agg == 0:
+                        run_status = 'Failed'
+                    else:
+                        run_status = 'Partially Passed'
+                        
+                    run_end = datetime.datetime.utcnow()
+                    duration_ms = int((run_end - run_start).total_seconds() * 1000)
+                    run_date = run_end.strftime('%Y-%m-%d')
+                    run_time = run_end.strftime('%H:%M:%S UTC')
+                    
+                    history_query = """
+                        INSERT INTO dq_run_history
+                            (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """ if DATABASE_URL else """
+                        INSERT INTO dq_run_history
+                            (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """
+                    cursor_db.execute(history_query, (
+                        tbl_name, run_date, run_time, dq_score,
+                        total_rows_agg, passed_rows_agg, failed_rows_agg,
+                        run_status, 'Scheduled', duration_ms
+                    ))
+                    conn_db.commit()
+                finally:
+                    conn_db.close()
+                    
+        conn_db, cursor_db = get_db_connection()
+        try:
+            next_run = calculate_next_run_time(frequency, custom_config, start_time, timezone, run_start)
+            next_run_str = next_run.isoformat() if next_run else None
+            
+            update_query = """
+                UPDATE schedules
+                SET status = 'Active', last_run_time = %s, next_run_time = %s, last_error = NULL
+                WHERE id = %s
+            """ if DATABASE_URL else """
+                UPDATE schedules
+                SET status = 'Active', last_run_time = ?, next_run_time = ?, last_error = NULL
+                WHERE id = ?
+            """
+            cursor_db.execute(update_query, (run_start.isoformat(), next_run_str, schedule_id))
+            conn_db.commit()
+        finally:
+            conn_db.close()
+            
+    except Exception as e:
+        err_msg = f"{str(e)}\n{traceback.format_exc()}"
+        print(f"Scheduled run failed for schedule {schedule_id}: {err_msg}")
+        
+        conn_db, cursor_db = get_db_connection()
+        try:
+            next_run = calculate_next_run_time(frequency, custom_config, start_time, timezone, run_start)
+            next_run_str = next_run.isoformat() if next_run else None
+            
+            update_query = """
+                UPDATE schedules
+                SET status = 'Failed', last_run_time = %s, next_run_time = %s, last_error = %s
+                WHERE id = %s
+            """ if DATABASE_URL else """
+                UPDATE schedules
+                SET status = 'Failed', last_run_time = ?, next_run_time = ?, last_error = ?
+                WHERE id = ?
+            """
+            cursor_db.execute(update_query, (run_start.isoformat(), next_run_str, str(e), schedule_id))
+            
+            run_end = datetime.datetime.utcnow()
+            duration_ms = int((run_end - run_start).total_seconds() * 1000)
+            run_date = run_end.strftime('%Y-%m-%d')
+            run_time = run_end.strftime('%H:%M:%S UTC')
+            
+            history_query = """
+                INSERT INTO dq_run_history
+                    (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """ if DATABASE_URL else """
+                INSERT INTO dq_run_history
+                    (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            cursor_db.execute(history_query, (
+                tbl_name, run_date, run_time, 0.0,
+                0, 0, 0,
+                'Failed', 'Scheduled', duration_ms
+            ))
+            
+            anom_title = "Scheduled Run Failure"
+            anom_msg = f"Scheduled {run_type} run failed for table {tbl_name}. Error: {str(e)}"
+            insert_anom = """
+                INSERT INTO anomalies (title, msg, type, status) VALUES (%s, %s, %s, %s)
+            """ if DATABASE_URL else """
+                INSERT INTO anomalies (title, msg, type, status) VALUES (?, ?, ?, ?)
+            """
+            cursor_db.execute(insert_anom, (anom_title, anom_msg, "failure", "Active"))
+            
+            conn_db.commit()
+        finally:
+            conn_db.close()
+    finally:
+        try:
+            engine.disconnect()
+        except:
+            pass
+
+
+def check_and_trigger_schedules():
+    import datetime
+    current_utc = datetime.datetime.utcnow().isoformat()
+    conn, cursor = get_db_connection()
+    due_schedules = []
+    try:
+        query = """
+            SELECT id FROM schedules 
+            WHERE enabled = 1 AND next_run_time IS NOT NULL AND next_run_time <= %s
+        """ if DATABASE_URL else """
+            SELECT id FROM schedules 
+            WHERE enabled = 1 AND next_run_time IS NOT NULL AND next_run_time <= ?
+        """
+        cursor.execute(query, (current_utc,))
+        due_schedules = [row["id"] for row in cursor.fetchall()]
+    except Exception as e:
+        print(f"Error checking due schedules: {e}")
+    finally:
+        conn.close()
+        
+    for schedule_id in due_schedules:
+        t = threading.Thread(target=execute_schedule_job, args=(schedule_id,), daemon=True)
+        t.start()
+
+
+def start_scheduler():
+    def loop():
+        time.sleep(5)
+        while True:
+            try:
+                check_and_trigger_schedules()
+            except Exception as e:
+                print(f"Background scheduler error: {e}")
+            time.sleep(10)
+            
+    thread = threading.Thread(target=loop, daemon=True)
+    thread.start()
+    print("Background scheduler thread started successfully.")
+
+
+@app.get("/api/v1/dashboard/schedules")
+async def get_schedules(table_name: str, platform: str = "snowflake", database_name: str = "UNICORN", schema_name: str = "DEV"):
+    conn, cursor = get_db_connection()
+    try:
+        query = """
+            SELECT * FROM schedules 
+            WHERE database_name = %s AND schema_name = %s AND table_name = %s
+        """ if DATABASE_URL else """
+            SELECT * FROM schedules 
+            WHERE database_name = ? AND schema_name = ? AND table_name = ?
+        """
+        cursor.execute(query, (database_name, schema_name, table_name))
+        rows = cursor.fetchall()
+        schedules = [dict(row) for row in rows]
+        
+        types_present = [s["run_type"] for s in schedules]
+        for run_type in ["profile", "evaluate"]:
+            if run_type not in types_present:
+                insert_query = """
+                    INSERT INTO schedules 
+                        (platform, database_name, schema_name, table_name, run_type, frequency, custom_config, start_time, timezone, status, enabled)
+                    VALUES (%s, %s, %s, %s, %s, %s, NULL, %s, %s, %s, 0)
+                """ if DATABASE_URL else """
+                    INSERT INTO schedules 
+                        (platform, database_name, schema_name, table_name, run_type, frequency, custom_config, start_time, timezone, status, enabled)
+                    VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0)
+                """
+                start_time_str = datetime.datetime.utcnow().isoformat()
+                cursor.execute(insert_query, (
+                    platform, database_name, schema_name, table_name, run_type, "Disabled", start_time_str, "UTC", "Active"
+                ))
+                conn.commit()
+                
+        cursor.execute(query, (database_name, schema_name, table_name))
+        rows = cursor.fetchall()
+        schedules = [dict(row) for row in rows]
+        
+        return {"status": "success", "schedules": schedules}
+    except Exception as e:
+        print(f"Error fetching schedules: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.post("/api/v1/dashboard/schedules")
+async def save_schedule(request: ScheduleCreateUpdate):
+    conn, cursor = get_db_connection()
+    try:
+        query_check = """
+            SELECT id, last_run_time FROM schedules 
+            WHERE database_name = %s AND schema_name = %s AND table_name = %s AND run_type = %s
+        """ if DATABASE_URL else """
+            SELECT id, last_run_time FROM schedules 
+            WHERE database_name = ? AND schema_name = ? AND table_name = ? AND run_type = ?
+        """
+        cursor.execute(query_check, (request.database_name, request.schema_name, request.table_name, request.run_type))
+        row = cursor.fetchone()
+        
+        custom_config_str = json.dumps(request.custom_config) if request.custom_config else None
+        
+        next_run_str = None
+        if request.enabled and request.frequency not in ("Disabled", "Not Scheduled", ""):
+            last_run = None
+            if row and row["last_run_time"]:
+                try:
+                    last_run = datetime.datetime.fromisoformat(row["last_run_time"])
+                except:
+                    pass
+            next_run = calculate_next_run_time(
+                request.frequency, custom_config_str, request.start_time, request.timezone, last_run
+            )
+            if next_run:
+                next_run_str = next_run.isoformat()
+        
+        if row:
+            update_query = """
+                UPDATE schedules
+                SET platform = %s, frequency = %s, custom_config = %s, start_time = %s, timezone = %s, enabled = %s, next_run_time = %s, status = 'Active', last_error = NULL
+                WHERE id = %s
+            """ if DATABASE_URL else """
+                UPDATE schedules
+                SET platform = ?, frequency = ?, custom_config = ?, start_time = ?, timezone = ?, enabled = ?, next_run_time = ?, status = 'Active', last_error = NULL
+                WHERE id = ?
+            """
+            cursor.execute(update_query, (
+                request.platform, request.frequency, custom_config_str, request.start_time, request.timezone,
+                1 if request.enabled else 0, next_run_str, row["id"]
+            ))
+        else:
+            insert_query = """
+                INSERT INTO schedules 
+                    (platform, database_name, schema_name, table_name, run_type, frequency, custom_config, start_time, timezone, status, enabled, next_run_time)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'Active', %s, %s)
+            """ if DATABASE_URL else """
+                INSERT INTO schedules 
+                    (platform, database_name, schema_name, table_name, run_type, frequency, custom_config, start_time, timezone, status, enabled, next_run_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?, ?)
+            """
+            cursor.execute(insert_query, (
+                request.platform, request.database_name, request.schema_name, request.table_name, request.run_type,
+                request.frequency, custom_config_str, request.start_time, request.timezone,
+                1 if request.enabled else 0, next_run_str
+            ))
+            
+        conn.commit()
+        return {"status": "success", "message": "Schedule updated successfully"}
+    except Exception as e:
+        print(f"Error saving schedule: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.patch("/api/v1/dashboard/schedules/{schedule_id}")
+async def patch_schedule(schedule_id: int, payload: Dict[str, Any] = Body(...)):
+    conn, cursor = get_db_connection()
+    try:
+        query_select = "SELECT * FROM schedules WHERE id = %s" if DATABASE_URL else "SELECT * FROM schedules WHERE id = ?"
+        cursor.execute(query_select, (schedule_id,))
+        schedule = cursor.fetchone()
+        if not schedule:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+            
+        fields_to_update = []
+        params = []
+        for key in ["enabled", "status"]:
+            if key in payload:
+                val = payload[key]
+                if key == "enabled":
+                    val = 1 if val else 0
+                fields_to_update.append(f"{key} = %s" if DATABASE_URL else f"{key} = ?")
+                params.append(val)
+                
+        if "enabled" in payload:
+            enabled = payload["enabled"]
+            if enabled and schedule["frequency"] not in ("Disabled", "Not Scheduled", ""):
+                last_run = None
+                if schedule["last_run_time"]:
+                    try:
+                        last_run = datetime.datetime.fromisoformat(schedule["last_run_time"])
+                    except:
+                        pass
+                next_run = calculate_next_run_time(
+                    schedule["frequency"], schedule["custom_config"], schedule["start_time"], schedule["timezone"], last_run
+                )
+                next_run_str = next_run.isoformat() if next_run else None
+            else:
+                next_run_str = None
+                
+            fields_to_update.append("next_run_time = %s" if DATABASE_URL else "next_run_time = ?")
+            params.append(next_run_str)
+            
+            fields_to_update.append("last_error = NULL")
+            fields_to_update.append("status = 'Active'")
+            
+        if not fields_to_update:
+            return {"status": "success", "message": "No changes made"}
+            
+        query_update = f"UPDATE schedules SET {', '.join(fields_to_update)} WHERE id = " + ("%s" if DATABASE_URL else "?")
+        params.append(schedule_id)
+        
+        cursor.execute(query_update, tuple(params))
+        conn.commit()
+        return {"status": "success", "message": "Schedule patched successfully"}
+    except Exception as e:
+        print(f"Error patching schedule: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.get("/api/v1/dashboard/column_profiles")
+async def get_column_profiles(platform: str, database_name: str, schema_name: str, table_name: str):
+    conn, cursor = get_db_connection()
+    try:
+        query = """
+            SELECT profile_data FROM column_profiles 
+            WHERE platform = %s AND database_name = %s AND schema_name = %s AND table_name = %s
+        """ if DATABASE_URL else """
+            SELECT profile_data FROM column_profiles 
+            WHERE platform = ? AND database_name = ? AND schema_name = ? AND table_name = ?
+        """
+        cursor.execute(query, (platform, database_name, schema_name, table_name))
+        row = cursor.fetchone()
+        if row:
+            profile_data = json.loads(row["profile_data"])
+            return {"status": "success", "profile": profile_data}
+        return {"status": "success", "profile": None}
+    except Exception as e:
+        print(f"Error fetching cached column profiles: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.post("/api/v1/dashboard/schedules/{schedule_id}/run")
+async def trigger_schedule_now(schedule_id: int):
+    t = threading.Thread(target=execute_schedule_job, args=(schedule_id,), daemon=True)
+    t.start()
+    return {"status": "success", "message": "Scheduled run triggered in background"}
+
+
+# Start background scheduler
+start_scheduler()
 
 
 @app.get("/health")

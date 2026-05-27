@@ -82,6 +82,13 @@ const DataQualityDetail: React.FC = () => {
   const [runHistory, setRunHistory] = useState<any[]>([]);
   const [runHistoryLoading, setRunHistoryLoading] = useState(false);
 
+  // Scheduling state
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [loadingSchedules, setLoadingSchedules] = useState(false);
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const [activeScheduleForModal, setActiveScheduleForModal] = useState<any | null>(null);
+  const [savingSchedule, setSavingSchedule] = useState(false);
+
   // Snapshot results state
   const [evaluatedResults, setEvaluatedResults] = useState<{
     table?: string;
@@ -121,7 +128,155 @@ const DataQualityDetail: React.FC = () => {
         setColProfiles({});
       }
     }
-  }, [table]);
+  // Local state for Custom Scheduling Modal
+  const [customUnit, setCustomUnit] = useState('minutes');
+  const [customValue, setCustomValue] = useState(15);
+  const [customWeeklyDays, setCustomWeeklyDays] = useState<string[]>([]);
+  const [customMonthlyMode, setCustomMonthlyMode] = useState('date');
+  const [customMonthlyDate, setCustomMonthlyDate] = useState(1);
+  const [customMonthlyIndex, setCustomMonthlyIndex] = useState(1);
+  const [customMonthlyDay, setCustomMonthlyDay] = useState('Monday');
+  const [customStartTime, setCustomStartTime] = useState('12:00');
+  const [customTimezone, setCustomTimezone] = useState('UTC');
+
+  const fetchSchedules = async () => {
+    setLoadingSchedules(true);
+    try {
+      const res = await axios.get(
+        `${API_BASE}/dashboard/schedules?table_name=${encodeURIComponent(table || '')}&platform=${encodeURIComponent(platform)}&database_name=${encodeURIComponent(database || '')}&schema_name=${encodeURIComponent(schema || '')}`
+      );
+      setSchedules(res.data.schedules || []);
+    } catch (e) {
+      console.error("Failed to fetch schedules:", e);
+    } finally {
+      setLoadingSchedules(false);
+    }
+  };
+
+  const handleToggleEnable = async (schedule: any) => {
+    try {
+      const nextEnabled = !schedule.enabled;
+      await axios.patch(`${API_BASE}/dashboard/schedules/${schedule.id}`, {
+        enabled: nextEnabled
+      });
+      fetchSchedules();
+    } catch (e) {
+      console.error("Failed to toggle schedule:", e);
+    }
+  };
+
+  const handleFrequencyChange = async (schedule: any, newFreq: string) => {
+    if (newFreq === 'Other') {
+      setActiveScheduleForModal(schedule);
+      if (schedule.custom_config) {
+        try {
+          const cfg = JSON.parse(schedule.custom_config);
+          setCustomUnit(cfg.type || 'minutes');
+          setCustomValue(cfg.value || 15);
+          setCustomWeeklyDays(cfg.days || []);
+          setCustomMonthlyMode(cfg.mode || 'date');
+          setCustomMonthlyDate(cfg.date || 1);
+          setCustomMonthlyIndex(cfg.index || 1);
+          setCustomMonthlyDay(cfg.day || 'Monday');
+        } catch (err) {}
+      }
+      setCustomStartTime(schedule.start_time ? schedule.start_time.substring(11, 16) : '12:00');
+      setCustomTimezone(schedule.timezone || 'UTC');
+      setShowCustomModal(true);
+    } else {
+      try {
+        const nextEnabled = newFreq !== 'Disabled';
+        await axios.post(`${API_BASE}/dashboard/schedules`, {
+          platform,
+          database_name: database,
+          schema_name: schema,
+          table_name: table,
+          run_type: schedule.run_type,
+          frequency: newFreq,
+          start_time: schedule.start_time || new Date().toISOString(),
+          timezone: schedule.timezone || 'UTC',
+          enabled: nextEnabled
+        });
+        fetchSchedules();
+      } catch (e) {
+        console.error("Failed to change frequency:", e);
+      }
+    }
+  };
+
+  const handleSaveCustomSchedule = async () => {
+    if (!activeScheduleForModal) return;
+    setSavingSchedule(true);
+    try {
+      const config = {
+        type: customUnit,
+        value: customValue,
+        days: customWeeklyDays,
+        mode: customMonthlyMode,
+        date: customMonthlyDate,
+        index: customMonthlyIndex,
+        day: customMonthlyDay,
+        interval: 1
+      };
+      
+      const startDateTime = new Date();
+      const [h, m] = customStartTime.split(':');
+      startDateTime.setHours(parseInt(h) || 12);
+      startDateTime.setMinutes(parseInt(m) || 0);
+      startDateTime.setSeconds(0);
+
+      await axios.post(`${API_BASE}/dashboard/schedules`, {
+        platform,
+        database_name: database,
+        schema_name: schema,
+        table_name: table,
+        run_type: activeScheduleForModal.run_type,
+        frequency: 'Other',
+        custom_config: config,
+        start_time: startDateTime.toISOString(),
+        timezone: customTimezone,
+        enabled: true
+      });
+      setShowCustomModal(false);
+      fetchSchedules();
+    } catch (e) {
+      console.error("Failed to save custom schedule:", e);
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
+  const handleManualRunNow = async (schedule: any) => {
+    try {
+      await axios.post(`${API_BASE}/dashboard/schedules/${schedule.id}/run`);
+      alert("Background run has been triggered immediately!");
+      fetchSchedules();
+    } catch (e) {
+      console.error("Failed to trigger run:", e);
+    }
+  };
+
+  const formatCustomFrequency = (configStr: string) => {
+    try {
+      const config = JSON.parse(configStr);
+      const unit = config.type;
+      const val = config.value;
+      if (unit === 'minutes') return `Every ${val} mins`;
+      if (unit === 'hours') return `Every ${val} hours`;
+      if (unit === 'days') return `Every ${val} days`;
+      if (unit === 'weekly') {
+        const days = config.days || [];
+        return `Weekly on ${days.join(', ')}`;
+      }
+      if (unit === 'monthly') {
+        const mode = config.mode;
+        if (mode === 'date') return `Monthly on the ${config.date}th`;
+        const idxStr = config.index === 1 ? '1st' : config.index === 2 ? '2nd' : config.index === 3 ? '3rd' : config.index === 4 ? '4th' : 'last';
+        return `Monthly on ${idxStr} ${config.day}`;
+      }
+    } catch (e) {}
+    return 'Custom';
+  };
 
   const [error, setError] = useState<string | null>(null);
 
@@ -238,6 +393,25 @@ const DataQualityDetail: React.FC = () => {
       fetchHistory();
     }
   }, [activeTab, table]);
+
+  useEffect(() => {
+    if (activeTab === 'Settings' && table) {
+      const fetchSchedules = async () => {
+        setLoadingSchedules(true);
+        try {
+          const res = await axios.get(
+            `${API_BASE}/dashboard/schedules?table_name=${encodeURIComponent(table)}&platform=${encodeURIComponent(platform)}&database_name=${encodeURIComponent(database || '')}&schema_name=${encodeURIComponent(schema || '')}`
+          );
+          setSchedules(res.data.schedules || []);
+        } catch (e) {
+          console.error("Failed to fetch schedules:", e);
+        } finally {
+          setLoadingSchedules(false);
+        }
+      };
+      fetchSchedules();
+    }
+  }, [activeTab, table, database, schema, platform]);
 
   const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 0 : parseInt(rowCount.toString().replace(/,/g, '')) || 0);
 
@@ -426,6 +600,17 @@ const DataQualityDetail: React.FC = () => {
   // Standalone function for fetching profiles - can be called manually
   const fetchProfiles = async (columns: typeof dynamicColumns) => {
     if (columns.length === 0) return;
+
+    try {
+      const cacheRes = await axios.get(`${API_BASE}/dashboard/column_profiles?platform=${encodeURIComponent(platform)}&database_name=${encodeURIComponent(database || '')}&schema_name=${encodeURIComponent(schema || '')}&table_name=${encodeURIComponent(table || '')}`);
+      if (cacheRes.data && cacheRes.data.profile) {
+        setColProfiles(cacheRes.data.profile);
+        return cacheRes.data.profile;
+      }
+    } catch (cacheErr) {
+      console.warn("Failed to fetch cached profiles, falling back to live", cacheErr);
+    }
+
     const saved = localStorage.getItem('robin_credentials');
     let credentials = null;
     if (saved) credentials = JSON.parse(saved)[platform];
@@ -1060,7 +1245,199 @@ const DataQualityDetail: React.FC = () => {
               </div>
             </div>
           ) : activeTab === 'Settings' ? (
-            <div style={{ padding: '24px' }}><h3>Monitor Settings</h3><p>Configure monitor properties here.</p></div>
+            <div style={{ padding: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: 0 }}>Automated Run Scheduling</h3>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Configure background task schedules</span>
+              </div>
+              <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>
+                Set up recurring background profiling and rule evaluations for this table. Custom rules must be active to trigger evaluate runs.
+              </p>
+
+              {loadingSchedules ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '32px 0', color: '#6366f1' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}>
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                  </svg>
+                  <span style={{ fontSize: '14px' }}>Loading scheduling properties...</span>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  {/* Alert banner for failed runs */}
+                  {schedules.some(s => s.status === 'Failed') && (
+                    <div style={{
+                      display: 'flex', gap: '12px', padding: '16px', borderRadius: '10px',
+                      background: '#fff5f5', border: '1px solid #feb2b2', color: '#c53030',
+                      boxShadow: '0 2px 8px rgba(229, 62, 62, 0.05)'
+                    }}>
+                      <AlertCircle size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <div>
+                        <strong style={{ fontSize: '14px', display: 'block', marginBottom: '4px' }}>Scheduled Execution Alert</strong>
+                        {schedules.map(s => s.status === 'Failed' && (
+                          <div key={s.id} style={{ fontSize: '13px', marginBottom: '6px' }}>
+                            • The scheduled <strong>{s.run_type}</strong> run failed for table <code>{s.table_name}</code>.
+                            {s.last_error && <span style={{ display: 'block', fontSize: '12px', color: '#9b2c2c', fontStyle: 'italic', marginTop: '2px', background: 'rgba(0,0,0,0.03)', padding: '4px 8px', borderRadius: '4px' }}>Error: {s.last_error}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                          <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Table Name</th>
+                          <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Run Type</th>
+                          <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Run Frequency</th>
+                          <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Last Run Time</th>
+                          <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Next Scheduled Run</th>
+                          <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 600, color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Status</th>
+                          <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600, color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', width: '90px' }}>Enabled</th>
+                          <th style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 600, color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', width: '120px' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {schedules.map((schedule) => {
+                          const freqVal = schedule.frequency;
+                          const showFrequencyLabel = freqVal === 'Other' ? formatCustomFrequency(schedule.custom_config) : freqVal;
+                          
+                          let statusText = 'Paused';
+                          let statusColor = '#94a3b8';
+                          let statusBg = '#f1f5f9';
+                          if (schedule.enabled) {
+                            if (schedule.status === 'Failed') {
+                              statusText = 'Failed';
+                              statusColor = '#dc2626';
+                              statusBg = '#fef2f2';
+                            } else {
+                              statusText = 'Active';
+                              statusColor = '#16a34a';
+                              statusBg = '#f0fdf4';
+                            }
+                          }
+
+                          return (
+                            <tr key={schedule.id} style={{ borderBottom: '1px solid #f1f5f9', background: '#ffffff' }}>
+                              {/* 1. Table Name (non-editable) */}
+                              <td style={{ padding: '14px 16px', fontWeight: 600, color: '#1e293b' }}>
+                                <code style={{ background: '#f1f5f9', padding: '3px 8px', borderRadius: '6px', fontSize: '12px', color: '#334155' }}>
+                                  {schedule.table_name}
+                                </code>
+                              </td>
+                              
+                              {/* 2. Run Type */}
+                              <td style={{ padding: '14px 16px', fontWeight: 500, color: '#475569', textTransform: 'capitalize' }}>
+                                <span style={{
+                                  padding: '2px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600,
+                                  background: schedule.run_type === 'profile' ? '#e0e7ff' : '#fae8ff',
+                                  color: schedule.run_type === 'profile' ? '#4f46e5' : '#a21caf'
+                                }}>
+                                  {schedule.run_type} Run
+                                </span>
+                              </td>
+                              
+                              {/* 3. Run Frequency Dropdown */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <select
+                                    value={freqVal === 'Other' ? 'Other' : (schedule.enabled ? freqVal : 'Disabled')}
+                                    onChange={(e) => handleFrequencyChange(schedule, e.target.value)}
+                                    style={{
+                                      padding: '6px 12px', borderRadius: '6px', border: '1px solid #cbd5e1',
+                                      fontSize: '13px', color: '#1e293b', background: '#ffffff', outline: 'none',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    <option value="Disabled">Disabled</option>
+                                    <option value="5 minutes">5 minutes</option>
+                                    <option value="10 minutes">10 minutes</option>
+                                    <option value="20 minutes">20 minutes</option>
+                                    <option value="30 minutes">30 minutes</option>
+                                    <option value="1 hour">1 hour</option>
+                                    <option value="4 hours">4 hours</option>
+                                    <option value="6 hours">6 hours</option>
+                                    <option value="12 hours">12 hours</option>
+                                    <option value="24 hours">24 hours</option>
+                                    <option value="Other">Other...</option>
+                                  </select>
+                                  
+                                  {freqVal === 'Other' && (
+                                    <button
+                                      onClick={() => handleFrequencyChange(schedule, 'Other')}
+                                      style={{
+                                        border: 'none', background: 'none', color: '#6366f1',
+                                        fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                                        padding: '4px', textDecoration: 'underline'
+                                      }}
+                                    >
+                                      {showFrequencyLabel}
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                              
+                              {/* 4. Last Run Time */}
+                              <td style={{ padding: '14px 16px', color: '#475569', fontFamily: 'monospace' }}>
+                                {schedule.last_run_time ? new Date(schedule.last_run_time).toLocaleString() : '—'}
+                              </td>
+                              
+                              {/* 5. Next Scheduled Run Time */}
+                              <td style={{ padding: '14px 16px', color: schedule.enabled ? '#475569' : '#94a3b8', fontFamily: 'monospace' }}>
+                                {schedule.enabled && schedule.next_run_time ? new Date(schedule.next_run_time).toLocaleString() : '—'}
+                              </td>
+                              
+                              {/* 6. Status Indicator */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <span style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                  padding: '2px 8px', borderRadius: '999px', fontSize: '12px', fontWeight: 600,
+                                  color: statusColor, background: statusBg
+                                }}>
+                                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: statusColor }} />
+                                  {statusText}
+                                </span>
+                              </td>
+                              
+                              {/* 7. Enable/Disable Toggle */}
+                              <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                                <button
+                                  onClick={() => handleToggleEnable(schedule)}
+                                  disabled={freqVal === 'Disabled'}
+                                  style={{
+                                    border: 'none', background: 'none', cursor: freqVal === 'Disabled' ? 'not-allowed' : 'pointer',
+                                    color: schedule.enabled ? '#6366f1' : '#94a3b8', display: 'inline-flex', alignItems: 'center'
+                                  }}
+                                  title={freqVal === 'Disabled' ? 'Set a frequency first' : (schedule.enabled ? 'Disable schedule' : 'Enable schedule')}
+                                >
+                                  <Power size={18} style={{ opacity: schedule.enabled ? 1 : 0.6 }} />
+                                </button>
+                              </td>
+                              
+                              {/* 8. Run Now Action Button */}
+                              <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                                <button
+                                  onClick={() => handleManualRunNow(schedule)}
+                                  style={{
+                                    padding: '5px 10px', borderRadius: '6px', border: '1px solid #6366f1',
+                                    background: 'transparent', color: '#6366f1', fontSize: '12px', fontWeight: 600,
+                                    cursor: 'pointer', transition: 'all 0.15s'
+                                  }}
+                                  onMouseOver={(e) => { e.currentTarget.style.background = '#6366f1'; e.currentTarget.style.color = '#ffffff'; }}
+                                  onMouseOut={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#6366f1'; }}
+                                >
+                                  Run Now
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
           ) : activeTab === 'Invalid record samples' ? (
             <div style={{ padding: '24px' }}>
             <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', marginBottom: '8px' }}>Invalid Record Samples</h3>
@@ -1532,6 +1909,206 @@ const DataQualityDetail: React.FC = () => {
           </div>
           <div className="side-panel-content">
             {panelTab === 'Configuration' ? <p>Rule configuration details...</p> : panelTab === 'Implementation' ? <p>Implementation logic...</p> : <p>Data quality results...</p>}
+          </div>
+        </div>
+      )}
+
+      {showCustomModal && activeScheduleForModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+          background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
+          zIndex: 2000, display: 'flex', justifyContent: 'center', alignItems: 'center'
+        }}>
+          <div style={{
+            background: '#ffffff', borderRadius: '12px', padding: '24px', width: '500px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            border: '1px solid #e2e8f0', color: '#1e293b', position: 'relative'
+          }}>
+            {/* Modal Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
+              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: 0 }}>
+                Custom Schedule Configuration
+              </h3>
+              <button
+                onClick={() => setShowCustomModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>
+              Configure advanced scheduling rules for <strong>{activeScheduleForModal.run_type}</strong> run on table <code>{activeScheduleForModal.table_name}</code>.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
+              {/* 1. Unit Selector */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>Run Frequency Type</label>
+                <select
+                  value={customUnit}
+                  onChange={(e) => setCustomUnit(e.target.value)}
+                  style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
+                >
+                  <option value="minutes">Run every X minutes</option>
+                  <option value="hours">Run every X hours</option>
+                  <option value="days">Run every X days</option>
+                  <option value="weekly">Weekly / Bi-weekly (specific days)</option>
+                  <option value="monthly">Monthly (specific date or pattern)</option>
+                </select>
+              </div>
+
+              {/* 2. Parameters based on Unit */}
+              {(customUnit === 'minutes' || customUnit === 'hours' || customUnit === 'days') && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>
+                    Interval (value of X)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={customValue}
+                    onChange={(e) => setCustomValue(parseInt(e.target.value) || 1)}
+                    style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
+                  />
+                </div>
+              )}
+
+              {customUnit === 'weekly' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>Select Days of the Week</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                    {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(d => (
+                      <label key={d} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={customWeeklyDays.includes(d)}
+                          onChange={(e) => {
+                            if (e.target.checked) setCustomWeeklyDays([...customWeeklyDays, d]);
+                            else setCustomWeeklyDays(customWeeklyDays.filter(day => day !== d));
+                          }}
+                        />
+                        {d.substring(0, 3)}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {customUnit === 'monthly' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', gap: '16px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="monthlyMode"
+                        checked={customMonthlyMode === 'date'}
+                        onChange={() => setCustomMonthlyMode('date')}
+                      />
+                      Specific Date
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="monthlyMode"
+                        checked={customMonthlyMode === 'pattern'}
+                        onChange={() => setCustomMonthlyMode('pattern')}
+                      />
+                      Pattern (e.g. 1st Monday)
+                    </label>
+                  </div>
+
+                  {customMonthlyMode === 'date' ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <label style={{ fontSize: '12px', color: '#475569' }}>Day of Month (1-31)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="31"
+                        value={customMonthlyDate}
+                        onChange={(e) => setCustomMonthlyDate(parseInt(e.target.value) || 1)}
+                        style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
+                      />
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <select
+                        value={customMonthlyIndex}
+                        onChange={(e) => setCustomMonthlyIndex(parseInt(e.target.value) || 1)}
+                        style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
+                      >
+                        <option value="1">1st</option>
+                        <option value="2">2nd</option>
+                        <option value="3">3rd</option>
+                        <option value="4">4th</option>
+                        <option value="-1">Last</option>
+                      </select>
+                      <select
+                        value={customMonthlyDay}
+                        onChange={(e) => setCustomMonthlyDay(e.target.value)}
+                        style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
+                      >
+                        {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(d => (
+                          <option key={d} value={d}>{d}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 3. Start Time Selector */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>Start Time (UTC or selected timezone)</label>
+                <input
+                  type="time"
+                  value={customStartTime}
+                  onChange={(e) => setCustomStartTime(e.target.value)}
+                  style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none', width: '100%' }}
+                />
+              </div>
+
+              {/* 4. Timezone Selector */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>Timezone</label>
+                <select
+                  value={customTimezone}
+                  onChange={(e) => setCustomTimezone(e.target.value)}
+                  style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none' }}
+                >
+                  <option value="UTC">UTC</option>
+                  <option value="EST">EST (Eastern Standard Time)</option>
+                  <option value="CST">CST (Central Standard Time)</option>
+                  <option value="PST">PST (Pacific Standard Time)</option>
+                  <option value="IST">IST (Indian Standard Time)</option>
+                  <option value="GMT">GMT (Greenwich Mean Time)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
+              <button
+                onClick={() => setShowCustomModal(false)}
+                style={{
+                  padding: '8px 16px', borderRadius: '6px', border: '1px solid #cbd5e1',
+                  background: 'none', color: '#475569', fontSize: '13px', fontWeight: 600, cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveCustomSchedule}
+                disabled={savingSchedule}
+                style={{
+                  padding: '8px 16px', borderRadius: '6px', border: 'none',
+                  background: '#6366f1', color: '#ffffff', fontSize: '13px', fontWeight: 600,
+                  cursor: savingSchedule ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {savingSchedule ? 'Saving...' : 'Save Schedule'}
+              </button>
+            </div>
           </div>
         </div>
       )}
