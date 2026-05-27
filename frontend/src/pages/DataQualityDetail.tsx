@@ -78,6 +78,10 @@ const DataQualityDetail: React.FC = () => {
     } catch { return {}; }
   });
 
+  // Execution History tab state
+  const [runHistory, setRunHistory] = useState<any[]>([]);
+  const [runHistoryLoading, setRunHistoryLoading] = useState(false);
+
   // Snapshot results state
   const [evaluatedResults, setEvaluatedResults] = useState<{
     table?: string;
@@ -218,7 +222,22 @@ const DataQualityDetail: React.FC = () => {
     }
   }, [database, schema, table]);
 
-
+  useEffect(() => {
+    if (activeTab === 'Execution History' && table) {
+      const fetchHistory = async () => {
+        setRunHistoryLoading(true);
+        try {
+          const res = await axios.get(`${API_BASE}/dashboard/run_history?table_name=${encodeURIComponent(table)}`);
+          setRunHistory(res.data.history || []);
+        } catch (e) {
+          console.error('Failed to fetch run history:', e);
+        } finally {
+          setRunHistoryLoading(false);
+        }
+      };
+      fetchHistory();
+    }
+  }, [activeTab, table]);
 
   const numericRowCount = typeof rowCount === 'number' ? rowCount : (rowCount === '...' ? 0 : parseInt(rowCount.toString().replace(/,/g, '')) || 0);
 
@@ -903,7 +922,7 @@ const DataQualityDetail: React.FC = () => {
 
         <div className="dq-tabs-row">
           <div className="tabs-list">
-            {['Profiling & Rules', 'Detailed results', 'Records', 'Settings', 'Invalid record samples'].map(t => (
+            {['Profiling & Rules', 'Detailed results', 'Records', 'Settings', 'Invalid record samples', 'Execution History'].map(t => (
               <button key={t} className={`dq-tab-btn ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>{t}</button>
             ))}
           </div>
@@ -1130,6 +1149,147 @@ const DataQualityDetail: React.FC = () => {
               ))
             )}
           </div>
+          ) : activeTab === 'Execution History' ? (
+            <div style={{ padding: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: 0 }}>Execution History</h3>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Latest runs first · refreshes when you open this tab</span>
+              </div>
+              <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '18px' }}>
+                One row per <strong>Profile and Evaluate</strong> run. DQ Score = average pass-rate across all rules executed for the table.
+              </p>
+
+              {runHistoryLoading ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '32px 0', color: '#6366f1' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                       style={{ animation: 'spin 1s linear infinite' }}>
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                  </svg>
+                  <span style={{ fontSize: '14px' }}>Loading execution history…</span>
+                </div>
+              ) : runHistory.length === 0 ? (
+                <div style={{ padding: '48px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
+                  <div style={{ fontSize: '40px', marginBottom: '12px' }}>🕐</div>
+                  <p style={{ fontWeight: 600, color: '#475569' }}>No Execution History Yet</p>
+                  <p style={{ marginTop: '6px' }}>Click <strong>Profile and Evaluate</strong> to record the first run.</p>
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                        {[
+                          { label: '#',               w: '40px'  },
+                          { label: 'Table Name',      w: '140px' },
+                          { label: 'Run Date',        w: '110px' },
+                          { label: 'Run Time',        w: '120px' },
+                          { label: 'DQ Score',        w: '110px' },
+                          { label: 'Total Rows',      w: '100px' },
+                          { label: 'Passed Rows',     w: '100px' },
+                          { label: 'Failed Rows',     w: '100px' },
+                          { label: 'Status',          w: '140px' },
+                          { label: 'Duration',        w: '90px'  },
+                          { label: 'Executed By',     w: '100px' },
+                        ].map(col => (
+                          <th key={col.label} style={{
+                            padding: '10px 14px', textAlign: 'left', fontWeight: 600,
+                            color: '#475569', whiteSpace: 'nowrap', fontSize: '11px',
+                            textTransform: 'uppercase', letterSpacing: '0.04em',
+                            minWidth: col.w
+                          }}>
+                            {col.label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {runHistory.map((run, idx) => {
+                        const score = parseFloat(run.dq_score ?? 0);
+                        const scoreColor = score >= 80 ? '#16a34a' : score >= 50 ? '#d97706' : '#dc2626';
+                        const scoreBg   = score >= 80 ? '#f0fdf4' : score >= 50 ? '#fffbeb' : '#fef2f2';
+
+                        let statusColor = '#16a34a';
+                        let statusBg    = '#f0fdf4';
+                        if (run.status === 'Failed')           { statusColor = '#dc2626'; statusBg = '#fef2f2'; }
+                        if (run.status === 'Partially Passed') { statusColor = '#d97706'; statusBg = '#fffbeb'; }
+
+                        const durationSec = run.duration_ms != null
+                          ? run.duration_ms < 1000
+                            ? `${run.duration_ms} ms`
+                            : `${(run.duration_ms / 1000).toFixed(1)} s`
+                          : '—';
+
+                        return (
+                          <tr key={run.id ?? idx} style={{
+                            borderBottom: '1px solid #f1f5f9',
+                            background: idx % 2 === 0 ? '#ffffff' : '#fafafa'
+                          }}>
+                            <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: '12px' }}>
+                              {runHistory.length - idx}
+                            </td>
+                            <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1e293b' }}>
+                              <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontSize: '12px' }}>
+                                {run.table_name}
+                              </code>
+                            </td>
+                            <td style={{ padding: '10px 14px', color: '#374151' }}>{run.run_date}</td>
+                            <td style={{ padding: '10px 14px', color: '#374151', fontFamily: 'monospace' }}>{run.run_time}</td>
+                            <td style={{ padding: '10px 14px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                                <div style={{
+                                  width: '48px', height: '6px', borderRadius: '3px',
+                                  background: '#e2e8f0', overflow: 'hidden'
+                                }}>
+                                  <div style={{
+                                    height: '100%', borderRadius: '3px', width: `${score}%`,
+                                    background: scoreColor
+                                  }} />
+                                </div>
+                                <span style={{
+                                  fontWeight: 700, fontSize: '13px', color: scoreColor,
+                                  background: scoreBg, padding: '1px 7px', borderRadius: '999px'
+                                }}>
+                                  {score}%
+                                </span>
+                              </div>
+                            </td>
+                            <td style={{ padding: '10px 14px', color: '#374151', textAlign: 'right' }}>
+                              {(run.total_rows ?? 0).toLocaleString()}
+                            </td>
+                            <td style={{ padding: '10px 14px', color: '#15803d', fontWeight: 500, textAlign: 'right' }}>
+                              {(run.passed_rows ?? 0).toLocaleString()}
+                            </td>
+                            <td style={{ padding: '10px 14px', color: run.failed_rows > 0 ? '#b91c1c' : '#15803d', fontWeight: 500, textAlign: 'right' }}>
+                              {(run.failed_rows ?? 0).toLocaleString()}
+                            </td>
+                            <td style={{ padding: '10px 14px' }}>
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                padding: '3px 10px', borderRadius: '999px',
+                                fontSize: '12px', fontWeight: 600,
+                                color: statusColor, background: statusBg,
+                                border: `1px solid ${statusColor}30`
+                              }}>
+                                {run.status === 'Passed' && <CheckCircle2 size={12} />}
+                                {run.status === 'Failed' && <XCircle size={12} />}
+                                {run.status === 'Partially Passed' && <AlertCircle size={12} />}
+                                {run.status}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 14px', color: '#64748b', fontFamily: 'monospace', fontSize: '12px' }}>
+                              {durationSec}
+                            </td>
+                            <td style={{ padding: '10px 14px', color: '#374151' }}>
+                              {run.executed_by ?? 'User'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           ) : (
             <>
               <div className="dq-table-actions">

@@ -98,6 +98,22 @@ def init_db():
                     status TEXT DEFAULT 'Active'
                 )
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS dq_run_history (
+                    id SERIAL PRIMARY KEY,
+                    table_name TEXT NOT NULL,
+                    run_date TEXT NOT NULL,
+                    run_time TEXT NOT NULL,
+                    dq_score REAL NOT NULL,
+                    total_rows INTEGER NOT NULL,
+                    passed_rows INTEGER NOT NULL,
+                    failed_rows INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    executed_by TEXT DEFAULT 'User',
+                    duration_ms INTEGER DEFAULT 0,
+                    executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
         else:
             # SQLite syntax
             cursor.execute("""
@@ -143,6 +159,22 @@ def init_db():
                     type TEXT,
                     detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     status TEXT DEFAULT 'Active'
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS dq_run_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    table_name TEXT NOT NULL,
+                    run_date TEXT NOT NULL,
+                    run_time TEXT NOT NULL,
+                    dq_score REAL NOT NULL,
+                    total_rows INTEGER NOT NULL,
+                    passed_rows INTEGER NOT NULL,
+                    failed_rows INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    executed_by TEXT DEFAULT 'User',
+                    duration_ms INTEGER DEFAULT 0,
+                    executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
         
@@ -767,6 +799,8 @@ async def sample_failed_records(request: SampleFailedRecordsRequest):
 
 @app.post("/api/v1/dashboard/executions")
 async def log_dashboard_executions(request: ExecutionLogRequest):
+    import datetime
+    run_start = datetime.datetime.utcnow()
     conn, cursor = get_db_connection()
     try:
         executions_data = []
@@ -808,6 +842,46 @@ async def log_dashboard_executions(request: ExecutionLogRequest):
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """
         cursor.executemany(execs_query, executions_data)
+
+        # ── Build and persist a run-level summary row in dq_run_history ──────
+        if request.executions:
+            total_rows_agg   = max((ex.total_rows for ex in request.executions), default=0)
+            failed_rows_agg  = sum(ex.failed_rows for ex in request.executions)
+            passed_rows_agg  = total_rows_agg - failed_rows_agg
+            # Score = average across all rule scores
+            scores = [
+                round((1 - ex.failed_rows / ex.total_rows) * 100, 1) if ex.total_rows > 0 else 100
+                for ex in request.executions
+            ]
+            dq_score = round(sum(scores) / len(scores), 1) if scores else 100
+
+            if failed_rows_agg == 0:
+                run_status = 'Passed'
+            elif passed_rows_agg == 0:
+                run_status = 'Failed'
+            else:
+                run_status = 'Partially Passed'
+
+            run_end = datetime.datetime.utcnow()
+            duration_ms = int((run_end - run_start).total_seconds() * 1000)
+            run_date = run_end.strftime('%Y-%m-%d')
+            run_time = run_end.strftime('%H:%M:%S UTC')
+
+            history_query = """
+                INSERT INTO dq_run_history
+                    (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """ if DATABASE_URL else """
+                INSERT INTO dq_run_history
+                    (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            cursor.execute(history_query, (
+                request.table_name, run_date, run_time, dq_score,
+                total_rows_agg, passed_rows_agg, failed_rows_agg,
+                run_status, 'User', duration_ms
+            ))
+
         conn.commit()
         return {"status": "success", "message": f"Successfully logged {len(request.executions)} executions."}
     except Exception as e:
@@ -829,6 +903,34 @@ async def resolve_dashboard_anomaly(request: AnomalyResolveRequest):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
+
+
+@app.get("/api/v1/dashboard/run_history")
+async def get_run_history(table_name: str):
+    """Return all historical DQ runs for a table, newest first."""
+    conn, cursor = get_db_connection()
+    try:
+        ph = "%s" if DATABASE_URL else "?"
+        cursor.execute(
+            f"""
+            SELECT id, table_name, run_date, run_time, dq_score,
+                   total_rows, passed_rows, failed_rows, status,
+                   executed_by, duration_ms, executed_at
+            FROM dq_run_history
+            WHERE table_name = {ph}
+            ORDER BY id DESC
+            """,
+            (table_name,)
+        )
+        rows = cursor.fetchall()
+        history = [dict(r) for r in rows]
+        return {"status": "success", "history": history}
+    except Exception as e:
+        print(f"Error fetching run history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
 
 @app.get("/health")
 def health_check():
