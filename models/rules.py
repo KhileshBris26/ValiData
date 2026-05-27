@@ -110,3 +110,9 @@ class InvalidRecord(BaseModel):
 class InvalidRecordsResponse(BaseModel):
     records: list[InvalidRecord]
 
+
+class DashboardRequest(BaseModel):
+    platform: str
+    credentials: Optional[Dict[str, Any]] = None
+
+

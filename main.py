@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from models.rules import RuleExecutionRequest, ProfileRequest, AISuggestionRequest, MetadataRequest, LineageRequest, AnalyticsRequest, CatalogRequest, TableSummaryRequest, AIChatRequest, RuleSyncRequest, ExecutionLogRequest, AnomalyResolveRequest, ScheduleCreateUpdate
+from models.rules import RuleExecutionRequest, ProfileRequest, AISuggestionRequest, MetadataRequest, LineageRequest, AnalyticsRequest, CatalogRequest, TableSummaryRequest, AIChatRequest, RuleSyncRequest, ExecutionLogRequest, AnomalyResolveRequest, ScheduleCreateUpdate, DashboardRequest
 from core.query_generator import QueryGenerator
 from core.lineage_engine import LineageEngine
 from core.usage_analyzer import UsageAnalyzer
@@ -963,6 +963,312 @@ async def resolve_dashboard_anomaly(request: AnomalyResolveRequest):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
+
+
+@app.post("/api/v1/dashboard/warehouse_analytics")
+async def get_dashboard_warehouse_analytics(request: DashboardRequest):
+    try:
+        platform = request.platform.lower()
+        creds = request.credentials or {}
+        
+        # Connect to the platform
+        if platform == "snowflake":
+            snowflake_engine.connect(creds)
+        elif platform == "databricks":
+            databricks_engine.connect(creds)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
+        
+        queries = []
+        # Attempt to fetch query history
+        try:
+            if platform == "snowflake":
+                # Try table query history first
+                try:
+                    sql = "SELECT QUERY_TEXT FROM TABLE(INFORMATION_SCHEMA.QUERY_HISTORY(RESULT_LIMIT => 500)) ORDER BY START_TIME DESC"
+                    queries = snowflake_engine.execute_query(sql)
+                except Exception:
+                    sql = "SELECT QUERY_TEXT FROM TABLE(INFORMATION_SCHEMA.QUERY_HISTORY_BY_SESSION(RESULT_LIMIT => 500)) ORDER BY START_TIME DESC"
+                    queries = snowflake_engine.execute_query(sql)
+            elif platform == "databricks":
+                sql = "SELECT statement_text as QUERY_TEXT FROM system.query.history ORDER BY start_time DESC LIMIT 500"
+                queries = databricks_engine.execute_query(sql)
+        except Exception as q_err:
+            print(f"Query history retrieval failed, falling back: {q_err}")
+            queries = []
+            
+        # Disconnect engine
+        if platform == "snowflake":
+            snowflake_engine.disconnect()
+        elif platform == "databricks":
+            databricks_engine.disconnect()
+            
+        # Analyze queries if we found any
+        top_table_name = None
+        reads_count = 0
+        
+        if queries:
+            analytics = UsageAnalyzer.analyze_queries(queries)
+            top_tables = analytics.get("top_tables", [])
+            if top_tables:
+                top_table_name = top_tables[0]["name"]
+                reads_count = top_tables[0]["count"]
+                
+        # If no top table found via query history, fall back to local database or SHOW TABLES
+        if not top_table_name:
+            conn, cursor = get_db_connection()
+            try:
+                cursor.execute("SELECT table_name FROM dq_run_history ORDER BY id DESC LIMIT 1")
+                row = cursor.fetchone()
+                if row:
+                    top_table_name = row['table_name']
+                else:
+                    cursor.execute("SELECT table_name FROM rules LIMIT 1")
+                    row = cursor.fetchone()
+                    if row:
+                        top_table_name = row['table_name']
+            except Exception as db_err:
+                print(f"Error querying local DB for fallback table: {db_err}")
+            finally:
+                conn.close()
+                
+        # If still no table, try remote SHOW TABLES
+        if not top_table_name:
+            try:
+                if platform == "snowflake":
+                    snowflake_engine.connect(creds)
+                    try:
+                        res = snowflake_engine.execute_query("SHOW TABLES LIMIT 1")
+                        if res:
+                            top_table_name = res[0].get('name') or res[0].get('NAME')
+                    except Exception:
+                        pass
+                    snowflake_engine.disconnect()
+                elif platform == "databricks":
+                    databricks_engine.connect(creds)
+                    try:
+                        res = databricks_engine.execute_query("SHOW TABLES LIMIT 1")
+                        if res:
+                            top_table_name = res[0].get('tableName') or res[0].get('tableName'.upper())
+                    except Exception:
+                        pass
+                    databricks_engine.disconnect()
+            except Exception as remote_err:
+                print(f"Error querying remote DB for fallback: {remote_err}")
+                
+        # Final fallback
+        if not top_table_name:
+            top_table_name = "N/A"
+            reads_count = 0
+            dq_score = 100.0
+        else:
+            # Query local DB for the DQ score of this table
+            dq_score = 100.0
+            short_name = top_table_name.split('.')[-1]
+            conn, cursor = get_db_connection()
+            try:
+                cursor.execute(
+                    "SELECT dq_score FROM dq_run_history WHERE LOWER(table_name) = ? OR LOWER(table_name) = ? ORDER BY id DESC LIMIT 1",
+                    (top_table_name.lower(), short_name.lower())
+                )
+                row = cursor.fetchone()
+                if row:
+                    dq_score = row['dq_score']
+            except Exception as db_err:
+                print(f"Error fetching DQ score: {db_err}")
+            finally:
+                conn.close()
+                
+        return {
+            "status": "success",
+            "table_name": top_table_name,
+            "reads": reads_count,
+            "dq_score": dq_score
+        }
+    except Exception as e:
+        import traceback
+        print(f"Warehouse analytics failed: {traceback.format_exc()}")
+        return {
+            "status": "success",
+            "table_name": "No active table",
+            "reads": 0,
+            "dq_score": 100.0
+        }
+
+
+@app.post("/api/v1/dashboard/query_logs")
+async def get_dashboard_query_logs(request: DashboardRequest):
+    try:
+        platform = request.platform.lower()
+        creds = request.credentials or {}
+        
+        # Connect to the platform
+        if platform == "snowflake":
+            snowflake_engine.connect(creds)
+        elif platform == "databricks":
+            databricks_engine.connect(creds)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
+            
+        raw_queries = []
+        try:
+            if platform == "snowflake":
+                try:
+                    sql = """
+                    SELECT 
+                        QUERY_TEXT, 
+                        USER_NAME, 
+                        START_TIME, 
+                        TOTAL_ELAPSED_TIME
+                    FROM TABLE(INFORMATION_SCHEMA.QUERY_HISTORY(RESULT_LIMIT => 10))
+                    ORDER BY START_TIME DESC
+                    """
+                    raw_queries = snowflake_engine.execute_query(sql)
+                except Exception:
+                    sql = """
+                    SELECT 
+                        QUERY_TEXT, 
+                        USER_NAME, 
+                        START_TIME, 
+                        TOTAL_ELAPSED_TIME
+                    FROM TABLE(INFORMATION_SCHEMA.QUERY_HISTORY_BY_SESSION(RESULT_LIMIT => 10))
+                    ORDER BY START_TIME DESC
+                    """
+                    raw_queries = snowflake_engine.execute_query(sql)
+            elif platform == "databricks":
+                sql = """
+                SELECT 
+                    statement_text as QUERY_TEXT, 
+                    executed_by as USER_NAME, 
+                    start_time as START_TIME, 
+                    duration as TOTAL_ELAPSED_TIME
+                FROM system.query.history 
+                ORDER BY start_time DESC 
+                LIMIT 10
+                """
+                raw_queries = databricks_engine.execute_query(sql)
+        except Exception as q_err:
+            print(f"Query logs retrieval failed, falling back: {q_err}")
+            raw_queries = []
+            
+        # Disconnect engine
+        if platform == "snowflake":
+            snowflake_engine.disconnect()
+        elif platform == "databricks":
+            databricks_engine.disconnect()
+            
+        formatted_logs = []
+        for row in raw_queries:
+            q_text = row.get("QUERY_TEXT") or row.get("query_text") or ""
+            user_name = row.get("USER_NAME") or row.get("user_name") or "Unknown"
+            
+            # Format duration
+            duration_val = row.get("TOTAL_ELAPSED_TIME") or row.get("total_elapsed_time") or 0
+            if duration_val < 1000:
+                duration_str = f"{int(duration_val)}ms"
+            else:
+                duration_str = f"{duration_val / 1000:.1f}s"
+                
+            formatted_logs.append({
+                "query": q_text,
+                "user": user_name,
+                "duration": duration_str
+            })
+            
+        return {
+            "status": "success",
+            "queries": formatted_logs
+        }
+    except Exception as e:
+        print(f"Query logs failed: {e}")
+        return {
+            "status": "success",
+            "queries": []
+        }
+
+
+@app.post("/api/v1/dashboard/lineage")
+async def get_dashboard_lineage(request: DashboardRequest):
+    platform = request.platform.lower()
+    creds = request.credentials or {}
+    
+    # Establish connection
+    try:
+        if platform == "snowflake":
+            snowflake_engine.connect(creds)
+        elif platform == "databricks":
+            databricks_engine.connect(creds)
+        else:
+            return {"status": "success", "nodes": [], "edges": []}
+    except Exception as conn_err:
+        print(f"Lineage connection failed: {conn_err}")
+        return {"status": "success", "nodes": [], "edges": []}
+        
+    try:
+        # Determine database & schema
+        db_name = creds.get("database")
+        schema_name = creds.get("schema")
+        
+        if not db_name or not schema_name:
+            try:
+                if platform == "snowflake":
+                    res = snowflake_engine.execute_query("SELECT CURRENT_DATABASE() as DB, CURRENT_SCHEMA() as SCH")
+                    if res:
+                        db_name = res[0].get("DB") or res[0].get("db")
+                        schema_name = res[0].get("SCH") or res[0].get("sch")
+                elif platform == "databricks":
+                    res = databricks_engine.execute_query("SELECT CURRENT_CATALOG() as DB, CURRENT_SCHEMA() as SCH")
+                    if res:
+                        db_name = res[0].get("DB") or res[0].get("db")
+                        schema_name = res[0].get("SCH") or res[0].get("sch")
+            except Exception as ctx_err:
+                print(f"Error querying active DB context: {ctx_err}")
+                
+        # If still not found, try to list catalogs and get first catalog/schema
+        if not db_name or not schema_name:
+            try:
+                if platform == "snowflake":
+                    dbs = snowflake_engine.execute_query("SHOW DATABASES LIMIT 1")
+                    if dbs:
+                        db_name = dbs[0].get("name") or dbs[0].get("NAME")
+                        schs = snowflake_engine.execute_query(f"SHOW SCHEMAS IN DATABASE {db_name} LIMIT 1")
+                        if schs:
+                            schema_name = schs[0].get("name") or schs[0].get("NAME")
+                elif platform == "databricks":
+                    dbs = databricks_engine.execute_query("SHOW CATALOGS LIMIT 1")
+                    if dbs:
+                        db_name = dbs[0].get("catalog") or dbs[0].get("CATALOG")
+                        schs = databricks_engine.execute_query(f"SHOW SCHEMAS IN {db_name} LIMIT 1")
+                        if schs:
+                            schema_name = schs[0].get("databaseName") or schs[0].get("DATABASE_NAME")
+            except Exception as fallback_err:
+                print(f"Lineage database/schema fallback failed: {fallback_err}")
+                
+        if not db_name or not schema_name:
+            print("No active database and schema found for lineage inference.")
+            return {"status": "success", "nodes": [], "edges": []}
+            
+        # Generate the SQL to fetch columns from information schema
+        sql_query = QueryGenerator.generate_information_schema_sql(platform, db_name, schema_name)
+        columns = snowflake_engine.execute_query(sql_query) if platform == "snowflake" else databricks_engine.execute_query(sql_query)
+        
+        # Infer lineage relationships using LineageEngine
+        lineage_graph = LineageEngine.infer_relationships(columns)
+        return {
+            "status": "success",
+            "nodes": lineage_graph.get("nodes", []),
+            "edges": lineage_graph.get("edges", []),
+            "database": db_name,
+            "schema": schema_name
+        }
+    except Exception as e:
+        print(f"Lineage endpoint failed: {e}")
+        return {"status": "success", "nodes": [], "edges": []}
+    finally:
+        if platform == "snowflake":
+            snowflake_engine.disconnect()
+        elif platform == "databricks":
+            databricks_engine.disconnect()
 
 
 @app.get("/api/v1/dashboard/run_history")

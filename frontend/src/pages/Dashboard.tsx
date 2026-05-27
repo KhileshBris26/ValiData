@@ -1,8 +1,9 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, Database, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Activity, Database, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE } from '../api';
+import { usePlatform } from '../context/PlatformContext';
 import './Dashboard.css';
 
 const StatCard = ({ icon: Icon, label, value, color }: any) => (
@@ -19,6 +20,7 @@ const StatCard = ({ icon: Icon, label, value, color }: any) => (
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { platform } = usePlatform();
   const [showRulesOverlay, setShowRulesOverlay] = React.useState(false);
   const [showAnomaliesOverlay, setShowAnomaliesOverlay] = React.useState(false);
   const [backendRules, setBackendRules] = React.useState<any[]>([]);
@@ -30,6 +32,17 @@ const Dashboard: React.FC = () => {
     passed: 0,
     anomalies: 0
   });
+
+  const [warehouseAnalytics, setWarehouseAnalytics] = React.useState<any>({
+    table_name: 'Loading...',
+    reads: 0,
+    dq_score: 100
+  });
+  const [queryLogs, setQueryLogs] = React.useState<any[]>([]);
+  const [lineageFlow, setLineageFlow] = React.useState<any>({ nodes: [], edges: [] });
+  const [isLoadingWidgets, setIsLoadingWidgets] = React.useState(false);
+  const [lastRefreshed, setLastRefreshed] = React.useState<string>('');
+
 
   const fetchDashboardData = async (platformsCount: number) => {
     try {
@@ -49,6 +62,50 @@ const Dashboard: React.FC = () => {
       console.error("Failed to fetch dashboard data from backend", e);
     }
   };
+
+  const fetchDashboardWidgets = async () => {
+    setIsLoadingWidgets(true);
+    try {
+      const saved = localStorage.getItem('robin_credentials');
+      const credentials = saved ? JSON.parse(saved)[platform] : null;
+      
+      const payload = { platform, credentials };
+      
+      const [analyticsRes, logsRes, lineageRes] = await Promise.all([
+        axios.post(`${API_BASE}/dashboard/warehouse_analytics`, payload),
+        axios.post(`${API_BASE}/dashboard/query_logs`, payload),
+        axios.post(`${API_BASE}/dashboard/lineage`, payload)
+      ]);
+      
+      if (analyticsRes.data.status === 'success') {
+        setWarehouseAnalytics(analyticsRes.data);
+      }
+      if (logsRes.data.status === 'success') {
+        setQueryLogs(logsRes.data.queries || []);
+      }
+      if (lineageRes.data.status === 'success') {
+        setLineageFlow(lineageRes.data);
+      }
+      setLastRefreshed(new Date().toLocaleTimeString());
+    } catch (e) {
+      console.error("Failed to fetch dashboard widgets:", e);
+    } finally {
+      setIsLoadingWidgets(false);
+    }
+  };
+
+  const handleManualRefresh = async () => {
+    let count = 0;
+    try {
+      const connected = JSON.parse(localStorage.getItem('robin_connected_platforms') || '[]');
+      count = connected.length;
+    } catch (e) {}
+    await Promise.all([
+      fetchDashboardWidgets(),
+      fetchDashboardData(count)
+    ]);
+  };
+
 
   const syncAllRulesToBackend = async () => {
     try {
@@ -129,6 +186,13 @@ const Dashboard: React.FC = () => {
     initDashboard();
   }, []);
 
+  React.useEffect(() => {
+    fetchDashboardWidgets();
+    const interval = setInterval(fetchDashboardWidgets, 60000);
+    return () => clearInterval(interval);
+  }, [platform]);
+
+
   const handleResolveAnomaly = async (id: number) => {
     try {
       await axios.post(`${API_BASE}/dashboard/anomalies/resolve`, { id });
@@ -147,7 +211,36 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="dashboard">
-      <h1 className="page-title">Data Quality Command Center</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+        <h1 className="page-title" style={{ margin: 0 }}>Data Quality Command Center</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {lastRefreshed && (
+            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+              Last refreshed: {lastRefreshed}
+            </span>
+          )}
+          <button 
+            onClick={handleManualRefresh}
+            disabled={isLoadingWidgets}
+            className="btn-small" 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '6px', 
+              fontSize: '0.8rem', 
+              padding: '6px 12px',
+              cursor: 'pointer',
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '6px',
+              color: '#f8fafc'
+            }}
+          >
+            <RefreshCw size={14} className={isLoadingWidgets ? 'spin-animation' : ''} />
+            {isLoadingWidgets ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
+      </div>
       
       <div className="stats-grid">
         <div onClick={() => navigate('/connections')} style={{ cursor: 'pointer' }}>
@@ -185,14 +278,50 @@ const Dashboard: React.FC = () => {
 
           <div style={{ flex: 1, padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
-              <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Lineage Flow</div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '10px 0' }}>
-                <div style={{ textAlign: 'center' }}>Hubs</div>
-                <div style={{ color: '#3b82f6' }}>→</div>
-                <div style={{ textAlign: 'center' }}>Links</div>
-                <div style={{ color: '#3b82f6' }}>→</div>
-                <div style={{ textAlign: 'center' }}>Sats</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Active Lineage Flow {lineageFlow.database && lineageFlow.schema ? `(${lineageFlow.database}.${lineageFlow.schema})` : ''}
+                </div>
+                {lineageFlow.edges?.length > 0 && (
+                  <button 
+                    onClick={() => navigate('/lineage-studio')}
+                    className="btn-small" 
+                    style={{ fontSize: '0.7rem', padding: '2px 6px', background: 'rgba(99, 102, 241, 0.1)', border: '1px solid rgba(99, 102, 241, 0.2)', color: '#818cf8', borderRadius: '4px', cursor: 'pointer' }}
+                  >
+                    Open Studio
+                  </button>
+                )}
               </div>
+              
+              {isLoadingWidgets ? (
+                <div style={{ color: '#64748b', fontSize: '0.8rem', padding: '20px 0', textAlign: 'center' }}>
+                  Analyzing lineage metadata...
+                </div>
+              ) : lineageFlow.edges && lineageFlow.edges.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '160px', overflowY: 'auto', paddingRight: '4px' }}>
+                  {lineageFlow.edges.slice(0, 4).map((edge: any) => (
+                    <div key={edge.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', color: '#f8fafc' }}>
+                        <span style={{ fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }} title={edge.source}>{edge.source}</span>
+                        <span style={{ color: '#6366f1', fontWeight: 900 }}>→</span>
+                        <span style={{ fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }} title={edge.target}>{edge.target}</span>
+                      </div>
+                      <span style={{ fontSize: '0.7rem', color: '#64748b', background: 'rgba(255,255,255,0.03)', padding: '2px 6px', borderRadius: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80px' }} title={edge.label}>
+                        {edge.label}
+                      </span>
+                    </div>
+                  ))}
+                  {lineageFlow.edges.length > 4 && (
+                    <div style={{ fontSize: '0.7rem', color: '#64748b', textAlign: 'center', marginTop: '4px' }}>
+                      + {lineageFlow.edges.length - 4} more relationships in schema
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ padding: '20px 0', textAlign: 'center', color: '#64748b', fontSize: '0.8rem' }}>
+                  No relationships inferred in the current schema. Ingest or query tables to generate lineage.
+                </div>
+              )}
             </div>
             
             <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
@@ -212,40 +341,79 @@ const Dashboard: React.FC = () => {
         <div className="dashboard-content glass-panel" style={{ margin: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h2 style={{ margin: 0 }}>Warehouse Analytics</h2>
-            <div style={{ fontSize: '0.75rem', color: '#3b82f6', cursor: 'pointer' }}>Usage Reports</div>
+            <div style={{ fontSize: '0.75rem', color: '#3b82f6', cursor: 'pointer' }} onClick={() => navigate('/analytics')}>Usage Reports</div>
           </div>
           
           <div style={{ padding: '14px', background: 'rgba(59, 130, 246, 0.05)', borderRadius: '10px', border: '1px solid rgba(59, 130, 246, 0.1)', marginBottom: '16px' }}>
             <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '4px' }}>Most Queried Asset</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontWeight: 700, color: '#f8fafc' }}>H_AIRCRAFT</div>
-              <button 
-                onClick={() => navigate('/analytics')}
-                style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#3b82f6', fontSize: '0.75rem', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}
-              >
-                Go to Page
-              </button>
+              <div style={{ fontWeight: 700, color: '#f8fafc', fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '75%' }}>
+                {isLoadingWidgets ? 'Loading...' : warehouseAnalytics.table_name || 'N/A'}
+              </div>
+              {warehouseAnalytics.table_name && warehouseAnalytics.table_name !== 'N/A' && warehouseAnalytics.table_name !== 'Loading...' && (
+                <button 
+                  onClick={() => {
+                    const parts = warehouseAnalytics.table_name.split('.');
+                    if (parts.length >= 3) {
+                      navigate(`/catalog/${parts[0]}/${parts[1]}/${parts[2]}`);
+                    } else {
+                      navigate('/catalog');
+                    }
+                  }}
+                  style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#3b82f6', fontSize: '0.75rem', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  Go to Page
+                </button>
+              )}
             </div>
-            <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px' }}>1.2k reads in last 24h · 98% DQ score</div>
+            {!isLoadingWidgets && warehouseAnalytics.table_name && warehouseAnalytics.table_name !== 'N/A' && (
+              <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px' }}>
+                {warehouseAnalytics.reads} reads in last 24h · {Math.round(warehouseAnalytics.dq_score)}% DQ score
+              </div>
+            )}
+            {isLoadingWidgets && (
+              <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px' }}>
+                Analyzing query activity...
+              </div>
+            )}
+            {!isLoadingWidgets && (!warehouseAnalytics.table_name || warehouseAnalytics.table_name === 'N/A') && (
+              <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px' }}>
+                No database query logs recorded in this environment yet.
+              </div>
+            )}
           </div>
 
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
             <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '10px', fontWeight: 600 }}>Recent Query Log</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {[
-                { query: 'SELECT * FROM H_AIRCRAFT...', duration: '45ms' },
-                { query: 'INSERT INTO L_FLIGHT_AIR...', duration: '822ms' },
-                { query: 'CALL SP_DQ_VALIDATE...', duration: '1.2s' }
-              ].map((q, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', fontSize: '0.75rem' }}>
-                  <code style={{ color: '#94a3b8' }}>{q.query}</code>
-                  <span style={{ color: '#64748b' }}>{q.duration}</span>
-                </div>
-              ))}
-            </div>
+            {isLoadingWidgets ? (
+              <div style={{ color: '#64748b', fontSize: '0.8rem', padding: '20px 0', textAlign: 'center' }}>
+                Fetching execution history...
+              </div>
+            ) : queryLogs && queryLogs.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
+                {queryLogs.map((q: any, i: number) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', fontSize: '0.75rem', border: '1px solid rgba(255,255,255,0.03)' }}>
+                    <code style={{ color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '65%', fontFamily: 'monospace' }} title={q.query}>
+                      {q.query}
+                    </code>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ color: '#64748b', fontSize: '0.7rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80px' }} title={q.user}>by {q.user}</span>
+                      <span style={{ color: '#3b82f6', background: 'rgba(59, 130, 246, 0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                        {q.duration}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ padding: '20px 0', textAlign: 'center', color: '#64748b', fontSize: '0.8rem' }}>
+                No recent query logs available in this Snowflake environment.
+              </div>
+            )}
           </div>
         </div>
       </div>
+
 
       {/* Rules Overlay */}
       {showRulesOverlay && (
