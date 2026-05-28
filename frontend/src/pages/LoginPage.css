@@ -207,3 +207,173 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* Multi-step login enhancements */
+.login-flow-step {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.step-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  text-align: center;
+  margin: 0;
+  color: #f8fafc;
+}
+
+.step-subtitle {
+  font-size: 0.88rem;
+  color: #94a3b8;
+  text-align: center;
+  margin: -0.5rem 0 0.5rem 0;
+}
+
+.highlight-text {
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+.selection-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.2rem;
+  margin: 1rem 0;
+}
+
+.selection-tile {
+  background: rgba(30, 41, 59, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 1.8rem 1rem;
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.selection-tile:hover {
+  background: rgba(30, 41, 59, 0.6);
+  border-color: #3b82f6;
+  transform: translateY(-4px);
+  box-shadow: 0 10px 20px -10px rgba(59, 130, 246, 0.3);
+}
+
+.selection-tile:active {
+  transform: translateY(-1px);
+}
+
+.tile-icon-wrapper {
+  padding: 14px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s;
+}
+
+.snowflake-color {
+  background: rgba(56, 189, 248, 0.1);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.15);
+}
+
+.databricks-color {
+  background: rgba(249, 115, 22, 0.1);
+  color: #f97316;
+  border: 1px solid rgba(249, 115, 22, 0.15);
+}
+
+.role-admin-color {
+  background: rgba(139, 92, 246, 0.1);
+  color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, 0.15);
+}
+
+.role-user-color {
+  background: rgba(16, 185, 129, 0.1);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.15);
+}
+
+.tile-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.btn-step-back {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  align-self: center;
+  margin-top: 0.5rem;
+  transition: all 0.2s;
+}
+
+.btn-step-back:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: #f1f5f9;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.user-entry-options {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.user-entry-btn {
+  background: rgba(30, 41, 59, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: #cbd5e1;
+  padding: 14px 20px;
+  border-radius: 14px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.25s;
+}
+
+.user-entry-btn:hover {
+  background: rgba(30, 41, 59, 0.6);
+  border-color: #3b82f6;
+  color: #f8fafc;
+  transform: translateY(-2px);
+}
+
+.user-entry-btn.accent-btn {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+
+.user-entry-btn.accent-btn:hover {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: #3b82f6;
+  color: #60a5fa;
+}
+

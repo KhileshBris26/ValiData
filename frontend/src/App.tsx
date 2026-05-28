@@ -19,6 +19,7 @@ import ObservabilityConnections from './pages/ObservabilityConnections';
 import ObservabilityConnectionDetail from './pages/ObservabilityConnectionDetail';
 import ObservabilityAlerts from './pages/ObservabilityAlerts';
 import LoginPage from './pages/LoginPage';
+import AdminDashboard from './pages/AdminDashboard';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const token = localStorage.getItem('robin_auth_token');
@@ -37,6 +38,14 @@ function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route 
+            path="/admin-dashboard" 
+            element={
+              <ProtectedRoute>
+                <AdminDashboard />
+              </ProtectedRoute>
+            } 
+          />
           <Route 
             path="/*" 
             element={

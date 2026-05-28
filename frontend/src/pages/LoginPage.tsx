@@ -1,40 +1,114 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import { Shield, Lock, User, ArrowRight, Loader2, Database } from 'lucide-react';
+import { Shield, Lock, User, ArrowRight, Loader2, Database, ArrowLeft, LogIn, UserPlus, ShieldAlert } from 'lucide-react';
+import { usePlatform } from '../context/PlatformContext';
 import './LoginPage.css';
 
-import { API_BASE } from '../api';
+type ScreenStep = 'platform' | 'role' | 'admin_login' | 'user_entry' | 'user_signin' | 'user_signup';
 
 const LoginPage: React.FC = () => {
-  const [isLogin, setIsLogin] = useState(true);
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const navigate = useNavigate();
+  const { setPlatform } = usePlatform();
+  
+  // State machine for multi-step flows
+  const [step, setStep] = useState<ScreenStep>('platform');
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  
+  const [userUsername, setUserUsername] = useState('');
+  const [userPassword, setUserPassword] = useState('');
+  const [userConfirmPassword, setUserConfirmPassword] = useState('');
+  
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const navigate = useNavigate();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Handle platform selection
+  const selectPlatform = (platform: 'snowflake' | 'databricks') => {
+    setPlatform(platform);
+    localStorage.setItem('selected_platform', platform);
+    setStep('role');
+  };
+
+  // Handle role selection
+  const selectRole = (role: 'admin' | 'user') => {
+    localStorage.setItem('selected_role', role);
+    localStorage.setItem('user_type', role);
+    if (role === 'admin') {
+      setStep('admin_login');
+    } else {
+      setStep('user_entry');
+    }
+  };
+
+  // Handle Admin login submit
+  const handleAdminSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
 
-    try {
-      const endpoint = isLogin ? '/auth/login' : '/auth/register';
-      const res = await axios.post(`${API_BASE}${endpoint}`, { username, password });
-      
-      if (res.data.token) {
-        localStorage.setItem('robin_auth_token', res.data.token);
-        localStorage.setItem('robin_user', username);
+    setTimeout(() => {
+      if (adminUsername === 'Khilesh' && adminPassword === 'ValiData@2026') {
+        localStorage.setItem('robin_auth_token', 'admin_token_Khilesh_secure');
+        localStorage.setItem('robin_user', 'Khilesh');
+        localStorage.setItem('is_authenticated', 'true');
+        localStorage.setItem('user_type', 'admin');
+        navigate('/admin-dashboard');
+      } else {
+        setError('Invalid admin credentials');
+      }
+      setIsLoading(false);
+    }, 800);
+  };
+
+  // Handle User sign in submit
+  const handleUserSignIn = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError('');
+
+    setTimeout(() => {
+      if (userUsername.trim() && userPassword.trim()) {
+        localStorage.setItem('robin_auth_token', `user_token_${userUsername}_secure`);
+        localStorage.setItem('robin_user', userUsername);
+        localStorage.setItem('is_authenticated', 'true');
+        localStorage.setItem('user_type', 'user');
         navigate('/');
       } else {
-        setError('Invalid response from server');
+        setError('Please fill in all credentials.');
       }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Authentication failed');
-    } finally {
       setIsLoading(false);
+    }, 800);
+  };
+
+  // Handle User sign up submit
+  const handleUserSignUp = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError('');
+
+    if (userPassword !== userConfirmPassword) {
+      setError('Passwords do not match');
+      setIsLoading(false);
+      return;
     }
+
+    setTimeout(() => {
+      if (userUsername.trim() && userPassword.trim()) {
+        localStorage.setItem('robin_auth_token', `user_token_${userUsername}_secure`);
+        localStorage.setItem('robin_user', userUsername);
+        localStorage.setItem('is_authenticated', 'true');
+        localStorage.setItem('user_type', 'user');
+        navigate('/');
+      } else {
+        setError('Please fill in all details.');
+      }
+      setIsLoading(false);
+    }, 800);
+  };
+
+  const getPlatformLabel = () => {
+    const p = localStorage.getItem('selected_platform') || 'snowflake';
+    return p.charAt(0).toUpperCase() + p.slice(1);
   };
 
   return (
@@ -44,7 +118,7 @@ const LoginPage: React.FC = () => {
         <div className="blob"></div>
         <div className="blob"></div>
       </div>
-      
+
       <div className="login-card glass-panel">
         <div className="login-header">
           <div className="logo-section">
@@ -53,67 +127,280 @@ const LoginPage: React.FC = () => {
             </div>
             <h1 className="brand-name">ValiData</h1>
           </div>
-          <p className="login-subtitle">
-            {isLogin ? 'Welcome back to ValiData' : 'Join the elite data ecosystem'}
-          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="login-form">
-          {error && <div className="error-message">{error}</div>}
-          
-          <div className="input-group">
-            <label htmlFor="username">Username</label>
-            <div className="input-wrapper">
-              <User size={18} className="input-icon" />
-              <input 
-                id="username"
-                type="text" 
-                placeholder="Enter your username" 
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-              />
+        {/* 1. Platform Selection */}
+        {step === 'platform' && (
+          <div className="login-flow-step">
+            <h2 className="step-title">Select Database Platform</h2>
+            <p className="step-subtitle">Choose the target environment to inspect and profile</p>
+            <div className="selection-tiles">
+              <button onClick={() => selectPlatform('snowflake')} className="selection-tile">
+                <div className="tile-icon-wrapper snowflake-color">
+                  <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="2" x2="12" y2="22"></line>
+                    <line x1="2" y1="12" x2="22" y2="12"></line>
+                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                    <line x1="4.93" y1="19.07" x2="19.07" y2="4.93"></line>
+                    <polyline points="10 4 12 2 14 4"></polyline>
+                    <polyline points="10 20 12 22 14 20"></polyline>
+                    <polyline points="4 10 2 12 4 14"></polyline>
+                    <polyline points="20 10 22 12 20 14"></polyline>
+                  </svg>
+                </div>
+                <span className="tile-label">Snowflake</span>
+              </button>
+
+              <button onClick={() => selectPlatform('databricks')} className="selection-tile">
+                <div className="tile-icon-wrapper databricks-color">
+                  <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                    <path d="M2 17l10 5 10-5"></path>
+                    <path d="M2 12l10 5 10-5"></path>
+                  </svg>
+                </div>
+                <span className="tile-label">Databricks</span>
+              </button>
             </div>
           </div>
+        )}
 
-          <div className="input-group">
-            <label htmlFor="password">Password</label>
-            <div className="input-wrapper">
-              <Lock size={18} className="input-icon" />
-              <input 
-                id="password"
-                type="password" 
-                placeholder="Enter your password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+        {/* 2. Role Selection */}
+        {step === 'role' && (
+          <div className="login-flow-step">
+            <h2 className="step-title">Select User Role</h2>
+            <p className="step-subtitle">Platform: <strong className="highlight-text">{getPlatformLabel()}</strong></p>
+            <div className="selection-tiles">
+              <button onClick={() => selectRole('admin')} className="selection-tile">
+                <div className="tile-icon-wrapper role-admin-color">
+                  <ShieldAlert size={36} />
+                </div>
+                <span className="tile-label">Admin</span>
+              </button>
+
+              <button onClick={() => selectRole('user')} className="selection-tile">
+                <div className="tile-icon-wrapper role-user-color">
+                  <User size={36} />
+                </div>
+                <span className="tile-label">User</span>
+              </button>
             </div>
+            <button onClick={() => setStep('platform')} className="btn-step-back">
+              <ArrowLeft size={16} />
+              <span>Back</span>
+            </button>
           </div>
+        )}
 
-          <button type="submit" className="btn-login" disabled={isLoading}>
-            {isLoading ? (
-              <Loader2 className="spinner" size={20} />
-            ) : (
-              <>
-                <span>{isLogin ? 'Sign In' : 'Create Account'}</span>
-                <ArrowRight size={18} />
-              </>
-            )}
-          </button>
-        </form>
+        {/* 3. Admin Authentication Flow */}
+        {step === 'admin_login' && (
+          <div className="login-flow-step">
+            <h2 className="step-title">Admin Authentication</h2>
+            <p className="step-subtitle">Role: <strong className="highlight-text">Admin</strong> · Platform: <strong className="highlight-text">{getPlatformLabel()}</strong></p>
+            <form onSubmit={handleAdminSubmit} className="login-form">
+              {error && <div className="error-message">{error}</div>}
+              
+              <div className="input-group">
+                <label htmlFor="admin-username">Username</label>
+                <div className="input-wrapper">
+                  <User size={18} className="input-icon" />
+                  <input 
+                    id="admin-username"
+                    type="text" 
+                    placeholder="Enter admin username" 
+                    value={adminUsername}
+                    onChange={(e) => setAdminUsername(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
 
-        <div className="login-footer">
-          <button 
-            type="button" 
-            className="toggle-auth" 
-            onClick={() => setIsLogin(!isLogin)}
-          >
-            {isLogin ? "Don't have an account? Sign up" : "Already have an account? Log in"}
-          </button>
-        </div>
+              <div className="input-group">
+                <label htmlFor="admin-password">Password</label>
+                <div className="input-wrapper">
+                  <Lock size={18} className="input-icon" />
+                  <input 
+                    id="admin-password"
+                    type="password" 
+                    placeholder="Enter admin password" 
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <button type="submit" className="btn-login" disabled={isLoading}>
+                {isLoading ? (
+                  <Loader2 className="spinner" size={20} />
+                ) : (
+                  <>
+                    <span>Authenticate Admin</span>
+                    <ArrowRight size={18} />
+                  </>
+                )}
+              </button>
+            </form>
+            <button onClick={() => setStep('role')} className="btn-step-back">
+              <ArrowLeft size={16} />
+              <span>Back</span>
+            </button>
+          </div>
+        )}
+
+        {/* 4. User Entry Selection */}
+        {step === 'user_entry' && (
+          <div className="login-flow-step">
+            <h2 className="step-title">User Account Entry</h2>
+            <p className="step-subtitle">Platform: <strong className="highlight-text">{getPlatformLabel()}</strong></p>
+            
+            <div className="user-entry-options">
+              <button onClick={() => setStep('user_signin')} className="user-entry-btn">
+                <LogIn size={20} />
+                <span>Sign In to existing account</span>
+              </button>
+              
+              <button onClick={() => setStep('user_signup')} className="user-entry-btn accent-btn">
+                <UserPlus size={20} />
+                <span>Create new user account</span>
+              </button>
+            </div>
+            
+            <button onClick={() => setStep('role')} className="btn-step-back">
+              <ArrowLeft size={16} />
+              <span>Back</span>
+            </button>
+          </div>
+        )}
+
+        {/* 5. User Sign In Form */}
+        {step === 'user_signin' && (
+          <div className="login-flow-step">
+            <h2 className="step-title">User Sign In</h2>
+            <p className="step-subtitle">Sign in to your ValiData account ({getPlatformLabel()})</p>
+            <form onSubmit={handleUserSignIn} className="login-form">
+              {error && <div className="error-message">{error}</div>}
+              
+              <div className="input-group">
+                <label htmlFor="user-username">Username</label>
+                <div className="input-wrapper">
+                  <User size={18} className="input-icon" />
+                  <input 
+                    id="user-username"
+                    type="text" 
+                    placeholder="Enter your username" 
+                    value={userUsername}
+                    onChange={(e) => setUserUsername(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="input-group">
+                <label htmlFor="user-password">Password</label>
+                <div className="input-wrapper">
+                  <Lock size={18} className="input-icon" />
+                  <input 
+                    id="user-password"
+                    type="password" 
+                    placeholder="Enter your password" 
+                    value={userPassword}
+                    onChange={(e) => setUserPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <button type="submit" className="btn-login" disabled={isLoading}>
+                {isLoading ? (
+                  <Loader2 className="spinner" size={20} />
+                ) : (
+                  <>
+                    <span>Sign In</span>
+                    <ArrowRight size={18} />
+                  </>
+                )}
+              </button>
+            </form>
+            <button onClick={() => setStep('user_entry')} className="btn-step-back">
+              <ArrowLeft size={16} />
+              <span>Back</span>
+            </button>
+          </div>
+        )}
+
+        {/* 6. User Sign Up Form */}
+        {step === 'user_signup' && (
+          <div className="login-flow-step">
+            <h2 className="step-title">User Sign Up</h2>
+            <p className="step-subtitle">Register new ValiData profile ({getPlatformLabel()})</p>
+            <form onSubmit={handleUserSignUp} className="login-form">
+              {error && <div className="error-message">{error}</div>}
+              
+              <div className="input-group">
+                <label htmlFor="signup-username">Username</label>
+                <div className="input-wrapper">
+                  <User size={18} className="input-icon" />
+                  <input 
+                    id="signup-username"
+                    type="text" 
+                    placeholder="Create username" 
+                    value={userUsername}
+                    onChange={(e) => setUserUsername(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="input-group">
+                <label htmlFor="signup-password">Password</label>
+                <div className="input-wrapper">
+                  <Lock size={18} className="input-icon" />
+                  <input 
+                    id="signup-password"
+                    type="password" 
+                    placeholder="Create password" 
+                    value={userPassword}
+                    onChange={(e) => setUserPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="input-group">
+                <label htmlFor="signup-confirm-password">Confirm Password</label>
+                <div className="input-wrapper">
+                  <Lock size={18} className="input-icon" />
+                  <input 
+                    id="signup-confirm-password"
+                    type="password" 
+                    placeholder="Verify password" 
+                    value={userConfirmPassword}
+                    onChange={(e) => setUserConfirmPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <button type="submit" className="btn-login" disabled={isLoading}>
+                {isLoading ? (
+                  <Loader2 className="spinner" size={20} />
+                ) : (
+                  <>
+                    <span>Create Profile</span>
+                    <ArrowRight size={18} />
+                  </>
+                )}
+              </button>
+            </form>
+            <button onClick={() => setStep('user_entry')} className="btn-step-back">
+              <ArrowLeft size={16} />
+              <span>Back</span>
+            </button>
+          </div>
+        )}
       </div>
-      
+
       <div className="security-badge">
         <Shield size={14} />
         <span>Enterprise Grade Encryption Active</span>
