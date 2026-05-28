@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Users, Server, FileText, Settings, ArrowLeft, LogOut, CheckCircle } from 'lucide-react';
+import { Shield, Users, Server, FileText, Settings, ArrowLeft, LogOut, CheckCircle, Search, Filter } from 'lucide-react';
 import { authService } from '../services/authService';
 import type { UserRequest } from '../services/authService';
 import './AdminDashboard.css';
@@ -11,6 +11,11 @@ const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'tools' | 'requests'>('tools');
   const [pendingRequests, setPendingRequests] = useState<UserRequest[]>([]);
   const [processedRequests, setProcessedRequests] = useState<UserRequest[]>([]);
+
+  // Search & filter states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [platformFilter, setPlatformFilter] = useState<'ALL' | 'SNOWFLAKE' | 'DATABRICKS'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'APPROVED' | 'REJECTED'>('ALL');
 
   // Gate page from regular users
   useEffect(() => {
@@ -33,7 +38,8 @@ const AdminDashboard: React.FC = () => {
   }, []);
 
   const handleApprove = (id: string) => {
-    const res = authService.approveUser(id);
+    const adminUser = localStorage.getItem('robin_user') || 'Admin';
+    const res = authService.approveUser(id, adminUser);
     if (res.success) {
       setActiveMessage(`User request approved successfully!`);
       setTimeout(() => setActiveMessage(null), 4000);
@@ -42,7 +48,8 @@ const AdminDashboard: React.FC = () => {
   };
 
   const handleReject = (id: string) => {
-    const res = authService.rejectUser(id);
+    const adminUser = localStorage.getItem('robin_user') || 'Admin';
+    const res = authService.rejectUser(id, adminUser);
     if (res.success) {
       setActiveMessage(`User request rejected successfully!`);
       setTimeout(() => setActiveMessage(null), 4000);
@@ -63,6 +70,38 @@ const AdminDashboard: React.FC = () => {
     setActiveMessage(`Simulated action: "${actionName}" executed successfully in admin sandbox!`);
     setTimeout(() => setActiveMessage(null), 4000);
   };
+
+  // Filter pending requests
+  const filteredPending = pendingRequests.filter(req => {
+    const matchesSearch = 
+      req.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      req.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      req.email.toLowerCase().includes(searchQuery.toLowerCase());
+      
+    const matchesPlatform = 
+      platformFilter === 'ALL' || 
+      req.selected_platform.toLowerCase() === platformFilter.toLowerCase();
+      
+    return matchesSearch && matchesPlatform;
+  });
+
+  // Filter processed requests
+  const filteredProcessed = processedRequests.filter(req => {
+    const matchesSearch = 
+      req.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      req.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      req.email.toLowerCase().includes(searchQuery.toLowerCase());
+      
+    const matchesPlatform = 
+      platformFilter === 'ALL' || 
+      req.selected_platform.toLowerCase() === platformFilter.toLowerCase();
+      
+    const matchesStatus = 
+      statusFilter === 'ALL' || 
+      req.status.toLowerCase() === statusFilter.toLowerCase();
+      
+    return matchesSearch && matchesPlatform && matchesStatus;
+  });
 
   const adminCards = [
     {
@@ -148,6 +187,9 @@ const AdminDashboard: React.FC = () => {
             >
               <Users size={18} />
               <span>Access Requests</span>
+              {pendingRequests.length > 0 && (
+                <span className="sidebar-badge">{pendingRequests.length}</span>
+              )}
             </button>
           </aside>
 
@@ -179,10 +221,50 @@ const AdminDashboard: React.FC = () => {
               </div>
             ) : (
               <div className="admin-requests-view">
+                {/* Search & Filter Panel */}
+                <div className="search-filter-container">
+                  <div className="search-box">
+                    <Search size={18} className="search-icon" />
+                    <input 
+                      type="text" 
+                      placeholder="Search by name, username, or email..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                  <div className="filter-controls">
+                    <div className="filter-group">
+                      <Filter size={14} className="filter-icon" />
+                      <select 
+                        value={platformFilter}
+                        onChange={(e) => setPlatformFilter(e.target.value as any)}
+                        className="filter-select"
+                      >
+                        <option value="ALL">All Platforms</option>
+                        <option value="SNOWFLAKE">Snowflake</option>
+                        <option value="DATABRICKS">Databricks</option>
+                      </select>
+                    </div>
+                    
+                    <div className="filter-group">
+                      <Filter size={14} className="filter-icon" />
+                      <select 
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value as any)}
+                        className="filter-select"
+                      >
+                        <option value="ALL">All Statuses</option>
+                        <option value="APPROVED">Approved</option>
+                        <option value="REJECTED">Rejected</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
                 <h2 className="requests-section-title">Pending Access Requests</h2>
                 <div className="admin-table-container">
-                  {pendingRequests.length === 0 ? (
-                    <div className="empty-state">No pending access requests.</div>
+                  {filteredPending.length === 0 ? (
+                    <div className="empty-state">No pending access requests match the filters.</div>
                   ) : (
                     <table className="admin-table">
                       <thead>
@@ -196,7 +278,7 @@ const AdminDashboard: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {pendingRequests.map(req => (
+                        {filteredPending.map(req => (
                           <tr key={req.id}>
                             <td className="font-semibold">{req.full_name}</td>
                             <td>{req.username}</td>
@@ -222,8 +304,8 @@ const AdminDashboard: React.FC = () => {
 
                 <h2 className="requests-section-title">Processed Requests</h2>
                 <div className="admin-table-container">
-                  {processedRequests.length === 0 ? (
-                    <div className="empty-state">No processed requests.</div>
+                  {filteredProcessed.length === 0 ? (
+                    <div className="empty-state">No processed requests match the filters.</div>
                   ) : (
                     <table className="admin-table">
                       <thead>
@@ -233,11 +315,13 @@ const AdminDashboard: React.FC = () => {
                           <th>Email</th>
                           <th>Platform</th>
                           <th>Status</th>
+                          <th>Requested At</th>
                           <th>Action Date</th>
+                          <th>Actioned By</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {processedRequests.map(req => (
+                        {filteredProcessed.map(req => (
                           <tr key={req.id}>
                             <td className="font-semibold">{req.full_name}</td>
                             <td>{req.username}</td>
@@ -250,8 +334,14 @@ const AdminDashboard: React.FC = () => {
                                 {req.status}
                               </span>
                             </td>
+                            <td>{req.requested_at_timestamp}</td>
                             <td>
                               {req.status === 'APPROVED' ? req.approved_at_timestamp : req.rejected_at_timestamp}
+                            </td>
+                            <td>
+                              <span className="admin-user-tag">
+                                {req.status === 'APPROVED' ? req.approved_by || 'System' : req.rejected_by || 'System'}
+                              </span>
                             </td>
                           </tr>
                         ))}

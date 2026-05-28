@@ -23,9 +23,15 @@ import AdminDashboard from './pages/AdminDashboard';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const token = localStorage.getItem('robin_auth_token');
+  const userType = localStorage.getItem('user_type');
+  const isConnected = localStorage.getItem('is_connected') === 'true';
   const location = useLocation();
 
   if (!token) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (userType === 'user' && !isConnected) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 

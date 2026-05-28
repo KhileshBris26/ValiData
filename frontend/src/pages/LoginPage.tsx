@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Lock, User, ArrowRight, Loader2, Database, ArrowLeft, LogIn, UserPlus, ShieldAlert, Mail } from 'lucide-react';
+import { Shield, Lock, User, ArrowRight, Loader2, Database, ArrowLeft, LogIn, UserPlus, ShieldAlert, Mail, Server, Globe, Key } from 'lucide-react';
 import { usePlatform } from '../context/PlatformContext';
-import { authService } from '../services/authService';
+import { authService, decryptData } from '../services/authService';
 import './LoginPage.css';
 
-type ScreenStep = 'platform' | 'role' | 'admin_login' | 'user_entry' | 'user_signin' | 'user_signup';
+type ScreenStep = 'platform' | 'role' | 'admin_login' | 'user_entry' | 'user_signin' | 'user_signup' | 'user_connect' | 'user_select_role';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -27,6 +27,50 @@ const LoginPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+
+  // Snowflake connection credentials states
+  const [sfAccount, setSfAccount] = useState('');
+  const [sfUsername, setSfUsername] = useState('');
+  const [sfPassword, setSfPassword] = useState('');
+  const [sfWarehouse, setSfWarehouse] = useState('');
+  const [sfDatabase, setSfDatabase] = useState('');
+  const [sfSchema, setSfSchema] = useState('');
+
+  // Databricks connection credentials states
+  const [dbWorkspaceUrl, setDbWorkspaceUrl] = useState('');
+  const [dbToken, setDbToken] = useState('');
+  const [dbClusterId, setDbClusterId] = useState('');
+
+  // Connection testing states
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [testConnectionSuccess, setTestConnectionSuccess] = useState<boolean | null>(null);
+  const [testConnectionMessage, setTestConnectionMessage] = useState('');
+
+  // Role Selection states
+  const [fetchedRoles, setFetchedRoles] = useState<string[]>([]);
+  const [selectedRole, setSelectedRole] = useState('PUBLIC');
+
+  // Connection gating redirection on mount
+  useEffect(() => {
+    const token = localStorage.getItem('robin_auth_token');
+    const userType = localStorage.getItem('user_type');
+    const isConnected = localStorage.getItem('is_connected') === 'true';
+
+    if (token) {
+      if (userType === 'admin') {
+        navigate('/admin-dashboard');
+      } else if (userType === 'user') {
+        if (isConnected) {
+          navigate('/');
+        } else {
+          // Pre-populate username and route to connection configuration page
+          const savedUser = localStorage.getItem('robin_user') || '';
+          setUserUsername(savedUser);
+          setStep('user_connect');
+        }
+      }
+    }
+  }, [navigate]);
 
   // Handle platform selection
   const selectPlatform = (platform: 'snowflake' | 'databricks') => {
@@ -72,6 +116,11 @@ const LoginPage: React.FC = () => {
     setIsLoading(true);
     setError('');
 
+    // Clear any leftover connection tokens
+    localStorage.removeItem('robin_user_session');
+    localStorage.removeItem('is_connected');
+    localStorage.removeItem('selected_role');
+
     setTimeout(() => {
       if (userUsername.trim() && userPassword.trim()) {
         const result = authService.authenticateUser(userUsername, userPassword);
@@ -83,7 +132,26 @@ const LoginPage: React.FC = () => {
           const userPlatform = result.user.selected_platform || 'snowflake';
           localStorage.setItem('selected_platform', userPlatform);
           setPlatform(userPlatform as 'snowflake' | 'databricks');
-          navigate('/');
+
+          // Pre-populate connection fields if they are already saved in the user request object
+          if (result.user.credentials) {
+            const creds = result.user.credentials;
+            if (userPlatform === 'snowflake') {
+              setSfAccount(creds.account || '');
+              setSfUsername(creds.username || '');
+              setSfPassword(decryptData(creds.password) || '');
+              setSfWarehouse(creds.warehouse || '');
+              setSfDatabase(creds.database || '');
+              setSfSchema(creds.schema || '');
+            } else if (userPlatform === 'databricks') {
+              setDbWorkspaceUrl(creds.workspace_url || '');
+              setDbToken(decryptData(creds.token) || '');
+              setDbClusterId(creds.cluster_id || '');
+            }
+          }
+
+          // Force step to platform connection config screen
+          setStep('user_connect');
         } else {
           setError(result.message);
         }
@@ -140,6 +208,121 @@ const LoginPage: React.FC = () => {
         setError(result.message);
       }
       setIsLoading(false);
+    }, 800);
+  };
+
+  // Handle connection testing
+  const handleTestConnection = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsTestingConnection(true);
+    setTestConnectionSuccess(null);
+    setTestConnectionMessage('');
+
+    const activePlat = localStorage.getItem('selected_platform') || 'snowflake';
+
+    setTimeout(() => {
+      if (activePlat === 'snowflake') {
+        if (!sfAccount.trim() || !sfUsername.trim() || !sfPassword.trim()) {
+          setTestConnectionSuccess(false);
+          setTestConnectionMessage('Connection failed: Account Identifier, Username, and Password are required.');
+          setIsTestingConnection(false);
+          return;
+        }
+        if (!sfAccount.includes('.')) {
+          setTestConnectionSuccess(false);
+          setTestConnectionMessage('Connection failed: Invalid Snowflake Account Identifier format.');
+          setIsTestingConnection(false);
+          return;
+        }
+        setTestConnectionSuccess(true);
+        setTestConnectionMessage('Connection successful! Valid Snowflake parameters.');
+      } else {
+        if (!dbWorkspaceUrl.trim() || !dbToken.trim()) {
+          setTestConnectionSuccess(false);
+          setTestConnectionMessage('Connection failed: Workspace URL and Personal Access Token are required.');
+          setIsTestingConnection(false);
+          return;
+        }
+        if (!dbWorkspaceUrl.startsWith('http://') && !dbWorkspaceUrl.startsWith('https://')) {
+          setTestConnectionSuccess(false);
+          setTestConnectionMessage('Connection failed: Workspace URL must start with http:// or https://.');
+          setIsTestingConnection(false);
+          return;
+        }
+        setTestConnectionSuccess(true);
+        setTestConnectionMessage('Connection successful! Valid Databricks workspace token.');
+      }
+      setIsTestingConnection(false);
+    }, 1200);
+  };
+
+  // Handle Save Credentials and proceed to Role Selection
+  const handleSaveConnection = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    const activePlat = localStorage.getItem('selected_platform') || 'snowflake';
+    const currentUser = localStorage.getItem('robin_user') || 'user';
+
+    setTimeout(() => {
+      let credentials: any = {};
+      if (activePlat === 'snowflake') {
+        credentials = {
+          account: sfAccount.trim(),
+          username: sfUsername.trim(),
+          password: sfPassword,
+          warehouse: sfWarehouse.trim(),
+          database: sfDatabase.trim(),
+          schema: sfSchema.trim()
+        };
+      } else {
+        credentials = {
+          workspace_url: dbWorkspaceUrl.trim(),
+          token: dbToken,
+          cluster_id: dbClusterId.trim()
+        };
+      }
+
+      const res = authService.updateUserCredentials(currentUser, activePlat, credentials);
+      if (res.success) {
+        const roles = authService.fetchUserRoles(currentUser, activePlat);
+        setFetchedRoles(roles);
+        const defaultRole = roles.includes('PUBLIC') ? 'PUBLIC' : roles[0] || 'PUBLIC';
+        setSelectedRole(defaultRole);
+        setStep('user_select_role');
+      } else {
+        setError(res.message);
+      }
+      setIsLoading(false);
+    }, 800);
+  };
+
+  // Handle Role Confirmation and Enter Application
+  const handleSelectRoleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    const currentUser = localStorage.getItem('robin_user') || 'user';
+    const activePlat = localStorage.getItem('selected_platform') || 'snowflake';
+
+    setTimeout(() => {
+      authService.updateUserRole(currentUser, selectedRole);
+
+      localStorage.setItem('selected_role', selectedRole);
+      localStorage.setItem('is_connected', 'true');
+
+      const userSession = {
+        username: currentUser,
+        user_type: 'USER',
+        platform: activePlat,
+        credentials_encrypted: true,
+        selected_role: selectedRole,
+        is_connected: true
+      };
+      localStorage.setItem('robin_user_session', JSON.stringify(userSession));
+
+      setIsLoading(false);
+      navigate('/');
     }, 800);
   };
 
@@ -465,6 +648,262 @@ const LoginPage: React.FC = () => {
               <ArrowLeft size={16} />
               <span>Back</span>
             </button>
+          </div>
+        )}
+
+        {/* 7. Connect Your Platform Step */}
+        {step === 'user_connect' && (
+          <div className="login-flow-step">
+            <h2 className="step-title">Connect Your Platform</h2>
+            <p className="step-subtitle">Configure credentials for <strong className="highlight-text">{getPlatformLabel()}</strong></p>
+            
+            <form onSubmit={handleSaveConnection} className="login-form">
+              {error && <div className="error-message">{error}</div>}
+              
+              {localStorage.getItem('selected_platform') === 'snowflake' ? (
+                <>
+                  <div className="input-group">
+                    <label htmlFor="sf-account">Account Identifier</label>
+                    <div className="input-wrapper">
+                      <Globe size={18} className="input-icon" />
+                      <input 
+                        id="sf-account"
+                        type="text" 
+                        placeholder="e.g. xy12345.region.azure" 
+                        value={sfAccount}
+                        onChange={(e) => {
+                          setSfAccount(e.target.value);
+                          setTestConnectionSuccess(null);
+                        }}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="input-group">
+                    <label htmlFor="sf-username">Username</label>
+                    <div className="input-wrapper">
+                      <User size={18} className="input-icon" />
+                      <input 
+                        id="sf-username"
+                        type="text" 
+                        placeholder="Snowflake Username" 
+                        value={sfUsername}
+                        onChange={(e) => {
+                          setSfUsername(e.target.value);
+                          setTestConnectionSuccess(null);
+                        }}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="input-group">
+                    <label htmlFor="sf-password">Password</label>
+                    <div className="input-wrapper">
+                      <Lock size={18} className="input-icon" />
+                      <input 
+                        id="sf-password"
+                        type="password" 
+                        placeholder="••••••••" 
+                        value={sfPassword}
+                        onChange={(e) => {
+                          setSfPassword(e.target.value);
+                          setTestConnectionSuccess(null);
+                        }}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="input-group-row">
+                    <div className="input-group">
+                      <label htmlFor="sf-warehouse">Warehouse (optional)</label>
+                      <input 
+                        id="sf-warehouse"
+                        type="text" 
+                        placeholder="COMPUTE_WH" 
+                        value={sfWarehouse}
+                        onChange={(e) => setSfWarehouse(e.target.value)}
+                      />
+                    </div>
+                    <div className="input-group">
+                      <label htmlFor="sf-database">Database (optional)</label>
+                      <input 
+                        id="sf-database"
+                        type="text" 
+                        placeholder="DEMO_DB" 
+                        value={sfDatabase}
+                        onChange={(e) => setSfDatabase(e.target.value)}
+                      />
+                    </div>
+                    <div className="input-group">
+                      <label htmlFor="sf-schema">Schema (optional)</label>
+                      <input 
+                        id="sf-schema"
+                        type="text" 
+                        placeholder="PUBLIC" 
+                        value={sfSchema}
+                        onChange={(e) => setSfSchema(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="input-group">
+                    <label htmlFor="db-url">Workspace URL</label>
+                    <div className="input-wrapper">
+                      <Globe size={18} className="input-icon" />
+                      <input 
+                        id="db-url"
+                        type="text" 
+                        placeholder="https://adb-123456.azuredatabricks.net" 
+                        value={dbWorkspaceUrl}
+                        onChange={(e) => {
+                          setDbWorkspaceUrl(e.target.value);
+                          setTestConnectionSuccess(null);
+                        }}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="input-group">
+                    <label htmlFor="db-token">Personal Access Token</label>
+                    <div className="input-wrapper">
+                      <Key size={18} className="input-icon" />
+                      <input 
+                        id="db-token"
+                        type="password" 
+                        placeholder="dapi••••••••••••••••" 
+                        value={dbToken}
+                        onChange={(e) => {
+                          setDbToken(e.target.value);
+                          setTestConnectionSuccess(null);
+                        }}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="input-group">
+                    <label htmlFor="db-cluster">Cluster ID (optional)</label>
+                    <div className="input-wrapper">
+                      <Server size={18} className="input-icon" />
+                      <input 
+                        id="db-cluster"
+                        type="text" 
+                        placeholder="1012-034567-make123" 
+                        value={dbClusterId}
+                        onChange={(e) => setDbClusterId(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {testConnectionSuccess === true && (
+                <div className="test-success-banner">
+                  <span>{testConnectionMessage}</span>
+                </div>
+              )}
+
+              {testConnectionSuccess === false && (
+                <div className="test-error-banner">
+                  <span>{testConnectionMessage}</span>
+                </div>
+              )}
+
+              <div className="connection-action-buttons">
+                <button 
+                  type="button" 
+                  onClick={handleTestConnection} 
+                  className="btn-test-connection" 
+                  disabled={isTestingConnection}
+                >
+                  {isTestingConnection ? (
+                    <>
+                      <Loader2 className="spinner" size={16} />
+                      <span>Testing...</span>
+                    </>
+                  ) : (
+                    <span>Test Connection</span>
+                  )}
+                </button>
+
+                <button 
+                  type="submit" 
+                  className="btn-login" 
+                  disabled={isLoading || testConnectionSuccess !== true}
+                >
+                  {isLoading ? (
+                    <Loader2 className="spinner" size={20} />
+                  ) : (
+                    <>
+                      <span>Save & Continue</span>
+                      <ArrowRight size={18} />
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* 8. Role Selection Step */}
+        {step === 'user_select_role' && (
+          <div className="login-flow-step">
+            <h2 className="step-title">Select Security Context</h2>
+            <p className="step-subtitle">Platform connection verified successfully</p>
+            
+            <form onSubmit={handleSelectRoleSubmit} className="login-form">
+              {error && <div className="error-message">{error}</div>}
+
+              <div className="connection-summary-panel">
+                <div className="summary-row">
+                  <span className="summary-label">Username:</span>
+                  <span className="summary-value font-semibold">{localStorage.getItem('robin_user')}</span>
+                </div>
+                <div className="summary-row">
+                  <span className="summary-label">Platform:</span>
+                  <span className="summary-value badge platform">{localStorage.getItem('selected_platform')}</span>
+                </div>
+                <div className="summary-row">
+                  <span className="summary-label">Credentials Status:</span>
+                  <span className="summary-value success-text">•••••••• (Masked & Encrypted)</span>
+                </div>
+              </div>
+
+              <div className="input-group">
+                <label htmlFor="active-role-select">Select Active Role</label>
+                <div className="input-wrapper select-wrapper">
+                  <Shield size={18} className="input-icon" />
+                  <select 
+                    id="active-role-select"
+                    value={selectedRole}
+                    onChange={(e) => setSelectedRole(e.target.value)}
+                    className="custom-role-dropdown"
+                    required
+                  >
+                    {fetchedRoles.map(role => (
+                      <option key={role} value={role}>{role}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <button type="submit" className="btn-login" disabled={isLoading}>
+                {isLoading ? (
+                  <Loader2 className="spinner" size={20} />
+                ) : (
+                  <>
+                    <span>Confirm & Enter Application</span>
+                    <ArrowRight size={18} />
+                  </>
+                )}
+              </button>
+            </form>
           </div>
         )}
       </div>

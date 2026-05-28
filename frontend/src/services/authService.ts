@@ -9,10 +9,31 @@ export interface UserRequest {
   requested_at_timestamp: string;
   approved_at_timestamp?: string;
   rejected_at_timestamp?: string;
+  approved_by?: string;
+  rejected_by?: string;
   selected_platform: string;
   roles?: string[];
   credentials?: any;
 }
+
+// Simulated client-side encryption (Reverse + Base64 with mock prefix)
+export const encryptData = (text: string): string => {
+  if (!text) return '';
+  const reversed = text.split('').reverse().join('');
+  return 'mock_enc_' + btoa(unescape(encodeURIComponent(reversed)));
+};
+
+export const decryptData = (ciphertext: string): string => {
+  if (!ciphertext) return '';
+  if (!ciphertext.startsWith('mock_enc_')) return ciphertext;
+  try {
+    const rawCipher = ciphertext.substring('mock_enc_'.length);
+    const decoded = decodeURIComponent(escape(atob(rawCipher)));
+    return decoded.split('').reverse().join('');
+  } catch {
+    return ciphertext;
+  }
+};
 
 class AuthServiceClass {
   private getStorageItem(key: string): any[] {
@@ -65,7 +86,7 @@ class AuthServiceClass {
   }
 
   // Approve a user request
-  approveUser(id: string): { success: boolean; message: string } {
+  approveUser(id: string, adminUsername: string): { success: boolean; message: string } {
     const users = this.getStorageItem('robin_users_db') as UserRequest[];
     const idx = users.findIndex(u => u.id === id);
     
@@ -75,14 +96,15 @@ class AuthServiceClass {
 
     users[idx].status = 'APPROVED';
     users[idx].approved_at_timestamp = new Date().toLocaleString();
-    users[idx].roles = ['USER']; // default user role for future Snowflake integrations
+    users[idx].approved_by = adminUsername;
+    users[idx].roles = ['PUBLIC']; // PUBLIC is the default role now
     this.setStorageItem('robin_users_db', users);
 
     return { success: true, message: 'User approved successfully' };
   }
 
   // Reject a user request
-  rejectUser(id: string): { success: boolean; message: string } {
+  rejectUser(id: string, adminUsername: string): { success: boolean; message: string } {
     const users = this.getStorageItem('robin_users_db') as UserRequest[];
     const idx = users.findIndex(u => u.id === id);
     
@@ -92,6 +114,7 @@ class AuthServiceClass {
 
     users[idx].status = 'REJECTED';
     users[idx].rejected_at_timestamp = new Date().toLocaleString();
+    users[idx].rejected_by = adminUsername;
     this.setStorageItem('robin_users_db', users);
 
     return { success: true, message: 'User request rejected' };
@@ -111,7 +134,7 @@ class AuthServiceClass {
     }
 
     if (user.status === 'PENDING') {
-      return { success: false, status: 'PENDING', message: 'Your request is awaiting approval from admin.' };
+      return { success: false, status: 'PENDING', message: 'Your access request is awaiting admin approval. Please try again later.' };
     }
 
     if (user.status === 'REJECTED') {
@@ -119,6 +142,61 @@ class AuthServiceClass {
     }
 
     return { success: true, status: 'APPROVED', message: 'Login successful.', user };
+  }
+
+  // Update user connection credentials
+  updateUserCredentials(username: string, platform: string, credentials: any): { success: boolean; message: string } {
+    const users = this.getStorageItem('robin_users_db') as UserRequest[];
+    const idx = users.findIndex(u => u.username.toLowerCase() === username.toLowerCase());
+    
+    if (idx === -1) {
+      return { success: false, message: 'User not found.' };
+    }
+
+    const secureCreds = { ...credentials };
+    if (secureCreds.password) {
+      secureCreds.password = encryptData(secureCreds.password);
+    }
+    if (secureCreds.token) {
+      secureCreds.token = encryptData(secureCreds.token);
+    }
+
+    users[idx].credentials = secureCreds;
+    users[idx].selected_platform = platform.toLowerCase();
+    this.setStorageItem('robin_users_db', users);
+
+    return { success: true, message: 'Platform credentials saved successfully.' };
+  }
+
+  // Update user active role
+  updateUserRole(username: string, role: string): { success: boolean; message: string } {
+    const users = this.getStorageItem('robin_users_db') as UserRequest[];
+    const idx = users.findIndex(u => u.username.toLowerCase() === username.toLowerCase());
+    
+    if (idx === -1) {
+      return { success: false, message: 'User not found.' };
+    }
+
+    if (!users[idx].roles) {
+      users[idx].roles = [];
+    }
+    if (!users[idx].roles.includes(role)) {
+      users[idx].roles.push(role);
+    }
+
+    this.setStorageItem('robin_users_db', users);
+    return { success: true, message: 'Active role updated successfully.' };
+  }
+
+  // Fetch available roles based on username and platform
+  fetchUserRoles(_username: string, platform: string): string[] {
+    const p = platform.toLowerCase();
+    if (p === 'snowflake') {
+      return ['PUBLIC', 'SYSADMIN', 'ACCOUNTADMIN', 'SECURITYADMIN', 'DATA_STEWARD'];
+    } else if (p === 'databricks') {
+      return ['PUBLIC', 'ADMIN_GROUP', 'DATA_ENGINEERS', 'DATA_SCIENTISTS', 'ANALYSTS'];
+    }
+    return ['PUBLIC'];
   }
 }
 
