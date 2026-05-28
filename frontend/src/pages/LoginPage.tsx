@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Lock, User, ArrowRight, Loader2, Database, ArrowLeft, LogIn, UserPlus, ShieldAlert } from 'lucide-react';
+import { Shield, Lock, User, ArrowRight, Loader2, Database, ArrowLeft, LogIn, UserPlus, ShieldAlert, Mail } from 'lucide-react';
 import { usePlatform } from '../context/PlatformContext';
+import { authService } from '../services/authService';
 import './LoginPage.css';
 
 type ScreenStep = 'platform' | 'role' | 'admin_login' | 'user_entry' | 'user_signin' | 'user_signup';
@@ -15,12 +16,17 @@ const LoginPage: React.FC = () => {
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   
+  // User Signup extra fields
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  
   const [userUsername, setUserUsername] = useState('');
   const [userPassword, setUserPassword] = useState('');
   const [userConfirmPassword, setUserConfirmPassword] = useState('');
   
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   // Handle platform selection
   const selectPlatform = (platform: 'snowflake' | 'databricks') => {
@@ -68,11 +74,19 @@ const LoginPage: React.FC = () => {
 
     setTimeout(() => {
       if (userUsername.trim() && userPassword.trim()) {
-        localStorage.setItem('robin_auth_token', `user_token_${userUsername}_secure`);
-        localStorage.setItem('robin_user', userUsername);
-        localStorage.setItem('is_authenticated', 'true');
-        localStorage.setItem('user_type', 'user');
-        navigate('/');
+        const result = authService.authenticateUser(userUsername, userPassword);
+        if (result.success && result.user) {
+          localStorage.setItem('robin_auth_token', `user_token_${userUsername}_secure`);
+          localStorage.setItem('robin_user', userUsername);
+          localStorage.setItem('is_authenticated', 'true');
+          localStorage.setItem('user_type', 'user');
+          const userPlatform = result.user.selected_platform || 'snowflake';
+          localStorage.setItem('selected_platform', userPlatform);
+          setPlatform(userPlatform as 'snowflake' | 'databricks');
+          navigate('/');
+        } else {
+          setError(result.message);
+        }
       } else {
         setError('Please fill in all credentials.');
       }
@@ -85,6 +99,13 @@ const LoginPage: React.FC = () => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
+    setSuccessMessage('');
+
+    if (!fullName.trim() || !userUsername.trim() || !email.trim() || !userPassword.trim() || !userConfirmPassword.trim()) {
+      setError('All fields are mandatory.');
+      setIsLoading(false);
+      return;
+    }
 
     if (userPassword !== userConfirmPassword) {
       setError('Passwords do not match');
@@ -93,14 +114,30 @@ const LoginPage: React.FC = () => {
     }
 
     setTimeout(() => {
-      if (userUsername.trim() && userPassword.trim()) {
-        localStorage.setItem('robin_auth_token', `user_token_${userUsername}_secure`);
-        localStorage.setItem('robin_user', userUsername);
-        localStorage.setItem('is_authenticated', 'true');
-        localStorage.setItem('user_type', 'user');
-        navigate('/');
+      const selectedPlatform = localStorage.getItem('selected_platform') || 'snowflake';
+      const result = authService.createUserRequest({
+        full_name: fullName.trim(),
+        username: userUsername.trim(),
+        email: email.trim(),
+        password_raw: userPassword,
+        password_masked: '*'.repeat(userPassword.length),
+        selected_platform: selectedPlatform
+      });
+
+      if (result.success) {
+        setSuccessMessage(result.message);
+        setFullName('');
+        setEmail('');
+        setUserUsername('');
+        setUserPassword('');
+        setUserConfirmPassword('');
+        
+        setTimeout(() => {
+          setStep('user_signin');
+          setSuccessMessage('');
+        }, 3000);
       } else {
-        setError('Please fill in all details.');
+        setError(result.message);
       }
       setIsLoading(false);
     }, 800);
@@ -336,7 +373,23 @@ const LoginPage: React.FC = () => {
             <p className="step-subtitle">Register new ValiData profile ({getPlatformLabel()})</p>
             <form onSubmit={handleUserSignUp} className="login-form">
               {error && <div className="error-message">{error}</div>}
+              {successMessage && <div className="success-message">{successMessage}</div>}
               
+              <div className="input-group">
+                <label htmlFor="signup-fullname">Full Name</label>
+                <div className="input-wrapper">
+                  <User size={18} className="input-icon" />
+                  <input 
+                    id="signup-fullname"
+                    type="text" 
+                    placeholder="Enter full name" 
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
               <div className="input-group">
                 <label htmlFor="signup-username">Username</label>
                 <div className="input-wrapper">
@@ -347,6 +400,21 @@ const LoginPage: React.FC = () => {
                     placeholder="Create username" 
                     value={userUsername}
                     onChange={(e) => setUserUsername(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="input-group">
+                <label htmlFor="signup-email">Email</label>
+                <div className="input-wrapper">
+                  <Mail size={18} className="input-icon" />
+                  <input 
+                    id="signup-email"
+                    type="email" 
+                    placeholder="Enter email address" 
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     required
                   />
                 </div>

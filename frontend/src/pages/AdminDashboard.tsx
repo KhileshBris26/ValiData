@@ -1,11 +1,54 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield, Users, Server, FileText, Settings, ArrowLeft, LogOut, CheckCircle } from 'lucide-react';
+import { authService } from '../services/authService';
+import type { UserRequest } from '../services/authService';
 import './AdminDashboard.css';
 
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [activeMessage, setActiveMessage] = React.useState<string | null>(null);
+  const [activeMessage, setActiveMessage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'tools' | 'requests'>('tools');
+  const [pendingRequests, setPendingRequests] = useState<UserRequest[]>([]);
+  const [processedRequests, setProcessedRequests] = useState<UserRequest[]>([]);
+
+  // Gate page from regular users
+  useEffect(() => {
+    const role = localStorage.getItem('user_type');
+    if (role !== 'admin') {
+      navigate('/');
+    }
+  }, [navigate]);
+
+  const loadRequests = () => {
+    const pending = authService.getUsersByStatus('PENDING');
+    const approved = authService.getUsersByStatus('APPROVED');
+    const rejected = authService.getUsersByStatus('REJECTED');
+    setPendingRequests(pending);
+    setProcessedRequests([...approved, ...rejected]);
+  };
+
+  useEffect(() => {
+    loadRequests();
+  }, []);
+
+  const handleApprove = (id: string) => {
+    const res = authService.approveUser(id);
+    if (res.success) {
+      setActiveMessage(`User request approved successfully!`);
+      setTimeout(() => setActiveMessage(null), 4000);
+      loadRequests();
+    }
+  };
+
+  const handleReject = (id: string) => {
+    const res = authService.rejectUser(id);
+    if (res.success) {
+      setActiveMessage(`User request rejected successfully!`);
+      setTimeout(() => setActiveMessage(null), 4000);
+      loadRequests();
+    }
+  };
 
   const handleSignOut = () => {
     localStorage.removeItem('robin_auth_token');
@@ -89,28 +132,136 @@ const AdminDashboard: React.FC = () => {
           </div>
         )}
 
-        <div className="admin-tools-grid">
-          {adminCards.map((card, idx) => {
-            const Icon = card.icon;
-            return (
-              <div key={idx} className="admin-tool-card">
-                <div className="admin-card-header">
-                  <div className="admin-card-icon" style={{ backgroundColor: `${card.color}15`, color: card.color }}>
-                    <Icon size={20} />
-                  </div>
-                  <h3>{card.title}</h3>
-                </div>
-                <p className="admin-card-desc">{card.desc}</p>
-                <button 
-                  onClick={() => showSimulatedAction(card.action)}
-                  className="btn-admin-action"
-                  style={{ border: `1px solid ${card.color}30`, color: card.color }}
-                >
-                  {card.action}
-                </button>
+        <div className="admin-body-layout">
+          {/* Left Navigation Sidebar */}
+          <aside className="admin-sidebar">
+            <button 
+              className={`admin-sidebar-btn ${activeTab === 'tools' ? 'active' : ''}`}
+              onClick={() => setActiveTab('tools')}
+            >
+              <Server size={18} />
+              <span>System Tools</span>
+            </button>
+            <button 
+              className={`admin-sidebar-btn ${activeTab === 'requests' ? 'active' : ''}`}
+              onClick={() => setActiveTab('requests')}
+            >
+              <Users size={18} />
+              <span>Access Requests</span>
+            </button>
+          </aside>
+
+          {/* Right Content Area */}
+          <main className="admin-content-area">
+            {activeTab === 'tools' ? (
+              <div className="admin-tools-grid">
+                {adminCards.map((card, idx) => {
+                  const Icon = card.icon;
+                  return (
+                    <div key={idx} className="admin-tool-card">
+                      <div className="admin-card-header">
+                        <div className="admin-card-icon" style={{ backgroundColor: `${card.color}15`, color: card.color }}>
+                          <Icon size={20} />
+                        </div>
+                        <h3>{card.title}</h3>
+                      </div>
+                      <p className="admin-card-desc">{card.desc}</p>
+                      <button 
+                        onClick={() => showSimulatedAction(card.action)}
+                        className="btn-admin-action"
+                        style={{ border: `1px solid ${card.color}30`, color: card.color }}
+                      >
+                        {card.action}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            ) : (
+              <div className="admin-requests-view">
+                <h2 className="requests-section-title">Pending Access Requests</h2>
+                <div className="admin-table-container">
+                  {pendingRequests.length === 0 ? (
+                    <div className="empty-state">No pending access requests.</div>
+                  ) : (
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Full Name</th>
+                          <th>Username</th>
+                          <th>Email</th>
+                          <th>Platform</th>
+                          <th>Requested At</th>
+                          <th style={{ textAlign: 'right' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pendingRequests.map(req => (
+                          <tr key={req.id}>
+                            <td className="font-semibold">{req.full_name}</td>
+                            <td>{req.username}</td>
+                            <td>{req.email}</td>
+                            <td>
+                              <span className="badge platform">{req.selected_platform}</span>
+                            </td>
+                            <td>{req.requested_at_timestamp}</td>
+                            <td style={{ textAlign: 'right' }}>
+                              <button onClick={() => handleApprove(req.id)} className="btn-approve">
+                                Approve
+                              </button>
+                              <button onClick={() => handleReject(req.id)} className="btn-reject">
+                                Reject
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                <h2 className="requests-section-title">Processed Requests</h2>
+                <div className="admin-table-container">
+                  {processedRequests.length === 0 ? (
+                    <div className="empty-state">No processed requests.</div>
+                  ) : (
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Full Name</th>
+                          <th>Username</th>
+                          <th>Email</th>
+                          <th>Platform</th>
+                          <th>Status</th>
+                          <th>Action Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {processedRequests.map(req => (
+                          <tr key={req.id}>
+                            <td className="font-semibold">{req.full_name}</td>
+                            <td>{req.username}</td>
+                            <td>{req.email}</td>
+                            <td>
+                              <span className="badge platform">{req.selected_platform}</span>
+                            </td>
+                            <td>
+                              <span className={`badge ${req.status.toLowerCase()}`}>
+                                {req.status}
+                              </span>
+                            </td>
+                            <td>
+                              {req.status === 'APPROVED' ? req.approved_at_timestamp : req.rejected_at_timestamp}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            )}
+          </main>
         </div>
       </div>
     </div>
