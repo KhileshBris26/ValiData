@@ -560,4 +560,50 @@
   font-weight: 600;
 }
 
+/* Refresh Roles alignment styles */
+.role-dropdown-container-with-refresh {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  width: 100%;
+}
+
+.select-role-group {
+  flex-grow: 1;
+}
+
+.btn-refresh-roles {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  height: 48px; /* matching select input height */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btn-refresh-roles:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+.btn-refresh-roles:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.no-roles-error {
+  margin-bottom: 0 !important;
+  text-align: left !important;
+}
+
+
 

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { PlatformProvider } from './context/PlatformContext';
 import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
@@ -68,7 +68,50 @@ function App() {
 
 function AuthenticatedApp() {
   const location = useLocation();
+  const navigate = useNavigate();
   const isPopup = location.pathname.includes('/create-rule/');
+
+  // Inactivity auto-logout monitoring (15 minutes)
+  React.useEffect(() => {
+    let timeoutId: number;
+    const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes
+
+    const resetTimer = () => {
+      window.clearTimeout(timeoutId);
+      timeoutId = window.setTimeout(logoutDueToInactivity, INACTIVITY_TIMEOUT);
+    };
+
+    const logoutDueToInactivity = () => {
+      // Clear session completely
+      localStorage.removeItem('robin_auth_token');
+      localStorage.removeItem('robin_user');
+      localStorage.removeItem('selected_role');
+      localStorage.removeItem('user_type');
+      localStorage.removeItem('is_authenticated');
+      localStorage.removeItem('is_connected');
+      localStorage.removeItem('selected_platform');
+      localStorage.removeItem('robin_user_session');
+
+      // Navigate to login with expiry reason
+      navigate('/login', { state: { message: 'Session expired. Please login again.' } });
+    };
+
+    // User activity listeners
+    window.addEventListener('mousemove', resetTimer);
+    window.addEventListener('keydown', resetTimer);
+    window.addEventListener('click', resetTimer);
+    window.addEventListener('scroll', resetTimer);
+
+    resetTimer();
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener('mousemove', resetTimer);
+      window.removeEventListener('keydown', resetTimer);
+      window.removeEventListener('click', resetTimer);
+      window.removeEventListener('scroll', resetTimer);
+    };
+  }, [navigate]);
 
   return (
     <div className="app-root">

@@ -190,3 +190,36 @@
   color: #a78bfa;
 }
 
+.connection-status-widget-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.btn-topbar-logout {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-topbar-logout:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.25);
+  transform: translateY(-1px);
+}
+
+.admin-status-text {
+  color: #94a3b8;
+  font-size: 0.88rem;
+}
+
+

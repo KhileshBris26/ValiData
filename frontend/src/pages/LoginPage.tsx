@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Shield, Lock, User, ArrowRight, Loader2, Database, ArrowLeft, LogIn, UserPlus, ShieldAlert, Mail, Server, Globe, Key } from 'lucide-react';
 import { usePlatform } from '../context/PlatformContext';
 import { authService, decryptData } from '../services/authService';
@@ -9,6 +9,7 @@ type ScreenStep = 'platform' | 'role' | 'admin_login' | 'user_entry' | 'user_sig
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { setPlatform } = usePlatform();
   
   // State machine for multi-step flows
@@ -49,6 +50,15 @@ const LoginPage: React.FC = () => {
   // Role Selection states
   const [fetchedRoles, setFetchedRoles] = useState<string[]>([]);
   const [selectedRole, setSelectedRole] = useState('PUBLIC');
+
+  // Parse location state redirect feedback (such as logout alerts)
+  useEffect(() => {
+    if (location.state && (location.state as any).message) {
+      setSuccessMessage((location.state as any).message);
+      // Wipe the history state so refreshing the browser hides the alert
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
 
   // Connection gating redirection on mount
   useEffect(() => {
@@ -285,16 +295,44 @@ const LoginPage: React.FC = () => {
 
       const res = authService.updateUserCredentials(currentUser, activePlat, credentials);
       if (res.success) {
+        // Fetch Snowflake/Databricks roles based on connection info
         const roles = authService.fetchUserRoles(currentUser, activePlat);
         setFetchedRoles(roles);
-        const defaultRole = roles.includes('PUBLIC') ? 'PUBLIC' : roles[0] || 'PUBLIC';
-        setSelectedRole(defaultRole);
+        if (roles.length > 0) {
+          const defaultRole = roles.includes('PUBLIC') ? 'PUBLIC' : roles[0] || 'PUBLIC';
+          setSelectedRole(defaultRole);
+        }
         setStep('user_select_role');
       } else {
         setError(res.message);
       }
       setIsLoading(false);
     }, 800);
+  };
+
+  // Refresh roles button trigger
+  const handleRefreshRoles = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setSuccessMessage('');
+    setError('');
+
+    const currentUser = localStorage.getItem('robin_user') || 'user';
+    const activePlat = localStorage.getItem('selected_platform') || 'snowflake';
+
+    setTimeout(() => {
+      const roles = authService.fetchUserRoles(currentUser, activePlat);
+      setFetchedRoles(roles);
+      if (roles.length > 0) {
+        const defaultRole = roles.includes('PUBLIC') ? 'PUBLIC' : roles[0] || 'PUBLIC';
+        setSelectedRole(defaultRole);
+        setSuccessMessage('Roles refreshed successfully');
+        setTimeout(() => setSuccessMessage(''), 3000);
+      } else {
+        setError('No roles found. Please contact your Snowflake administrator.');
+      }
+      setIsLoading(false);
+    }, 1000);
   };
 
   // Handle Role Confirmation and Enter Application
@@ -382,6 +420,7 @@ const LoginPage: React.FC = () => {
                 <span className="tile-label">Databricks</span>
               </button>
             </div>
+            {successMessage && <div className="success-message">{successMessage}</div>}
           </div>
         )}
 
@@ -500,6 +539,7 @@ const LoginPage: React.FC = () => {
             <p className="step-subtitle">Sign in to your ValiData account ({getPlatformLabel()})</p>
             <form onSubmit={handleUserSignIn} className="login-form">
               {error && <div className="error-message">{error}</div>}
+              {successMessage && <div className="success-message">{successMessage}</div>}
               
               <div className="input-group">
                 <label htmlFor="user-username">Username</label>
@@ -859,6 +899,7 @@ const LoginPage: React.FC = () => {
             
             <form onSubmit={handleSelectRoleSubmit} className="login-form">
               {error && <div className="error-message">{error}</div>}
+              {successMessage && <div className="success-message">{successMessage}</div>}
 
               <div className="connection-summary-panel">
                 <div className="summary-row">
@@ -875,25 +916,46 @@ const LoginPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="input-group">
-                <label htmlFor="active-role-select">Select Active Role</label>
-                <div className="input-wrapper select-wrapper">
-                  <Shield size={18} className="input-icon" />
-                  <select 
-                    id="active-role-select"
-                    value={selectedRole}
-                    onChange={(e) => setSelectedRole(e.target.value)}
-                    className="custom-role-dropdown"
-                    required
-                  >
-                    {fetchedRoles.map(role => (
-                      <option key={role} value={role}>{role}</option>
-                    ))}
-                  </select>
+              <div className="role-dropdown-container-with-refresh">
+                <div className="input-group select-role-group">
+                  <label htmlFor="active-role-select">Select Active Role</label>
+                  {fetchedRoles.length === 0 ? (
+                    <div className="error-message no-roles-error">
+                      No roles found. Please contact your Snowflake administrator.
+                    </div>
+                  ) : (
+                    <div className="input-wrapper select-wrapper">
+                      <Shield size={18} className="input-icon" />
+                      <select 
+                        id="active-role-select"
+                        value={selectedRole}
+                        onChange={(e) => setSelectedRole(e.target.value)}
+                        className="custom-role-dropdown"
+                        required
+                      >
+                        {fetchedRoles.map(role => (
+                          <option key={role} value={role}>{role}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
+                
+                <button 
+                  type="button" 
+                  onClick={handleRefreshRoles}
+                  className="btn-refresh-roles"
+                  disabled={isLoading}
+                >
+                  ↻ Refresh Roles
+                </button>
               </div>
 
-              <button type="submit" className="btn-login" disabled={isLoading}>
+              <button 
+                type="submit" 
+                className="btn-login" 
+                disabled={isLoading || fetchedRoles.length === 0}
+              >
                 {isLoading ? (
                   <Loader2 className="spinner" size={20} />
                 ) : (
@@ -904,6 +966,17 @@ const LoginPage: React.FC = () => {
                 )}
               </button>
             </form>
+            <button 
+              onClick={() => {
+                setError('');
+                setSuccessMessage('');
+                setStep('user_connect');
+              }} 
+              className="btn-step-back"
+            >
+              <ArrowLeft size={16} />
+              <span>Reconnect</span>
+            </button>
           </div>
         )}
       </div>

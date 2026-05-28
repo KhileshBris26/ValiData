@@ -188,13 +188,64 @@ class AuthServiceClass {
     return { success: true, message: 'Active role updated successfully.' };
   }
 
+  // Simulates SHOW GRANTS TO USER <username> query output
+  simulateShowGrantsToUser(username: string): Array<{ privilege: string; granted_on: string; name: string }> {
+    if (username.toLowerCase() === 'norolesuser') {
+      return [];
+    }
+    return [
+      { privilege: 'USAGE', granted_on: 'ROLE', name: 'PUBLIC' },
+      { privilege: 'USAGE', granted_on: 'ROLE', name: 'SYSADMIN' },
+      { privilege: 'USAGE', granted_on: 'ROLE', name: 'NEW_ROLE_ROMA' },
+      { privilege: 'OWNERSHIP', granted_on: 'ROLE', name: 'SYSADMIN' },
+      { privilege: 'USAGE', granted_on: 'DATABASE', name: 'DEMO_DB' },
+      { privilege: 'USAGE', granted_on: 'ROLE', name: 'PUBLIC' },
+      { privilege: 'USAGE', granted_on: 'ROLE', name: 'NEW_ROLE_ROMA' },
+      { privilege: 'USAGE', granted_on: 'ROLE', name: 'ANALYST_ROLE' }
+    ];
+  }
+
+  // Simulates Databricks Workspace groups
+  simulateDatabricksWorkspaceGroups(username: string): Array<{ groupName: string }> {
+    if (username.toLowerCase() === 'norolesuser') {
+      return [];
+    }
+    return [
+      { groupName: 'PUBLIC' },
+      { groupName: 'ADMIN_GROUP' },
+      { groupName: 'DATA_ENGINEERS' },
+      { groupName: 'DATA_SCIENTISTS' },
+      { groupName: 'ANALYSTS' }
+    ];
+  }
+
   // Fetch available roles based on username and platform
-  fetchUserRoles(_username: string, platform: string): string[] {
+  fetchUserRoles(username: string, platform: string): string[] {
     const p = platform.toLowerCase();
+    console.log(`[DEBUG LOG] Conceptual Query Executed: SHOW GRANTS TO USER ${username};`);
+    
     if (p === 'snowflake') {
-      return ['PUBLIC', 'SYSADMIN', 'ACCOUNTADMIN', 'SECURITYADMIN', 'DATA_STEWARD'];
+      const rawGrants = this.simulateShowGrantsToUser(username);
+      console.log(`[DEBUG LOG] Roles fetched response (Raw SHOW GRANTS output):`, rawGrants);
+
+      // Filter privilege = 'USAGE' and granted_on = 'ROLE'
+      const matchingRows = rawGrants.filter(row => row.privilege === 'USAGE' && row.granted_on === 'ROLE');
+      console.log(`[DEBUG LOG] Matching rows (privilege='USAGE', granted_on='ROLE'):`, matchingRows);
+
+      // Extract, deduplicate, and sort alphabetically
+      const roleNames = matchingRows.map(row => row.name);
+      const finalRoles = Array.from(new Set(roleNames)).sort();
+      console.log(`[DEBUG LOG] Final Snowflake roles array:`, finalRoles);
+
+      return finalRoles;
     } else if (p === 'databricks') {
-      return ['PUBLIC', 'ADMIN_GROUP', 'DATA_ENGINEERS', 'DATA_SCIENTISTS', 'ANALYSTS'];
+      const rawGroups = this.simulateDatabricksWorkspaceGroups(username);
+      console.log(`[DEBUG LOG] Roles fetched response (Raw Databricks groups):`, rawGroups);
+
+      const finalRoles = Array.from(new Set(rawGroups.map(g => g.groupName))).sort();
+      console.log(`[DEBUG LOG] Final Databricks roles array:`, finalRoles);
+
+      return finalRoles;
     }
     return ['PUBLIC'];
   }
