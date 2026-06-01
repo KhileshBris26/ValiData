@@ -55,7 +55,7 @@ const TopBar: React.FC = () => {
 
       const response = await axios.post(`${API_BASE}/auth/fetch-roles`, payload);
       if (response.data && response.data.status === 'success') {
-        const roles: string[] = response.data.roles || [];
+        const roles: string[] = response.data.all_roles || response.data.roles || [];
         setAvailableRoles(roles);
         
         if (activePlat === 'snowflake' && roles.length > 0 && !roles.includes(activeRole)) {

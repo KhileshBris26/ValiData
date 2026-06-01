@@ -317,7 +317,7 @@ const LoginPage: React.FC = () => {
       });
 
       if (rolesRes.data && rolesRes.data.status === 'success') {
-        const roles = rolesRes.data.roles || [];
+        const roles = rolesRes.data.all_roles || rolesRes.data.roles || [];
         setFetchedRoles(roles);
         
         // 2. Save credentials locally
@@ -330,7 +330,7 @@ const LoginPage: React.FC = () => {
             if (savedStr) savedCreds = JSON.parse(savedStr);
           } catch (e) {}
 
-          const defaultRole = roles.includes('PUBLIC') ? 'PUBLIC' : roles[0] || 'PUBLIC';
+          const defaultRole = rolesRes.data.default_role || (roles.includes('PUBLIC') ? 'PUBLIC' : roles[0] || 'PUBLIC');
 
           if (activePlat === 'snowflake') {
             savedCreds.snowflake = {
@@ -416,10 +416,10 @@ const LoginPage: React.FC = () => {
       });
 
       if (rolesRes.data && rolesRes.data.status === 'success') {
-        const roles = rolesRes.data.roles || [];
+        const roles = rolesRes.data.all_roles || rolesRes.data.roles || [];
         setFetchedRoles(roles);
         if (roles.length > 0) {
-          const defaultRole = roles.includes('PUBLIC') ? 'PUBLIC' : roles[0] || 'PUBLIC';
+          const defaultRole = rolesRes.data.default_role || (roles.includes('PUBLIC') ? 'PUBLIC' : roles[0] || 'PUBLIC');
           setSelectedRole(defaultRole);
           setSuccessMessage('Roles refreshed successfully');
           setTimeout(() => setSuccessMessage(''), 3000);

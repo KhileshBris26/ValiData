@@ -156,6 +156,17 @@ def init_db():
                     PRIMARY KEY (platform, database_name, schema_name, table_name)
                 )
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS dq_role_fetch_logs (
+                    id SERIAL PRIMARY KEY,
+                    user_name TEXT,
+                    query_executed TEXT,
+                    roles_returned TEXT,
+                    status TEXT,
+                    error_message TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
         else:
             # SQLite syntax
             cursor.execute("""
@@ -175,6 +186,17 @@ def init_db():
                     last_login_at TIMESTAMP,
                     roles TEXT,
                     credentials TEXT
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS dq_role_fetch_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_name TEXT,
+                    query_executed TEXT,
+                    roles_returned TEXT,
+                    status TEXT,
+                    error_message TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             cursor.execute("""
@@ -578,44 +600,58 @@ async def test_connection(request: MetadataRequest):
         print(f"Connection test failed: {error_detail}")
 @app.post("/api/v1/auth/fetch-roles")
 async def fetch_roles(request: FetchRolesRequest):
+    import datetime
+    import json
+    current_time = datetime.datetime.utcnow().isoformat()
+    roles = []
+    default_role = None
+    username = (request.credentials or {}).get("user") or (request.credentials or {}).get("username") or "UNKNOWN"
+    query_executed = ""
+    error_message = None
+    status = "FAILED"
+    
+    conn, cursor = get_db_connection()
+    
     try:
-        roles = []
         if request.platform == "snowflake":
             try:
                 snowflake_engine.connect(request.credentials)
                 
-                # Query 1: Query INFORMATION_SCHEMA applicable roles for current user
-                try:
-                    query1 = "SELECT ROLE_NAME FROM INFORMATION_SCHEMA.APPLICABLE_ROLES WHERE GRANTEE = CURRENT_USER()"
-                    print(f"[DEBUG LOG] Executing live Snowflake query: {query1}")
-                    res = snowflake_engine.execute_query(query1)
-                    print(f"[DEBUG LOG] Raw INFORMATION_SCHEMA result: {res}")
-                    
-                    for row in res:
-                        role_val = row.get('ROLE_NAME') or row.get('role_name')
+                # Query 1: Get Exact User Context
+                query_executed = "SELECT CURRENT_USER();"
+                res_user = snowflake_engine.execute_query(query_executed)
+                if not res_user:
+                    raise Exception("Failed to retrieve CURRENT_USER() from Snowflake")
+                current_sf_user = res_user[0].get('CURRENT_USER()') or res_user[0].get('current_user()') or res_user[0].get('CURRENT_USER') or res_user[0].get('current_user')
+                if not current_sf_user:
+                    raise Exception("Failed to extract current user from result")
+                
+                query_executed += f" SHOW GRANTS TO USER \"{current_sf_user}\"; SHOW USERS LIKE '{current_sf_user}';"
+                
+                # Query 2: Get roles exactly granted to this user
+                res_grants = snowflake_engine.execute_query(f'SHOW GRANTS TO USER "{current_sf_user}"')
+                for row in res_grants:
+                    # Snowflake SHOW GRANTS returns lowercase or uppercase depending on connector
+                    granted_on = row.get('granted_on') or row.get('GRANTED_ON')
+                    if granted_on == 'ROLE':
+                        role_val = row.get('role') or row.get('ROLE')
                         if role_val:
                             roles.append(role_val)
-                except Exception as q1_err:
-                    print(f"[DEBUG LOG] INFORMATION_SCHEMA query failed: {q1_err}. Falling back to SHOW ROLES.")
-                
-                # Fallback to Query 2: SHOW ROLES if first query is empty/fails
-                if not roles:
-                    try:
-                        query2 = "SHOW ROLES"
-                        print(f"[DEBUG LOG] Fallback: Executing SHOW ROLES query on Snowflake")
-                        res2 = snowflake_engine.execute_query(query2)
-                        print(f"[DEBUG LOG] Raw SHOW ROLES result: {res2}")
-                        for row in res2:
-                            role_val = row.get('name') or row.get('NAME')
-                            if role_val:
-                                roles.append(role_val)
-                    except Exception as q2_err:
-                        print(f"[DEBUG LOG] SHOW ROLES query failed: {q2_err}")
-                        raise q2_err
                             
+                # Query 3: Get Default Role
+                res_users = snowflake_engine.execute_query(f"SHOW USERS LIKE '{current_sf_user}'")
+                for row in res_users:
+                    default_role = row.get('default_role') or row.get('DEFAULT_ROLE')
+                
                 snowflake_engine.disconnect()
+                
+                if not roles:
+                    error_message = f"User {current_sf_user} has no roles assigned."
+                    raise Exception(error_message)
+                    
+                status = "SUCCESS"
             except Exception as conn_err:
-                print(f"[DEBUG LOG] Live Snowflake query failed: {conn_err}")
+                error_message = str(conn_err)
                 raise conn_err
                 
         elif request.platform == "databricks":
@@ -624,18 +660,37 @@ async def fetch_roles(request: FetchRolesRequest):
                 res = databricks_engine.execute_query("SHOW GROUPS")
                 roles = [row.get('groupName') or row.get('group') for row in res if row.get('groupName') or row.get('group')]
                 databricks_engine.disconnect()
-            except Exception:
+                status = "SUCCESS"
+            except Exception as d_err:
                 roles = ['PUBLIC', 'ADMIN_GROUP', 'DATA_ENGINEERS', 'DATA_SCIENTISTS', 'ANALYSTS']
+                status = "SUCCESS_FALLBACK"
+                error_message = str(d_err)
                 
-        # Deduplicate and sort alphabetically
         roles = sorted(list(set(roles)))
-        print(f"[DEBUG LOG] Final sorted roles list returned to client: {roles}")
-        return {"status": "success", "roles": roles}
+        
+        # Log to DQ_ROLE_FETCH_LOGS
+        log_query = "INSERT INTO dq_role_fetch_logs (user_name, query_executed, roles_returned, status, error_message, timestamp) VALUES (%s, %s, %s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO dq_role_fetch_logs (user_name, query_executed, roles_returned, status, error_message, timestamp) VALUES (?, ?, ?, ?, ?, ?)"
+        cursor.execute(log_query, (username, query_executed, json.dumps(roles), status, error_message, current_time))
+        conn.commit()
+        
+        return {
+            "status": "success", 
+            "username": username,
+            "default_role": default_role,
+            "all_roles": roles,
+            "roles": roles, # keeping for backward compatibility in LoginPage
+            "fetched_timestamp": current_time
+        }
     except Exception as e:
-        import traceback
-        error_detail = f"{str(e)}\n{traceback.format_exc()}"
-        print(f"Fetch roles endpoint error: {error_detail}")
+        # Log failure
+        log_query = "INSERT INTO dq_role_fetch_logs (user_name, query_executed, roles_returned, status, error_message, timestamp) VALUES (%s, %s, %s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO dq_role_fetch_logs (user_name, query_executed, roles_returned, status, error_message, timestamp) VALUES (?, ?, ?, ?, ?, ?)"
+        cursor.execute(log_query, (username, query_executed, "[]", "FAILED", str(e), current_time))
+        conn.commit()
+        
+        print(f"Fetch roles endpoint error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
 
 # Initialize Connectors
 snowflake_engine = SnowflakeConnector()
