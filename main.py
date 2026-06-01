@@ -2070,19 +2070,16 @@ def execute_schedule_job(schedule_id: int):
             pass
 
 
+"""
 def check_and_trigger_schedules():
     import datetime
     current_utc = datetime.datetime.utcnow().isoformat()
     conn, cursor = get_db_connection()
     due_schedules = []
     try:
-        query = """
-            SELECT id FROM schedules 
-            WHERE enabled = 1 AND next_run_time IS NOT NULL AND next_run_time <= %s
-        """ if DATABASE_URL else """
-            SELECT id FROM schedules 
-            WHERE enabled = 1 AND next_run_time IS NOT NULL AND next_run_time <= ?
-        """
+        query = "SELECT id FROM schedules WHERE enabled = 1 AND next_run_time IS NOT NULL AND next_run_time <= ?"
+        if DATABASE_URL:
+            query = "SELECT id FROM schedules WHERE enabled = 1 AND next_run_time IS NOT NULL AND next_run_time <= %s"
         cursor.execute(query, (current_utc,))
         due_schedules = [row["id"] for row in cursor.fetchall()]
     except Exception as e:
@@ -2108,6 +2105,11 @@ def start_scheduler():
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()
     print("Background scheduler thread started successfully.")
+"""
+
+# Native Snowflake Scheduling Migration
+# The Python-based orchestrator above has been deprecated.
+# DQ Scheduling is now handled natively via Snowflake TASKS calling SP_RUN_DQ_JOB.
 
 
 @app.get("/api/v1/dashboard/schedules")
@@ -2313,8 +2315,53 @@ async def trigger_schedule_now(schedule_id: int):
     return {"status": "success", "message": "Scheduled run triggered in background"}
 
 
-# Start background scheduler
-start_scheduler()
+# start_scheduler() # Deprecated in favor of Snowflake TASKS
+
+@app.get("/api/v1/dq/runs")
+async def get_dq_runs():
+    try:
+        snowflake_engine.connect(None)
+        query = "SELECT * FROM DQ_RUN_HISTORY ORDER BY start_time DESC LIMIT 100"
+        runs = snowflake_engine.execute_query(query)
+        if not runs:
+            runs = []
+            
+        # Format datetime objects
+        for run in runs:
+            # Snowflake connector returns standard python dates, but they might need stringifying
+            # Lowercase keys to be safe or just pass as-is if fastapi json serializer handles it
+            pass
+            
+        return {"status": "success", "runs": runs}
+    except Exception as e:
+        print(f"Error fetching DQ runs: {e}")
+        return {"status": "error", "message": str(e), "runs": []}
+    finally:
+        try: snowflake_engine.disconnect()
+        except: pass
+
+@app.get("/api/v1/dq/runs/{run_id}")
+async def get_dq_run_details(run_id: str):
+    try:
+        snowflake_engine.connect(None)
+        run_query = f"SELECT * FROM DQ_RUN_HISTORY WHERE run_id = '{run_id}'"
+        steps_query = f"SELECT * FROM DQ_STEP_LOGS WHERE run_id = '{run_id}' ORDER BY start_time ASC"
+        
+        run_result = snowflake_engine.execute_query(run_query)
+        if not run_result:
+            raise HTTPException(status_code=404, detail="Run not found")
+            
+        steps = snowflake_engine.execute_query(steps_query)
+        if not steps:
+            steps = []
+            
+        return {"status": "success", "run_details": run_result[0], "steps": steps}
+    except Exception as e:
+        print(f"Error fetching DQ run details: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        try: snowflake_engine.disconnect()
+        except: pass
 
 
 @app.get("/health")

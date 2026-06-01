@@ -81,6 +81,25 @@ const DataQualityDetail: React.FC = () => {
   // Execution History tab state
   const [runHistory, setRunHistory] = useState<any[]>([]);
   const [runHistoryLoading, setRunHistoryLoading] = useState(false);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [runDetails, setRunDetails] = useState<any>(null);
+  const [runSteps, setRunSteps] = useState<any[]>([]);
+  const [loadingRunDetails, setLoadingRunDetails] = useState(false);
+
+  const handleRunClick = async (runId: string) => {
+    if (!runId) return;
+    setSelectedRunId(runId);
+    setLoadingRunDetails(true);
+    try {
+      const res = await axios.get(`${API_BASE}/dq/runs/${runId}`);
+      setRunDetails(res.data.run_details);
+      setRunSteps(res.data.steps);
+    } catch (e) {
+      console.error('Failed to fetch run details:', e);
+    } finally {
+      setLoadingRunDetails(false);
+    }
+  };
 
   // Scheduling state
   const [schedules, setSchedules] = useState<any[]>([]);
@@ -384,8 +403,8 @@ const DataQualityDetail: React.FC = () => {
       const fetchHistory = async () => {
         setRunHistoryLoading(true);
         try {
-          const res = await axios.get(`${API_BASE}/dashboard/run_history?table_name=${encodeURIComponent(table)}`);
-          setRunHistory(res.data.history || []);
+          const res = await axios.get(`${API_BASE}/dq/runs`);
+          setRunHistory(res.data.runs || []);
         } catch (e) {
           console.error('Failed to fetch run history:', e);
         } finally {
@@ -1550,7 +1569,60 @@ const DataQualityDetail: React.FC = () => {
                 <div style={{ padding: '48px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
                   <div style={{ fontSize: '40px', marginBottom: '12px' }}>🕐</div>
                   <p style={{ fontWeight: 600, color: '#475569' }}>No Execution History Yet</p>
-                  <p style={{ marginTop: '6px' }}>Click <strong>Profile and Evaluate</strong> to record the first run.</p>
+                  <p style={{ marginTop: '6px' }}>Runs triggered via schedule or manual execution will appear here.</p>
+                </div>
+              ) : selectedRunId ? (
+                <div className="run-details-view">
+                  <button 
+                    onClick={() => setSelectedRunId(null)} 
+                    style={{ background: 'none', border: 'none', color: '#6366f1', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '20px', fontSize: '14px', fontWeight: 600 }}
+                  >
+                    <ChevronRight size={16} style={{ transform: 'rotate(180deg)' }} /> Back to Runs
+                  </button>
+                  {loadingRunDetails ? (
+                    <div>Loading run details...</div>
+                  ) : runDetails ? (
+                    <div>
+                      <div style={{ display: 'flex', gap: '20px', marginBottom: '24px', padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                        <div><strong>Run ID:</strong> {runDetails.run_id ?? runDetails.RUN_ID}</div>
+                        <div><strong>Job Name:</strong> {runDetails.job_name ?? runDetails.JOB_NAME}</div>
+                        <div><strong>Status:</strong> {runDetails.status ?? runDetails.STATUS}</div>
+                        <div><strong>Trigger:</strong> {runDetails.trigger_type ?? runDetails.TRIGGER_TYPE}</div>
+                        <div><strong>Start:</strong> {runDetails.start_time ?? runDetails.START_TIME}</div>
+                      </div>
+                      <h4 style={{ marginBottom: '12px', fontSize: '14px', fontWeight: 600 }}>Step Execution Logs</h4>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                        <thead>
+                          <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1' }}>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>Step Name</th>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>Status</th>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>Start Time</th>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>End Time</th>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>Query ID</th>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>Error Message</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {runSteps.map((step, idx) => (
+                            <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                              <td style={{ padding: '8px', fontWeight: 500 }}>{step.step_name ?? step.STEP_NAME}</td>
+                              <td style={{ padding: '8px' }}>
+                                <span style={{ color: (step.status ?? step.STATUS) === 'SUCCESS' ? '#16a34a' : (step.status ?? step.STATUS) === 'FAILED' ? '#dc2626' : '#d97706', fontWeight: 600 }}>
+                                  {step.status ?? step.STATUS}
+                                </span>
+                              </td>
+                              <td style={{ padding: '8px' }}>{step.start_time ?? step.START_TIME}</td>
+                              <td style={{ padding: '8px' }}>{step.end_time ?? step.END_TIME}</td>
+                              <td style={{ padding: '8px', fontFamily: 'monospace', fontSize: '11px' }}>{step.query_id ?? step.QUERY_ID ?? 'N/A'}</td>
+                              <td style={{ padding: '8px', color: '#dc2626' }}>{step.error_message ?? step.ERROR_MESSAGE}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div>Run details not found.</div>
+                  )}
                 </div>
               ) : (
                 <div style={{ overflowX: 'auto', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
@@ -1587,10 +1659,9 @@ const DataQualityDetail: React.FC = () => {
                         const scoreColor = score >= 80 ? '#16a34a' : score >= 50 ? '#d97706' : '#dc2626';
                         const scoreBg   = score >= 80 ? '#f0fdf4' : score >= 50 ? '#fffbeb' : '#fef2f2';
 
-                        let statusColor = '#16a34a';
-                        let statusBg    = '#f0fdf4';
-                        if (run.status === 'Failed')           { statusColor = '#dc2626'; statusBg = '#fef2f2'; }
-                        if (run.status === 'Partially Passed') { statusColor = '#d97706'; statusBg = '#fffbeb'; }
+                        const runStatus = (run.status ?? run.STATUS ?? 'UNKNOWN').toUpperCase();
+                        if (runStatus === 'FAILED')           { statusColor = '#dc2626'; statusBg = '#fef2f2'; }
+                        if (runStatus === 'RUNNING')          { statusColor = '#2563eb'; statusBg = '#eff6ff'; }
 
                         const durationSec = run.duration_ms != null
                           ? run.duration_ms < 1000
@@ -1599,20 +1670,26 @@ const DataQualityDetail: React.FC = () => {
                           : '—';
 
                         return (
-                          <tr key={run.id ?? idx} style={{
-                            borderBottom: '1px solid #f1f5f9',
-                            background: idx % 2 === 0 ? '#ffffff' : '#fafafa'
-                          }}>
+                          <tr 
+                            key={run.run_id ?? run.RUN_ID ?? idx} 
+                            onClick={() => handleRunClick(run.run_id ?? run.RUN_ID)}
+                            style={{
+                              borderBottom: '1px solid #f1f5f9',
+                              background: idx % 2 === 0 ? '#ffffff' : '#fafafa',
+                              cursor: 'pointer'
+                            }}
+                            className="hover:bg-slate-50 transition-colors"
+                          >
                             <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: '12px' }}>
                               {runHistory.length - idx}
                             </td>
                             <td style={{ padding: '10px 14px', fontWeight: 600, color: '#1e293b' }}>
                               <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontSize: '12px' }}>
-                                {run.table_name}
+                                {run.job_name ?? run.JOB_NAME ?? run.table_name ?? 'DQ_JOB'}
                               </code>
                             </td>
-                            <td style={{ padding: '10px 14px', color: '#374151' }}>{run.run_date}</td>
-                            <td style={{ padding: '10px 14px', color: '#374151', fontFamily: 'monospace' }}>{run.run_time}</td>
+                            <td style={{ padding: '10px 14px', color: '#374151' }}>{run.trigger_type ?? run.TRIGGER_TYPE ?? 'UNKNOWN'}</td>
+                            <td style={{ padding: '10px 14px', color: '#374151', fontFamily: 'monospace' }}>{run.start_time ?? run.START_TIME}</td>
                             <td style={{ padding: '10px 14px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                                 <div style={{
@@ -1633,13 +1710,13 @@ const DataQualityDetail: React.FC = () => {
                               </div>
                             </td>
                             <td style={{ padding: '10px 14px', color: '#374151', textAlign: 'right' }}>
-                              {(run.total_rows ?? 0).toLocaleString()}
+                              {(run.total_rules ?? run.TOTAL_RULES ?? run.total_rows ?? 0).toLocaleString()}
                             </td>
                             <td style={{ padding: '10px 14px', color: '#15803d', fontWeight: 500, textAlign: 'right' }}>
-                              {(run.passed_rows ?? 0).toLocaleString()}
+                              {(run.failed_rules != null ? (run.total_rules - run.failed_rules) : run.passed_rows ?? 0).toLocaleString()}
                             </td>
-                            <td style={{ padding: '10px 14px', color: run.failed_rows > 0 ? '#b91c1c' : '#15803d', fontWeight: 500, textAlign: 'right' }}>
-                              {(run.failed_rows ?? 0).toLocaleString()}
+                            <td style={{ padding: '10px 14px', color: (run.failed_rules ?? run.failed_rows) > 0 ? '#b91c1c' : '#15803d', fontWeight: 500, textAlign: 'right' }}>
+                              {(run.failed_rules ?? run.FAILED_RULES ?? run.failed_rows ?? 0).toLocaleString()}
                             </td>
                             <td style={{ padding: '10px 14px' }}>
                               <span style={{
@@ -1649,17 +1726,16 @@ const DataQualityDetail: React.FC = () => {
                                 color: statusColor, background: statusBg,
                                 border: `1px solid ${statusColor}30`
                               }}>
-                                {run.status === 'Passed' && <CheckCircle2 size={12} />}
-                                {run.status === 'Failed' && <XCircle size={12} />}
-                                {run.status === 'Partially Passed' && <AlertCircle size={12} />}
-                                {run.status}
+                                {runStatus === 'SUCCESS' && <CheckCircle2 size={12} />}
+                                {runStatus === 'FAILED' && <XCircle size={12} />}
+                                {runStatus}
                               </span>
                             </td>
                             <td style={{ padding: '10px 14px', color: '#64748b', fontFamily: 'monospace', fontSize: '12px' }}>
                               {durationSec}
                             </td>
                             <td style={{ padding: '10px 14px', color: '#374151' }}>
-                              {run.executed_by ?? 'User'}
+                              System
                             </td>
                           </tr>
                         );
