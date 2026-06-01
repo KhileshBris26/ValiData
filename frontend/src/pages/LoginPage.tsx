@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Shield, Lock, User, ArrowRight, Loader2, Database, ArrowLeft, LogIn, UserPlus, ShieldAlert, Mail, Server, Globe, Key } from 'lucide-react';
+import axios from 'axios';
 import { usePlatform } from '../context/PlatformContext';
 import { authService, decryptData } from '../services/authService';
+import { API_BASE } from '../api';
 import './LoginPage.css';
 
 type ScreenStep = 'platform' | 'role' | 'admin_login' | 'user_entry' | 'user_signin' | 'user_signup' | 'user_connect' | 'user_select_role';
@@ -58,6 +60,9 @@ const LoginPage: React.FC = () => {
       // Wipe the history state so refreshing the browser hides the alert
       window.history.replaceState({}, document.title);
     }
+    
+    // Migrate legacy users on initial mount
+    authService.migrateLegacyUsers();
   }, [location]);
 
   // Connection gating redirection on mount
@@ -121,7 +126,7 @@ const LoginPage: React.FC = () => {
   };
 
   // Handle User sign in submit
-  const handleUserSignIn = (e: React.FormEvent) => {
+  const handleUserSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
@@ -131,49 +136,47 @@ const LoginPage: React.FC = () => {
     localStorage.removeItem('is_connected');
     localStorage.removeItem('selected_role');
 
-    setTimeout(() => {
-      if (userUsername.trim() && userPassword.trim()) {
-        const result = authService.authenticateUser(userUsername, userPassword);
-        if (result.success && result.user) {
-          localStorage.setItem('robin_auth_token', `user_token_${userUsername}_secure`);
-          localStorage.setItem('robin_user', userUsername);
-          localStorage.setItem('is_authenticated', 'true');
-          localStorage.setItem('user_type', 'user');
-          const userPlatform = result.user.selected_platform || 'snowflake';
-          localStorage.setItem('selected_platform', userPlatform);
-          setPlatform(userPlatform as 'snowflake' | 'databricks');
+    if (userUsername.trim() && userPassword.trim()) {
+      const result = await authService.authenticateUser(userUsername, userPassword);
+      if (result.success && result.user) {
+        localStorage.setItem('robin_auth_token', `user_token_${userUsername}_secure`);
+        localStorage.setItem('robin_user', userUsername);
+        localStorage.setItem('is_authenticated', 'true');
+        localStorage.setItem('user_type', 'user');
+        const userPlatform = result.user.selected_platform || result.user.platform || 'snowflake';
+        localStorage.setItem('selected_platform', userPlatform);
+        setPlatform(userPlatform as 'snowflake' | 'databricks');
 
-          // Pre-populate connection fields if they are already saved in the user request object
-          if (result.user.credentials) {
-            const creds = result.user.credentials;
-            if (userPlatform === 'snowflake') {
-              setSfAccount(creds.account || '');
-              setSfUsername(creds.username || '');
-              setSfPassword(decryptData(creds.password) || '');
-              setSfWarehouse(creds.warehouse || '');
-              setSfDatabase(creds.database || '');
-              setSfSchema(creds.schema || '');
-            } else if (userPlatform === 'databricks') {
-              setDbWorkspaceUrl(creds.workspace_url || '');
-              setDbToken(decryptData(creds.token) || '');
-              setDbClusterId(creds.cluster_id || '');
-            }
+        // Pre-populate connection fields if they are already saved in the user request object
+        if (result.user.credentials) {
+          const creds = result.user.credentials;
+          if (userPlatform === 'snowflake') {
+            setSfAccount(creds.account || '');
+            setSfUsername(creds.username || '');
+            setSfPassword(decryptData(creds.password) || '');
+            setSfWarehouse(creds.warehouse || '');
+            setSfDatabase(creds.database || '');
+            setSfSchema(creds.schema || '');
+          } else if (userPlatform === 'databricks') {
+            setDbWorkspaceUrl(creds.workspace_url || '');
+            setDbToken(decryptData(creds.token) || '');
+            setDbClusterId(creds.cluster_id || '');
           }
-
-          // Force step to platform connection config screen
-          setStep('user_connect');
-        } else {
-          setError(result.message);
         }
+
+        // Force step to platform connection config screen
+        setStep('user_connect');
       } else {
-        setError('Please fill in all credentials.');
+        setError(result.message);
       }
-      setIsLoading(false);
-    }, 800);
+    } else {
+      setError('Please fill in all credentials.');
+    }
+    setIsLoading(false);
   };
 
   // Handle User sign up submit
-  const handleUserSignUp = (e: React.FormEvent) => {
+  const handleUserSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
@@ -191,38 +194,36 @@ const LoginPage: React.FC = () => {
       return;
     }
 
-    setTimeout(() => {
-      const selectedPlatform = localStorage.getItem('selected_platform') || 'snowflake';
-      const result = authService.createUserRequest({
-        full_name: fullName.trim(),
-        username: userUsername.trim(),
-        email: email.trim(),
-        password_raw: userPassword,
-        password_masked: '*'.repeat(userPassword.length),
-        selected_platform: selectedPlatform
-      });
+    const selectedPlatform = localStorage.getItem('selected_platform') || 'snowflake';
+    const result = await authService.createUserRequest({
+      full_name: fullName.trim(),
+      username: userUsername.trim(),
+      email: email.trim(),
+      password_raw: userPassword,
+      password_masked: '*'.repeat(userPassword.length),
+      selected_platform: selectedPlatform
+    });
 
-      if (result.success) {
-        setSuccessMessage(result.message);
-        setFullName('');
-        setEmail('');
-        setUserUsername('');
-        setUserPassword('');
-        setUserConfirmPassword('');
-        
-        setTimeout(() => {
-          setStep('user_signin');
-          setSuccessMessage('');
-        }, 3000);
-      } else {
-        setError(result.message);
-      }
-      setIsLoading(false);
-    }, 800);
+    if (result.success) {
+      setSuccessMessage(result.message);
+      setFullName('');
+      setEmail('');
+      setUserUsername('');
+      setUserPassword('');
+      setUserConfirmPassword('');
+      
+      setTimeout(() => {
+        setStep('user_signin');
+        setSuccessMessage('');
+      }, 3000);
+    } else {
+      setError(result.message);
+    }
+    setIsLoading(false);
   };
 
   // Handle connection testing
-  const handleTestConnection = (e: React.MouseEvent) => {
+  const handleTestConnection = async (e: React.MouseEvent) => {
     e.preventDefault();
     setIsTestingConnection(true);
     setTestConnectionSuccess(null);
@@ -230,138 +231,252 @@ const LoginPage: React.FC = () => {
 
     const activePlat = localStorage.getItem('selected_platform') || 'snowflake';
 
-    setTimeout(() => {
-      if (activePlat === 'snowflake') {
-        if (!sfAccount.trim() || !sfUsername.trim() || !sfPassword.trim()) {
-          setTestConnectionSuccess(false);
-          setTestConnectionMessage('Connection failed: Account Identifier, Username, and Password are required.');
-          setIsTestingConnection(false);
-          return;
-        }
-        if (!sfAccount.includes('.')) {
-          setTestConnectionSuccess(false);
-          setTestConnectionMessage('Connection failed: Invalid Snowflake Account Identifier format.');
-          setIsTestingConnection(false);
-          return;
-        }
+    let credentials: any = {};
+    if (activePlat === 'snowflake') {
+      credentials = {
+        account: sfAccount.trim(),
+        user: sfUsername.trim(),
+        password: sfPassword,
+        warehouse: sfWarehouse.trim(),
+        database: sfDatabase.trim(),
+        schema: sfSchema.trim()
+      };
+    } else {
+      credentials = {
+        server_hostname: dbWorkspaceUrl.trim(),
+        access_token: dbToken,
+        http_path: dbClusterId.trim()
+      };
+    }
+
+    try {
+      const res = await axios.post(`${API_BASE}/auth/test-connection`, {
+        platform: activePlat,
+        entity_type: 'databases',
+        credentials
+      });
+      if (res.data && res.data.status === 'success') {
         setTestConnectionSuccess(true);
-        setTestConnectionMessage('Connection successful! Valid Snowflake parameters.');
+        setTestConnectionMessage('Connection successful!');
       } else {
-        if (!dbWorkspaceUrl.trim() || !dbToken.trim()) {
-          setTestConnectionSuccess(false);
-          setTestConnectionMessage('Connection failed: Workspace URL and Personal Access Token are required.');
-          setIsTestingConnection(false);
-          return;
-        }
-        if (!dbWorkspaceUrl.startsWith('http://') && !dbWorkspaceUrl.startsWith('https://')) {
-          setTestConnectionSuccess(false);
-          setTestConnectionMessage('Connection failed: Workspace URL must start with http:// or https://.');
-          setIsTestingConnection(false);
-          return;
-        }
-        setTestConnectionSuccess(true);
-        setTestConnectionMessage('Connection successful! Valid Databricks workspace token.');
+        setTestConnectionSuccess(false);
+        setTestConnectionMessage(res.data.message || 'Connection failed.');
       }
+    } catch (err: any) {
+      console.error('Test connection failed:', err);
+      const errMsg = err.response?.data?.detail || err.message || 'Connection failed.';
+      setTestConnectionSuccess(false);
+      setTestConnectionMessage(`Connection failed: ${errMsg}`);
+    } finally {
       setIsTestingConnection(false);
-    }, 1200);
+    }
   };
 
   // Handle Save Credentials and proceed to Role Selection
-  const handleSaveConnection = (e: React.FormEvent) => {
+  const handleSaveConnection = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setError('');
 
     const activePlat = localStorage.getItem('selected_platform') || 'snowflake';
     const currentUser = localStorage.getItem('robin_user') || 'user';
 
-    setTimeout(() => {
-      let credentials: any = {};
-      if (activePlat === 'snowflake') {
-        credentials = {
-          account: sfAccount.trim(),
-          username: sfUsername.trim(),
-          password: sfPassword,
-          warehouse: sfWarehouse.trim(),
-          database: sfDatabase.trim(),
-          schema: sfSchema.trim()
-        };
-      } else {
-        credentials = {
-          workspace_url: dbWorkspaceUrl.trim(),
-          token: dbToken,
-          cluster_id: dbClusterId.trim()
-        };
-      }
+    let credentials: any = {};
+    if (activePlat === 'snowflake') {
+      credentials = {
+        account: sfAccount.trim(),
+        username: sfUsername.trim(),
+        password: sfPassword,
+        warehouse: sfWarehouse.trim(),
+        database: sfDatabase.trim(),
+        schema: sfSchema.trim()
+      };
+    } else {
+      credentials = {
+        workspace_url: dbWorkspaceUrl.trim(),
+        token: dbToken,
+        cluster_id: dbClusterId.trim()
+      };
+    }
 
-      const res = authService.updateUserCredentials(currentUser, activePlat, credentials);
-      if (res.success) {
-        // Fetch Snowflake/Databricks roles based on connection info
-        const roles = authService.fetchUserRoles(currentUser, activePlat);
-        setFetchedRoles(roles);
-        if (roles.length > 0) {
-          const defaultRole = roles.includes('PUBLIC') ? 'PUBLIC' : roles[0] || 'PUBLIC';
-          setSelectedRole(defaultRole);
+    try {
+      // 1. Fetch live roles from Snowflake backend directly to query live system view metadata
+      const rolesRes = await axios.post(`${API_BASE}/auth/fetch-roles`, {
+        platform: activePlat,
+        credentials: {
+          account: credentials.account || '',
+          user: credentials.username || '',
+          password: credentials.password || '',
+          warehouse: credentials.warehouse || '',
+          database: credentials.database || '',
+          schema: credentials.schema || '',
+          workspace_url: credentials.workspace_url || '',
+          token: credentials.token || '',
+          cluster_id: credentials.cluster_id || ''
         }
-        setStep('user_select_role');
+      });
+
+      if (rolesRes.data && rolesRes.data.status === 'success') {
+        const roles = rolesRes.data.roles || [];
+        setFetchedRoles(roles);
+        
+        // 2. Save credentials locally
+        const res = await authService.updateUserCredentials(currentUser, activePlat, credentials);
+        if (res.success) {
+          // Sync with robin_credentials in localStorage
+          let savedCreds: any = {};
+          try {
+            const savedStr = localStorage.getItem('robin_credentials');
+            if (savedStr) savedCreds = JSON.parse(savedStr);
+          } catch (e) {}
+
+          const defaultRole = roles.includes('PUBLIC') ? 'PUBLIC' : roles[0] || 'PUBLIC';
+
+          if (activePlat === 'snowflake') {
+            savedCreds.snowflake = {
+              account: sfAccount.trim(),
+              user: sfUsername.trim(),
+              password: sfPassword,
+              role: defaultRole,
+              warehouse: sfWarehouse.trim(),
+              database: sfDatabase.trim(),
+              schema: sfSchema.trim()
+            };
+          } else {
+            savedCreds.databricks = {
+              server_hostname: dbWorkspaceUrl.trim(),
+              access_token: dbToken,
+              http_path: dbClusterId.trim()
+            };
+          }
+          localStorage.setItem('robin_credentials', JSON.stringify(savedCreds));
+
+          if (roles.length > 0) {
+            setSelectedRole(defaultRole);
+            setStep('user_select_role');
+          } else {
+            setError('No roles found. Please contact your Snowflake administrator.');
+          }
+        } else {
+          setError(res.message);
+        }
       } else {
-        setError(res.message);
+        setError('Failed to retrieve Snowflake roles.');
       }
+    } catch (err: any) {
+      console.error('Fetch roles failed:', err);
+      const errMsg = err.response?.data?.detail || err.message || 'Connection failed: check credentials and try again.';
+      setError(`Connection failed: ${errMsg}`);
+    } finally {
       setIsLoading(false);
-    }, 800);
+    }
   };
 
   // Refresh roles button trigger
-  const handleRefreshRoles = (e: React.MouseEvent) => {
+  const handleRefreshRoles = async (e: React.MouseEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setSuccessMessage('');
     setError('');
 
-    const currentUser = localStorage.getItem('robin_user') || 'user';
     const activePlat = localStorage.getItem('selected_platform') || 'snowflake';
 
-    setTimeout(() => {
-      const roles = authService.fetchUserRoles(currentUser, activePlat);
-      setFetchedRoles(roles);
-      if (roles.length > 0) {
-        const defaultRole = roles.includes('PUBLIC') ? 'PUBLIC' : roles[0] || 'PUBLIC';
-        setSelectedRole(defaultRole);
-        setSuccessMessage('Roles refreshed successfully');
-        setTimeout(() => setSuccessMessage(''), 3000);
+    let credentials: any = {};
+    if (activePlat === 'snowflake') {
+      credentials = {
+        account: sfAccount.trim(),
+        username: sfUsername.trim(),
+        password: sfPassword,
+        warehouse: sfWarehouse.trim(),
+        database: sfDatabase.trim(),
+        schema: sfSchema.trim()
+      };
+    } else {
+      credentials = {
+        workspace_url: dbWorkspaceUrl.trim(),
+        token: dbToken,
+        cluster_id: dbClusterId.trim()
+      };
+    }
+
+    try {
+      const rolesRes = await axios.post(`${API_BASE}/auth/fetch-roles`, {
+        platform: activePlat,
+        credentials: {
+          account: credentials.account || '',
+          user: credentials.username || '',
+          password: credentials.password || '',
+          warehouse: credentials.warehouse || '',
+          database: credentials.database || '',
+          schema: credentials.schema || '',
+          workspace_url: credentials.workspace_url || '',
+          token: credentials.token || '',
+          cluster_id: credentials.cluster_id || ''
+        }
+      });
+
+      if (rolesRes.data && rolesRes.data.status === 'success') {
+        const roles = rolesRes.data.roles || [];
+        setFetchedRoles(roles);
+        if (roles.length > 0) {
+          const defaultRole = roles.includes('PUBLIC') ? 'PUBLIC' : roles[0] || 'PUBLIC';
+          setSelectedRole(defaultRole);
+          setSuccessMessage('Roles refreshed successfully');
+          setTimeout(() => setSuccessMessage(''), 3000);
+        } else {
+          setError('No roles found. Please contact your Snowflake administrator.');
+        }
       } else {
-        setError('No roles found. Please contact your Snowflake administrator.');
+        setError('Failed to refresh roles.');
       }
+    } catch (err: any) {
+      console.error('Refresh roles failed:', err);
+      const errMsg = err.response?.data?.detail || err.message || 'Connection failed during refresh.';
+      setError(`Refresh failed: ${errMsg}`);
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   // Handle Role Confirmation and Enter Application
-  const handleSelectRoleSubmit = (e: React.FormEvent) => {
+  const handleSelectRoleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     const currentUser = localStorage.getItem('robin_user') || 'user';
     const activePlat = localStorage.getItem('selected_platform') || 'snowflake';
 
-    setTimeout(() => {
-      authService.updateUserRole(currentUser, selectedRole);
+    await authService.updateUserRole(currentUser, selectedRole);
 
-      localStorage.setItem('selected_role', selectedRole);
-      localStorage.setItem('is_connected', 'true');
+    localStorage.setItem('selected_role', selectedRole);
+    localStorage.setItem('is_connected', 'true');
 
-      const userSession = {
-        username: currentUser,
-        user_type: 'USER',
-        platform: activePlat,
-        credentials_encrypted: true,
-        selected_role: selectedRole,
-        is_connected: true
-      };
-      localStorage.setItem('robin_user_session', JSON.stringify(userSession));
+    // Update chosen role in credentials on role confirmation
+    try {
+      const savedStr = localStorage.getItem('robin_credentials');
+      if (savedStr) {
+        const creds = JSON.parse(savedStr);
+        if (creds[activePlat]) {
+          creds[activePlat].role = selectedRole;
+          localStorage.setItem('robin_credentials', JSON.stringify(creds));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to update role in credentials:', e);
+    }
 
-      setIsLoading(false);
-      navigate('/');
-    }, 800);
+    const userSession = {
+      username: currentUser,
+      user_type: 'USER',
+      platform: activePlat,
+      credentials_encrypted: true,
+      selected_role: selectedRole,
+      is_connected: true
+    };
+    localStorage.setItem('robin_user_session', JSON.stringify(userSession));
+
+    setIsLoading(false);
+    navigate('/');
   };
 
   const getPlatformLabel = () => {

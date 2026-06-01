@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from models.rules import RuleExecutionRequest, ProfileRequest, AISuggestionRequest, MetadataRequest, LineageRequest, AnalyticsRequest, CatalogRequest, TableSummaryRequest, AIChatRequest, RuleSyncRequest, ExecutionLogRequest, AnomalyResolveRequest, ScheduleCreateUpdate, DashboardRequest
+from models.rules import RuleExecutionRequest, ProfileRequest, AISuggestionRequest, MetadataRequest, LineageRequest, AnalyticsRequest, CatalogRequest, TableSummaryRequest, AIChatRequest, RuleSyncRequest, ExecutionLogRequest, AnomalyResolveRequest, ScheduleCreateUpdate, DashboardRequest, FetchRolesRequest
 from core.query_generator import QueryGenerator
 from core.lineage_engine import LineageEngine
 from core.usage_analyzer import UsageAnalyzer
@@ -56,8 +56,20 @@ def init_db():
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id SERIAL PRIMARY KEY,
+                    user_id TEXT UNIQUE,
+                    full_name TEXT,
                     username TEXT UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL
+                    email TEXT UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    status TEXT DEFAULT 'PENDING',
+                    platform TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    approved_at TIMESTAMP,
+                    approved_by TEXT,
+                    revoked_at TIMESTAMP,
+                    last_login_at TIMESTAMP,
+                    roles TEXT,
+                    credentials TEXT
                 )
             """)
             cursor.execute("""
@@ -149,8 +161,20 @@ def init_db():
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT UNIQUE,
+                    full_name TEXT,
                     username TEXT UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL
+                    email TEXT UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    status TEXT DEFAULT 'PENDING',
+                    platform TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    approved_at TIMESTAMP,
+                    approved_by TEXT,
+                    revoked_at TIMESTAMP,
+                    last_login_at TIMESTAMP,
+                    roles TEXT,
+                    credentials TEXT
                 )
             """)
             cursor.execute("""
@@ -238,6 +262,27 @@ def init_db():
                 )
             """)
         
+        # Migration for existing users table
+        new_columns = {
+            "user_id": "TEXT UNIQUE",
+            "full_name": "TEXT",
+            "email": "TEXT UNIQUE",
+            "status": "TEXT DEFAULT 'PENDING'",
+            "platform": "TEXT",
+            "created_at": "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "approved_at": "TIMESTAMP",
+            "approved_by": "TEXT",
+            "revoked_at": "TIMESTAMP",
+            "last_login_at": "TIMESTAMP",
+            "roles": "TEXT",
+            "credentials": "TEXT"
+        }
+        for col, col_type in new_columns.items():
+            try:
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
+            except Exception:
+                pass # Column likely already exists
+        
         # Pre-seed Khilesh account
         password = "ValiData26"
         pw_hash = hashlib.sha256(password.encode()).hexdigest()
@@ -246,8 +291,14 @@ def init_db():
         cursor.execute("SELECT id FROM users WHERE username = %s" if DATABASE_URL else "SELECT id FROM users WHERE username = ?", ("Khilesh",))
         if not cursor.fetchone():
             cursor.execute(
-                "INSERT INTO users (username, password_hash) VALUES (%s, %s)" if DATABASE_URL else "INSERT INTO users (username, password_hash) VALUES (?, ?)", 
-                ("Khilesh", pw_hash)
+                "INSERT INTO users (username, password_hash, full_name, status) VALUES (%s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO users (username, password_hash, full_name, status) VALUES (?, ?, ?, ?)", 
+                ("Khilesh", pw_hash, "Admin Khilesh", "APPROVED")
+            )
+        else:
+            # Ensure Khilesh is approved
+            cursor.execute(
+                "UPDATE users SET status = 'APPROVED', full_name = 'Admin Khilesh' WHERE username = %s" if DATABASE_URL else "UPDATE users SET status = 'APPROVED', full_name = 'Admin Khilesh' WHERE username = ?", 
+                ("Khilesh",)
             )
 
         # One-time clean up of legacy mock data if present
@@ -277,18 +328,48 @@ class AuthRequest(BaseModel):
     username: str
     password: str
 
+class RegisterRequest(BaseModel):
+    full_name: str
+    username: str
+    email: str
+    password_raw: str
+    selected_platform: str
+
+class UpdateCredentialsRequest(BaseModel):
+    username: str
+    platform: str
+    credentials: dict
+
+class UpdateRoleRequest(BaseModel):
+    username: str
+    role: str
+
+class MigrateUsersRequest(BaseModel):
+    users: list
+
+class AdminStatusRequest(BaseModel):
+    status: str
+    admin_username: str
+
 @app.post("/api/v1/auth/register")
-async def register(request: AuthRequest):
+async def register(request: RegisterRequest):
     conn, cursor = get_db_connection()
-    pw_hash = hashlib.sha256(request.password.encode()).hexdigest()
+    pw_hash = hashlib.sha256(request.password_raw.encode()).hexdigest()
+    user_id = f"usr_{hashlib.md5(request.username.encode()).hexdigest()[:8]}"
     try:
-        query = "INSERT INTO users (username, password_hash) VALUES (%s, %s)" if DATABASE_URL else "INSERT INTO users (username, password_hash) VALUES (?, ?)"
-        cursor.execute(query, (request.username, pw_hash))
+        query = """
+            INSERT INTO users (user_id, full_name, username, email, password_hash, status, platform)
+            VALUES (%s, %s, %s, %s, %s, 'PENDING', %s)
+        """ if DATABASE_URL else """
+            INSERT INTO users (user_id, full_name, username, email, password_hash, status, platform)
+            VALUES (?, ?, ?, ?, ?, 'PENDING', ?)
+        """
+        cursor.execute(query, (user_id, request.full_name, request.username, request.email, pw_hash, request.selected_platform))
         conn.commit()
-        return {"status": "success", "token": f"token_{request.username}_{pw_hash[:10]}"}
+        return {"status": "success", "message": "Signup successful. Your request is submitted for admin approval."}
     except Exception as e:
         print(f"Registration error: {e}")
-        raise HTTPException(status_code=400, detail="Username already exists or database error")
+        raise HTTPException(status_code=400, detail="Username or email already exists")
     finally:
         conn.close()
 
@@ -301,10 +382,181 @@ async def login(request: AuthRequest):
         cursor.execute(query, (request.username, pw_hash))
         user = cursor.fetchone()
         
-        if user:
-            return {"status": "success", "token": f"token_{request.username}_{pw_hash[:10]}"}
-        else:
+        if not user:
             raise HTTPException(status_code=401, detail="Invalid username or password")
+        
+        user = dict(user)
+        status = user.get("status", "PENDING")
+        
+        if status == "PENDING":
+            raise HTTPException(status_code=403, detail="Your access request is awaiting admin approval. Please try again later.")
+        elif status == "REJECTED":
+            raise HTTPException(status_code=403, detail="Your signup request was rejected by admin.")
+        elif status == "REVOKED":
+            raise HTTPException(status_code=403, detail="Your access has been revoked by admin.")
+        
+        # User is APPROVED, update last_login
+        update_query = "UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE username = %s" if DATABASE_URL else "UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE username = ?"
+        cursor.execute(update_query, (request.username,))
+        conn.commit()
+        
+        import json
+        creds = user.get("credentials")
+        if creds:
+            try:
+                creds = json.loads(creds)
+            except:
+                creds = {}
+        else:
+            creds = {}
+            
+        roles = user.get("roles")
+        if roles:
+            try:
+                roles = json.loads(roles)
+            except:
+                roles = []
+        else:
+            roles = []
+            
+        user_data = {
+            "id": user.get("user_id", user.get("id")),
+            "full_name": user.get("full_name"),
+            "username": user.get("username"),
+            "email": user.get("email"),
+            "status": status,
+            "selected_platform": user.get("platform"),
+            "roles": roles,
+            "credentials": creds
+        }
+            
+        return {"status": "success", "token": f"token_{request.username}_{pw_hash[:10]}", "user": user_data, "message": "Login successful."}
+    finally:
+        conn.close()
+
+@app.post("/api/v1/auth/update_credentials")
+async def update_credentials(request: UpdateCredentialsRequest):
+    conn, cursor = get_db_connection()
+    import json
+    try:
+        query = "UPDATE users SET credentials = %s, platform = %s WHERE username = %s" if DATABASE_URL else "UPDATE users SET credentials = ?, platform = ? WHERE username = ?"
+        cursor.execute(query, (json.dumps(request.credentials), request.platform, request.username))
+        conn.commit()
+        return {"status": "success", "message": "Platform credentials saved successfully."}
+    except Exception as e:
+        print(f"Update credentials error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update credentials")
+    finally:
+        conn.close()
+
+@app.post("/api/v1/auth/update_role")
+async def update_role(request: UpdateRoleRequest):
+    conn, cursor = get_db_connection()
+    import json
+    try:
+        sel_query = "SELECT roles FROM users WHERE username = %s" if DATABASE_URL else "SELECT roles FROM users WHERE username = ?"
+        cursor.execute(sel_query, (request.username,))
+        row = cursor.fetchone()
+        roles = []
+        if row and row['roles']:
+            try:
+                roles = json.loads(row['roles'])
+            except:
+                pass
+        
+        if request.role not in roles:
+            roles.append(request.role)
+            
+        update_query = "UPDATE users SET roles = %s WHERE username = %s" if DATABASE_URL else "UPDATE users SET roles = ? WHERE username = ?"
+        cursor.execute(update_query, (json.dumps(roles), request.username))
+        conn.commit()
+        return {"status": "success", "message": "Active role updated successfully."}
+    except Exception as e:
+        print(f"Update role error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update role")
+    finally:
+        conn.close()
+
+@app.get("/api/v1/admin/users")
+async def get_all_users():
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute("SELECT * FROM users ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        return {"status": "success", "users": [dict(r) for r in rows]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.post("/api/v1/admin/users/{user_id}/status")
+async def update_user_status(user_id: str, request: AdminStatusRequest):
+    conn, cursor = get_db_connection()
+    try:
+        status = request.status.upper()
+        if status not in ["APPROVED", "REJECTED", "REVOKED", "PENDING"]:
+            raise HTTPException(status_code=400, detail="Invalid status")
+            
+        if status == "APPROVED":
+            query = "UPDATE users SET status = %s, approved_at = CURRENT_TIMESTAMP, approved_by = %s, roles = '[\"PUBLIC\"]' WHERE user_id = %s OR id::text = %s" if DATABASE_URL else "UPDATE users SET status = ?, approved_at = CURRENT_TIMESTAMP, approved_by = ?, roles = '[\"PUBLIC\"]' WHERE user_id = ? OR id = ?"
+            cursor.execute(query, (status, request.admin_username, user_id, user_id))
+        elif status == "REVOKED":
+            query = "UPDATE users SET status = %s, revoked_at = CURRENT_TIMESTAMP WHERE user_id = %s OR id::text = %s" if DATABASE_URL else "UPDATE users SET status = ?, revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? OR id = ?"
+            cursor.execute(query, (status, user_id, user_id))
+        else:
+            query = "UPDATE users SET status = %s WHERE user_id = %s OR id::text = %s" if DATABASE_URL else "UPDATE users SET status = ? WHERE user_id = ? OR id = ?"
+            cursor.execute(query, (status, user_id, user_id))
+            
+        conn.commit()
+        return {"status": "success", "message": f"User status updated to {status}"}
+    except Exception as e:
+        print(f"Update status error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update user status")
+    finally:
+        conn.close()
+
+@app.post("/api/v1/auth/migrate_legacy_users")
+async def migrate_legacy_users(request: MigrateUsersRequest):
+    conn, cursor = get_db_connection()
+    try:
+        for u in request.users:
+            username = u.get('username')
+            if not username: continue
+            
+            # Check if exists
+            sel_query = "SELECT id FROM users WHERE username = %s" if DATABASE_URL else "SELECT id FROM users WHERE username = ?"
+            cursor.execute(sel_query, (username,))
+            if cursor.fetchone(): continue
+            
+            user_id = u.get('id', f"usr_{hashlib.md5(username.encode()).hexdigest()[:8]}")
+            full_name = u.get('full_name', '')
+            email = u.get('email', '')
+            password_raw = u.get('password_raw', 'ValiData@123') # fallback if missing
+            pw_hash = hashlib.sha256(password_raw.encode()).hexdigest()
+            status = u.get('status', 'PENDING')
+            platform = u.get('selected_platform', 'snowflake')
+            
+            import json
+            roles = json.dumps(u.get('roles', []))
+            credentials = json.dumps(u.get('credentials', {}))
+            
+            ins_query = """
+                INSERT INTO users (user_id, full_name, username, email, password_hash, status, platform, roles, credentials)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """ if DATABASE_URL else """
+                INSERT INTO users (user_id, full_name, username, email, password_hash, status, platform, roles, credentials)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            try:
+                cursor.execute(ins_query, (user_id, full_name, username, email, pw_hash, status, platform, roles, credentials))
+            except Exception as e:
+                print(f"Could not migrate user {username}: {e}")
+        
+        conn.commit()
+        return {"status": "success", "message": "Migration complete."}
+    except Exception as e:
+        print(f"Migration error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
 
@@ -324,6 +576,65 @@ async def test_connection(request: MetadataRequest):
         import traceback
         error_detail = f"{str(e)}\n{traceback.format_exc()}"
         print(f"Connection test failed: {error_detail}")
+@app.post("/api/v1/auth/fetch-roles")
+async def fetch_roles(request: FetchRolesRequest):
+    try:
+        roles = []
+        if request.platform == "snowflake":
+            try:
+                snowflake_engine.connect(request.credentials)
+                
+                # Query 1: Query INFORMATION_SCHEMA applicable roles for current user
+                try:
+                    query1 = "SELECT ROLE_NAME FROM INFORMATION_SCHEMA.APPLICABLE_ROLES WHERE GRANTEE = CURRENT_USER()"
+                    print(f"[DEBUG LOG] Executing live Snowflake query: {query1}")
+                    res = snowflake_engine.execute_query(query1)
+                    print(f"[DEBUG LOG] Raw INFORMATION_SCHEMA result: {res}")
+                    
+                    for row in res:
+                        role_val = row.get('ROLE_NAME') or row.get('role_name')
+                        if role_val:
+                            roles.append(role_val)
+                except Exception as q1_err:
+                    print(f"[DEBUG LOG] INFORMATION_SCHEMA query failed: {q1_err}. Falling back to SHOW ROLES.")
+                
+                # Fallback to Query 2: SHOW ROLES if first query is empty/fails
+                if not roles:
+                    try:
+                        query2 = "SHOW ROLES"
+                        print(f"[DEBUG LOG] Fallback: Executing SHOW ROLES query on Snowflake")
+                        res2 = snowflake_engine.execute_query(query2)
+                        print(f"[DEBUG LOG] Raw SHOW ROLES result: {res2}")
+                        for row in res2:
+                            role_val = row.get('name') or row.get('NAME')
+                            if role_val:
+                                roles.append(role_val)
+                    except Exception as q2_err:
+                        print(f"[DEBUG LOG] SHOW ROLES query failed: {q2_err}")
+                        raise q2_err
+                            
+                snowflake_engine.disconnect()
+            except Exception as conn_err:
+                print(f"[DEBUG LOG] Live Snowflake query failed: {conn_err}")
+                raise conn_err
+                
+        elif request.platform == "databricks":
+            try:
+                databricks_engine.connect(request.credentials)
+                res = databricks_engine.execute_query("SHOW GROUPS")
+                roles = [row.get('groupName') or row.get('group') for row in res if row.get('groupName') or row.get('group')]
+                databricks_engine.disconnect()
+            except Exception:
+                roles = ['PUBLIC', 'ADMIN_GROUP', 'DATA_ENGINEERS', 'DATA_SCIENTISTS', 'ANALYSTS']
+                
+        # Deduplicate and sort alphabetically
+        roles = sorted(list(set(roles)))
+        print(f"[DEBUG LOG] Final sorted roles list returned to client: {roles}")
+        return {"status": "success", "roles": roles}
+    except Exception as e:
+        import traceback
+        error_detail = f"{str(e)}\n{traceback.format_exc()}"
+        print(f"Fetch roles endpoint error: {error_detail}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Initialize Connectors

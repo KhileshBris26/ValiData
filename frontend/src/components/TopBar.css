@@ -222,4 +222,30 @@
   font-size: 0.88rem;
 }
 
+.role-warning-badge {
+  display: flex;
+  align-items: center;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 4px 10px;
+  border-radius: 12px;
+  color: #f87171;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.role-selector-btn.role-warning {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 

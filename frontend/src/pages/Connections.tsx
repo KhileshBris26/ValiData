@@ -77,6 +77,18 @@ const Connections: React.FC = () => {
       connected.push(platform);
     }
     localStorage.setItem('robin_connected_platforms', JSON.stringify(connected));
+
+    if (platform === 'snowflake') {
+      localStorage.setItem('selected_role', sfRole);
+      const sessionStr = localStorage.getItem('robin_user_session');
+      if (sessionStr) {
+        try {
+          const session = JSON.parse(sessionStr);
+          session.selected_role = sfRole;
+          localStorage.setItem('robin_user_session', JSON.stringify(session));
+        } catch (e) {}
+      }
+    }
     
     setSavedMessage('Credentials saved securely to your session!');
     setTimeout(() => setSavedMessage(''), 3000);

@@ -116,3 +116,9 @@ class DashboardRequest(BaseModel):
     credentials: Optional[Dict[str, Any]] = None
 
 
+class FetchRolesRequest(BaseModel):
+    platform: Literal["snowflake", "databricks"]
+    credentials: Optional[Dict[str, Any]] = None
+
+
+

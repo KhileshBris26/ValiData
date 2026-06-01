@@ -1,21 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield, Users, Server, FileText, Settings, ArrowLeft, LogOut, CheckCircle, Search, Filter } from 'lucide-react';
-import { authService } from '../services/authService';
-import type { UserRequest } from '../services/authService';
+import axios from 'axios';
+import { API_BASE } from '../api';
 import './AdminDashboard.css';
+
+export interface AdminUser {
+  id: string;
+  user_id: string;
+  full_name: string;
+  username: string;
+  email: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REVOKED';
+  platform: string;
+  created_at?: string;
+  approved_at?: string;
+  approved_by?: string;
+  revoked_at?: string;
+  last_login_at?: string;
+}
 
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [activeMessage, setActiveMessage] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'tools' | 'requests'>('tools');
-  const [pendingRequests, setPendingRequests] = useState<UserRequest[]>([]);
-  const [processedRequests, setProcessedRequests] = useState<UserRequest[]>([]);
+  const [activeTab, setActiveTab] = useState<'tools' | 'users'>('users');
+  const [pendingRequests, setPendingRequests] = useState<AdminUser[]>([]);
+  const [processedRequests, setProcessedRequests] = useState<AdminUser[]>([]);
 
   // Search & filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [platformFilter, setPlatformFilter] = useState<'ALL' | 'SNOWFLAKE' | 'DATABRICKS'>('ALL');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'APPROVED' | 'REJECTED'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'APPROVED' | 'REJECTED' | 'REVOKED'>('ALL');
 
   // Gate page from regular users
   useEffect(() => {
@@ -25,35 +40,68 @@ const AdminDashboard: React.FC = () => {
     }
   }, [navigate]);
 
-  const loadRequests = () => {
-    const pending = authService.getUsersByStatus('PENDING');
-    const approved = authService.getUsersByStatus('APPROVED');
-    const rejected = authService.getUsersByStatus('REJECTED');
-    setPendingRequests(pending);
-    setProcessedRequests([...approved, ...rejected]);
+  const loadRequests = async () => {
+    try {
+      const response = await axios.get(`${API_BASE}/admin/users`);
+      const allUsers = response.data.users || [];
+      const pending = allUsers.filter((u: AdminUser) => u.status === 'PENDING');
+      const processed = allUsers.filter((u: AdminUser) => u.status !== 'PENDING');
+      setPendingRequests(pending);
+      setProcessedRequests(processed);
+    } catch (e) {
+      console.error("Failed to load users", e);
+    }
   };
 
   useEffect(() => {
     loadRequests();
   }, []);
 
-  const handleApprove = (id: string) => {
+  const handleApprove = async (id: string) => {
     const adminUser = localStorage.getItem('robin_user') || 'Admin';
-    const res = authService.approveUser(id, adminUser);
-    if (res.success) {
+    try {
+      await axios.post(`${API_BASE}/admin/users/${id}/status`, { status: 'APPROVED', admin_username: adminUser });
       setActiveMessage(`User request approved successfully!`);
       setTimeout(() => setActiveMessage(null), 4000);
       loadRequests();
+    } catch (e) {
+      console.error(e);
     }
   };
 
-  const handleReject = (id: string) => {
+  const handleReject = async (id: string) => {
     const adminUser = localStorage.getItem('robin_user') || 'Admin';
-    const res = authService.rejectUser(id, adminUser);
-    if (res.success) {
+    try {
+      await axios.post(`${API_BASE}/admin/users/${id}/status`, { status: 'REJECTED', admin_username: adminUser });
       setActiveMessage(`User request rejected successfully!`);
       setTimeout(() => setActiveMessage(null), 4000);
       loadRequests();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleRevoke = async (id: string) => {
+    const adminUser = localStorage.getItem('robin_user') || 'Admin';
+    try {
+      await axios.post(`${API_BASE}/admin/users/${id}/status`, { status: 'REVOKED', admin_username: adminUser });
+      setActiveMessage(`User access revoked successfully!`);
+      setTimeout(() => setActiveMessage(null), 4000);
+      loadRequests();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleReactivate = async (id: string) => {
+    const adminUser = localStorage.getItem('robin_user') || 'Admin';
+    try {
+      await axios.post(`${API_BASE}/admin/users/${id}/status`, { status: 'APPROVED', admin_username: adminUser });
+      setActiveMessage(`User reactivated successfully!`);
+      setTimeout(() => setActiveMessage(null), 4000);
+      loadRequests();
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -73,28 +121,36 @@ const AdminDashboard: React.FC = () => {
 
   // Filter pending requests
   const filteredPending = pendingRequests.filter(req => {
+    const full = req.full_name || '';
+    const user = req.username || '';
+    const eml = req.email || '';
     const matchesSearch = 
-      req.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      req.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      req.email.toLowerCase().includes(searchQuery.toLowerCase());
+      full.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      eml.toLowerCase().includes(searchQuery.toLowerCase());
       
+    const platform = req.platform || 'snowflake';
     const matchesPlatform = 
       platformFilter === 'ALL' || 
-      req.selected_platform.toLowerCase() === platformFilter.toLowerCase();
+      platform.toLowerCase() === platformFilter.toLowerCase();
       
     return matchesSearch && matchesPlatform;
   });
 
   // Filter processed requests
   const filteredProcessed = processedRequests.filter(req => {
+    const full = req.full_name || '';
+    const user = req.username || '';
+    const eml = req.email || '';
     const matchesSearch = 
-      req.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      req.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      req.email.toLowerCase().includes(searchQuery.toLowerCase());
+      full.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      eml.toLowerCase().includes(searchQuery.toLowerCase());
       
+    const platform = req.platform || 'snowflake';
     const matchesPlatform = 
       platformFilter === 'ALL' || 
-      req.selected_platform.toLowerCase() === platformFilter.toLowerCase();
+      platform.toLowerCase() === platformFilter.toLowerCase();
       
     const matchesStatus = 
       statusFilter === 'ALL' || 
@@ -175,21 +231,21 @@ const AdminDashboard: React.FC = () => {
           {/* Left Navigation Sidebar */}
           <aside className="admin-sidebar">
             <button 
+              className={`admin-sidebar-btn ${activeTab === 'users' ? 'active' : ''}`}
+              onClick={() => setActiveTab('users')}
+            >
+              <Users size={18} />
+              <span>User Management</span>
+              {pendingRequests.length > 0 && (
+                <span className="sidebar-badge">{pendingRequests.length}</span>
+              )}
+            </button>
+            <button 
               className={`admin-sidebar-btn ${activeTab === 'tools' ? 'active' : ''}`}
               onClick={() => setActiveTab('tools')}
             >
               <Server size={18} />
               <span>System Tools</span>
-            </button>
-            <button 
-              className={`admin-sidebar-btn ${activeTab === 'requests' ? 'active' : ''}`}
-              onClick={() => setActiveTab('requests')}
-            >
-              <Users size={18} />
-              <span>Access Requests</span>
-              {pendingRequests.length > 0 && (
-                <span className="sidebar-badge">{pendingRequests.length}</span>
-              )}
             </button>
           </aside>
 
@@ -256,6 +312,7 @@ const AdminDashboard: React.FC = () => {
                         <option value="ALL">All Statuses</option>
                         <option value="APPROVED">Approved</option>
                         <option value="REJECTED">Rejected</option>
+                        <option value="REVOKED">Revoked</option>
                       </select>
                     </div>
                   </div>
@@ -284,14 +341,14 @@ const AdminDashboard: React.FC = () => {
                             <td>{req.username}</td>
                             <td>{req.email}</td>
                             <td>
-                              <span className="badge platform">{req.selected_platform}</span>
+                              <span className="badge platform">{req.platform}</span>
                             </td>
-                            <td>{req.requested_at_timestamp}</td>
+                            <td>{req.created_at}</td>
                             <td style={{ textAlign: 'right' }}>
-                              <button onClick={() => handleApprove(req.id)} className="btn-approve">
+                              <button onClick={() => handleApprove(req.user_id || req.id)} className="btn-approve">
                                 Approve
                               </button>
-                              <button onClick={() => handleReject(req.id)} className="btn-reject">
+                              <button onClick={() => handleReject(req.user_id || req.id)} className="btn-reject">
                                 Reject
                               </button>
                             </td>
@@ -302,22 +359,21 @@ const AdminDashboard: React.FC = () => {
                   )}
                 </div>
 
-                <h2 className="requests-section-title">Processed Requests</h2>
+                <h2 className="requests-section-title">All Users</h2>
                 <div className="admin-table-container">
                   {filteredProcessed.length === 0 ? (
-                    <div className="empty-state">No processed requests match the filters.</div>
+                    <div className="empty-state">No users match the filters.</div>
                   ) : (
                     <table className="admin-table">
                       <thead>
                         <tr>
                           <th>Full Name</th>
                           <th>Username</th>
-                          <th>Email</th>
                           <th>Platform</th>
                           <th>Status</th>
-                          <th>Requested At</th>
-                          <th>Action Date</th>
-                          <th>Actioned By</th>
+                          <th>Created At</th>
+                          <th>Last Login</th>
+                          <th style={{ textAlign: 'right' }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -325,23 +381,27 @@ const AdminDashboard: React.FC = () => {
                           <tr key={req.id}>
                             <td className="font-semibold">{req.full_name}</td>
                             <td>{req.username}</td>
-                            <td>{req.email}</td>
                             <td>
-                              <span className="badge platform">{req.selected_platform}</span>
+                              <span className="badge platform">{req.platform}</span>
                             </td>
                             <td>
                               <span className={`badge ${req.status.toLowerCase()}`}>
                                 {req.status}
                               </span>
                             </td>
-                            <td>{req.requested_at_timestamp}</td>
-                            <td>
-                              {req.status === 'APPROVED' ? req.approved_at_timestamp : req.rejected_at_timestamp}
-                            </td>
-                            <td>
-                              <span className="admin-user-tag">
-                                {req.status === 'APPROVED' ? req.approved_by || 'System' : req.rejected_by || 'System'}
-                              </span>
+                            <td>{req.created_at}</td>
+                            <td>{req.last_login_at || 'Never'}</td>
+                            <td style={{ textAlign: 'right' }}>
+                              {req.status === 'APPROVED' && (
+                                <button onClick={() => handleRevoke(req.user_id || req.id)} className="btn-reject" style={{ padding: '4px 10px' }}>
+                                  Revoke Access
+                                </button>
+                              )}
+                              {(req.status === 'REJECTED' || req.status === 'REVOKED') && (
+                                <button onClick={() => handleReactivate(req.user_id || req.id)} className="btn-approve" style={{ padding: '4px 10px' }}>
+                                  Re-activate
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))}
