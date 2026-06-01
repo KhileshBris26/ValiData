@@ -1660,6 +1660,8 @@ const DataQualityDetail: React.FC = () => {
                         const scoreBg   = score >= 80 ? '#f0fdf4' : score >= 50 ? '#fffbeb' : '#fef2f2';
 
                         const runStatus = (run.status ?? run.STATUS ?? 'UNKNOWN').toUpperCase();
+                        let statusColor = '#16a34a';
+                        let statusBg    = '#f0fdf4';
                         if (runStatus === 'FAILED')           { statusColor = '#dc2626'; statusBg = '#fef2f2'; }
                         if (runStatus === 'RUNNING')          { statusColor = '#2563eb'; statusBg = '#eff6ff'; }
 
