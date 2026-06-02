@@ -1960,6 +1960,12 @@ const TableDetail: React.FC = () => {
 
           {/* Right Column */}
           <div className="content-right">
+            {metadataError && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '12px', borderRadius: '8px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                <AlertCircle size={16} />
+                <span>{metadataError}</span>
+              </div>
+            )}
             {/* Summary */}
             <div className="card glass-panel">
               <h3>Summary</h3>
