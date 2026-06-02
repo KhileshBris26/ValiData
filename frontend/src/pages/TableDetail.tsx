@@ -113,6 +113,7 @@ const TableDetail: React.FC = () => {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [editedSummary, setEditedSummary] = useState('');
   const [hasSavedDescription, setHasSavedDescription] = useState(false);
+  const [metadataError, setMetadataError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('Overview');
   const [expandedNodes, setExpandedNodes] = useState<string[]>([]);
   const [attrFilters, setAttrFilters] = useState<{ [key: string]: string }>({});
@@ -395,6 +396,8 @@ const TableDetail: React.FC = () => {
   };
 
   const handleRegenerate = async () => {
+    console.log("[UI Log] Generate AI Description button clicked");
+    setMetadataError(null);
     setIsRegenerating(true);
     // Simulate AI generation with a realistic delay
     await new Promise(resolve => setTimeout(resolve, 1600));
@@ -407,54 +410,69 @@ const TableDetail: React.FC = () => {
       
       let generatedDesc = '';
       try {
+        console.log("[UI Log] Triggering AI generation API...");
         const res = await axios.post(`${API_BASE}/ai/table_summary`, {
           platform, table_name: table, credentials
         });
-        if (res.data.summary) generatedDesc = res.data.summary;
-      } catch (err) {}
+        if (res.data.summary) {
+          generatedDesc = res.data.summary;
+          console.log("[UI Log] AI generation API successful");
+        }
+      } catch (err) {
+        console.warn("[UI Log] AI generation API failed, using fallback", err);
+      }
       
       if (!generatedDesc) {
         generatedDesc = generateAiDescription(table || '', database || '', schema || '');
+        console.log("[UI Log] Used fallback local AI description generator");
       }
       
+      console.log("[UI Log] Triggering /metadata/save API...");
       await axios.post(`${API_BASE}/metadata/save`, {
-        platform,
-        database_name: database,
-        schema_name: schema,
-        table_name: table,
+        platform: platform || "snowflake",
+        database_name: database || "",
+        schema_name: schema || "",
+        table_name: table || "",
         column_name: "",
         description: generatedDesc,
         terms: selectedTerms,
         is_auto_generated: true
       });
+      console.log("[UI Log] /metadata/save API successful");
       
       setSummary(generatedDesc);
       setEditedSummary(generatedDesc);
       setHasSavedDescription(true);
-    } catch (err) {
-      console.error("Failed to save AI description", err);
+    } catch (err: any) {
+      console.error("[UI Log] Failed to save AI description", err);
+      setMetadataError(err.response?.data?.detail || err.message || "Failed to save AI description.");
     } finally {
       setIsRegenerating(false);
     }
   };
 
   const handleSave = async () => {
+    console.log("[UI Log] Save description button clicked");
+    setMetadataError(null);
     try {
+      console.log("[UI Log] Triggering /metadata/save API...");
       await axios.post(`${API_BASE}/metadata/save`, {
-        platform,
-        database_name: database,
-        schema_name: schema,
-        table_name: table,
+        platform: platform || "snowflake",
+        database_name: database || "",
+        schema_name: schema || "",
+        table_name: table || "",
         column_name: "",
         description: editedSummary,
         terms: selectedTerms,
         is_auto_generated: false
       });
+      console.log("[UI Log] /metadata/save API successful");
       setSummary(editedSummary);
       setHasSavedDescription(editedSummary.length > 0);
       setIsEditing(false);
-    } catch (err) {
-      console.error("Failed to save description", err);
+    } catch (err: any) {
+      console.error("[UI Log] Failed to save description", err);
+      setMetadataError(err.response?.data?.detail || err.message || "Failed to save description.");
     }
   };
 
@@ -464,6 +482,8 @@ const TableDetail: React.FC = () => {
   };
 
   const toggleTerm = async (term: string) => {
+    console.log(`[UI Log] Toggled term: ${term}`);
+    setMetadataError(null);
     let newTerms;
     if (selectedTerms.includes(term)) {
       newTerms = selectedTerms.filter(t => t !== term);
@@ -471,20 +491,27 @@ const TableDetail: React.FC = () => {
       newTerms = [...selectedTerms, term];
     }
     
+    // Optimistic UI Update so checkbox feels immediately responsive
+    setSelectedTerms(newTerms);
+
     try {
+      console.log("[UI Log] Triggering /metadata/save API for terms...");
       await axios.post(`${API_BASE}/metadata/save`, {
-        platform,
-        database_name: database,
-        schema_name: schema,
-        table_name: table,
+        platform: platform || "snowflake",
+        database_name: database || "",
+        schema_name: schema || "",
+        table_name: table || "",
         column_name: "",
         description: summary,
         terms: newTerms,
         is_auto_generated: false
       });
-      setSelectedTerms(newTerms);
-    } catch (err) {
-      console.error("Failed to save terms", err);
+      console.log("[UI Log] /metadata/save API successful for terms");
+    } catch (err: any) {
+      console.error("[UI Log] Failed to save terms", err);
+      setMetadataError(err.response?.data?.detail || err.message || "Failed to save selected terms.");
+      // Rollback optimistic update
+      setSelectedTerms(selectedTerms);
     }
   };
 
