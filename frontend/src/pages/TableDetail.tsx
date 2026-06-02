@@ -143,6 +143,7 @@ const TableDetail: React.FC = () => {
     try {
       const res = await axios.post(`${API_BASE}/metadata/fetch`, {
         platform,
+        credentials: (() => { const saved = localStorage.getItem("robin_credentials"); if (saved) { const creds = JSON.parse(saved); return creds[platform || "snowflake"]; } return null; })(),
         database_name: database,
         schema_name: schema,
         table_name: table,
@@ -430,6 +431,7 @@ const TableDetail: React.FC = () => {
       console.log("[UI Log] Triggering /metadata/save API...");
       await axios.post(`${API_BASE}/metadata/save`, {
         platform: platform || "snowflake",
+        credentials: (() => { const saved = localStorage.getItem("robin_credentials"); if (saved) { const creds = JSON.parse(saved); return creds[platform || "snowflake"]; } return null; })(),
         database_name: database || "",
         schema_name: schema || "",
         table_name: table || "",
@@ -458,6 +460,7 @@ const TableDetail: React.FC = () => {
       console.log("[UI Log] Triggering /metadata/save API...");
       await axios.post(`${API_BASE}/metadata/save`, {
         platform: platform || "snowflake",
+        credentials: (() => { const saved = localStorage.getItem("robin_credentials"); if (saved) { const creds = JSON.parse(saved); return creds[platform || "snowflake"]; } return null; })(),
         database_name: database || "",
         schema_name: schema || "",
         table_name: table || "",
@@ -498,6 +501,7 @@ const TableDetail: React.FC = () => {
       console.log("[UI Log] Triggering /metadata/save API for terms...");
       await axios.post(`${API_BASE}/metadata/save`, {
         platform: platform || "snowflake",
+        credentials: (() => { const saved = localStorage.getItem("robin_credentials"); if (saved) { const creds = JSON.parse(saved); return creds[platform || "snowflake"]; } return null; })(),
         database_name: database || "",
         schema_name: schema || "",
         table_name: table || "",
