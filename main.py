@@ -1072,7 +1072,6 @@ async def ai_chat(request: AIChatRequest):
 
 import json
 
-
 @app.post("/api/v1/metadata/save")
 async def save_catalog_metadata(request: SaveMetadataRequest):
     try:
@@ -1084,7 +1083,6 @@ async def save_catalog_metadata(request: SaveMetadataRequest):
         db = request.database_name or "PUBLIC"
         sch = request.schema_name or "PUBLIC"
         
-        # Determine table path based on platform logic
         table_path = f'"{db.upper()}"."{sch.upper()}".DATA_CATALOG_METADATA' if request.platform == "snowflake" else f"`{db}`.`{sch}`.DATA_CATALOG_METADATA"
         log_path = f'"{db.upper()}"."{sch.upper()}".METADATA_OPERATIONS_LOG' if request.platform == "snowflake" else f"`{db}`.`{sch}`.METADATA_OPERATIONS_LOG"
         
@@ -1175,7 +1173,6 @@ async def save_catalog_metadata(request: SaveMetadataRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to save metadata: {str(e)}")
 
-
 @app.post("/api/v1/metadata/fetch")
 async def fetch_catalog_metadata(request: FetchMetadataRequest):
     try:
@@ -1241,7 +1238,6 @@ async def fetch_catalog_metadata(request: FetchMetadataRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to fetch metadata: {str(e)}")
-
 
 @app.post("/api/v1/metadata/fetch-all")
 async def fetch_all_catalog_metadata(request: FetchAllMetadataRequest):
@@ -1310,3 +1306,1586 @@ async def fetch_all_catalog_metadata(request: FetchAllMetadataRequest):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to fetch all metadata: {str(e)}")
 
+
+@app.post("/api/v1/metadata/entities")
+async def get_metadata_entities(request: MetadataRequest):
+    try:
+        sql_query = QueryGenerator.generate_metadata_sql(request.platform, request.entity_type, request.database_name, request.schema_name, request.table_name)
+        result = None
+        if request.platform == "snowflake":
+            snowflake_engine.connect(request.credentials)
+            result = snowflake_engine.execute_query(sql_query)
+            snowflake_engine.disconnect()
+        elif request.platform == "databricks":
+            databricks_engine.connect(request.credentials)
+            result = databricks_engine.execute_query(sql_query)
+            databricks_engine.disconnect()
+        entities = []
+        if result:
+            if request.platform == "snowflake":
+                key = 'column_name' if request.entity_type == 'columns' else 'name'
+                for row in result:
+                    if request.entity_type == 'columns':
+                        entities.append({"name": row.get('column_name'), "type": row.get('data_type'), "nullable": row.get('is_nullable') == 'YES'})
+                    else:
+                        val = row.get(key) or row.get(key.upper())
+                        if val: entities.append(val)
+            elif request.platform == "databricks":
+                key_map = {"databases": "catalog", "schemas": "databaseName", "tables": "tableName", "columns": "col_name"}
+                key = key_map.get(request.entity_type, "name")
+                for row in result:
+                    if request.entity_type == 'columns':
+                        entities.append({"name": row.get(key), "type": row.get('data_type'), "nullable": True})
+                    else:
+                        val = row.get(key) or row.get(key.upper())
+                        if val: entities.append(val)
+        return {"status": "success", "platform": request.platform, "entities": entities}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/metadata/row_count")
+async def get_table_row_count(request: TableSummaryRequest):
+    try:
+        sql_query = f"SELECT COUNT(*) as row_count FROM {request.table_name}"
+        if request.platform == "snowflake":
+            snowflake_engine.connect(request.credentials)
+            res = snowflake_engine.execute_query(sql_query)
+            snowflake_engine.disconnect()
+        elif request.platform == "databricks":
+            databricks_engine.connect(request.credentials)
+            res = databricks_engine.execute_query(sql_query)
+            databricks_engine.disconnect()
+        count = res[0].get('row_count') if res else 0
+        return {"status": "success", "row_count": count}
+    except Exception as e:
+        print(f"Row count failed for {request.table_name}: {e}")
+        return {"status": "success", "row_count": 0}
+
+@app.post("/api/v1/metadata/profile")
+async def get_column_profile(request: ProfileRequest):
+    try:
+        sql_query = QueryGenerator.generate_profiling_sql(
+            platform=request.platform,
+            db=request.database_name,
+            schema=request.schema_name,
+            table=request.table_name,
+            column=request.column_name
+        )
+        if request.platform == "snowflake":
+            snowflake_engine.connect(request.credentials)
+            res = snowflake_engine.execute_query(sql_query)
+            snowflake_engine.disconnect()
+        elif request.platform == "databricks":
+            databricks_engine.connect(request.credentials)
+            res = databricks_engine.execute_query(sql_query)
+            databricks_engine.disconnect()
+        else:
+            res = []
+        
+        # Normalize all keys to lowercase so frontend can reliably read them
+        # regardless of Snowflake (UPPERCASE) vs Databricks (lowercase) conventions
+        if res and isinstance(res, list) and len(res) > 0:
+            raw = res[0]
+            normalized = {k.lower(): v for k, v in raw.items()} if raw else {}
+            print(f"Profile result for {request.column_name}: {normalized}")
+            return {"status": "success", "profile": normalized}
+        return {"status": "success", "profile": {}}
+    except Exception as e:
+        print(f"Profile endpoint error for {request.column_name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/lineage/infer")
+async def infer_lineage(request: LineageRequest):
+    try:
+        if request.platform == "snowflake": snowflake_engine.connect(request.credentials)
+        elif request.platform == "databricks": databricks_engine.connect(request.credentials)
+        sql_query = QueryGenerator.generate_information_schema_sql(request.platform, request.database_name, request.schema_name)
+        result = snowflake_engine.execute_query(sql_query) if request.platform == "snowflake" else databricks_engine.execute_query(sql_query)
+        lineage_graph = LineageEngine.infer_relationships(result)
+        return {"status": "success", "nodes": lineage_graph["nodes"], "edges": lineage_graph["edges"]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if request.platform == "snowflake": snowflake_engine.disconnect()
+        elif request.platform == "databricks": databricks_engine.disconnect()
+
+@app.post("/api/v1/analytics/usage")
+async def get_usage_analytics(request: AnalyticsRequest):
+    try:
+        if request.platform == "snowflake": snowflake_engine.connect(request.credentials)
+        elif request.platform == "databricks": databricks_engine.connect(request.credentials)
+        
+        sql_query = QueryGenerator.generate_query_history_sql(request.platform, request.days_back or 7)
+        result = snowflake_engine.execute_query(sql_query) if request.platform == "snowflake" else databricks_engine.execute_query(sql_query)
+        analytics = UsageAnalyzer.analyze_queries(result)
+        return {"status": "success", "analytics": analytics}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if request.platform == "snowflake": snowflake_engine.disconnect()
+        elif request.platform == "databricks": databricks_engine.disconnect()
+
+@app.post("/api/v1/ai/table_summary")
+async def generate_table_summary(request: TableSummaryRequest):
+    try:
+        sql_query = QueryGenerator.generate_table_summary_sql(request.platform, request.table_name)
+        result = snowflake_engine.execute_query(sql_query) if request.platform == "snowflake" else databricks_engine.execute_query(sql_query)
+        summary = result[0].get('TABLE_SUMMARY') if result else ""
+        return {"status": "success", "summary": summary}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/catalog/tables")
+async def get_catalog_tables(request: CatalogRequest):
+    try:
+        sql_query = QueryGenerator.generate_catalog_sql(request.platform)
+        result = None
+        if request.platform == "snowflake":
+            snowflake_engine.connect(request.credentials)
+            result = snowflake_engine.execute_query(sql_query)
+            snowflake_engine.disconnect()
+        elif request.platform == "databricks":
+            databricks_engine.connect(request.credentials)
+            result = databricks_engine.execute_query(sql_query)
+            databricks_engine.disconnect()
+        return {"status": "success", "tables": result or []}
+    except Exception as e:
+        print(f"Catalog connection failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/metadata/preview")
+async def get_table_preview(request: LineageRequest):
+    try:
+        sql_query = QueryGenerator.generate_preview_sql(request.platform, request.database_name, request.schema_name, request.table_name)
+        print(f"Executing preview query on {request.platform}: {sql_query}")
+        result = None
+        if request.platform == "snowflake":
+            snowflake_engine.connect(request.credentials)
+            result = snowflake_engine.execute_query(sql_query)
+            snowflake_engine.disconnect()
+        elif request.platform == "databricks":
+            databricks_engine.connect(request.credentials)
+            result = databricks_engine.execute_query(sql_query)
+            databricks_engine.disconnect()
+        
+        serialized_rows = [{str(k): str(v) for k, v in row.items()} for row in result] if result else []
+        return {"status": "success", "rows": serialized_rows}
+    except Exception as e:
+        import traceback
+        print(f"Preview failed: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/dashboard/metrics")
+async def get_dashboard_metrics():
+    conn, cursor = get_db_connection()
+    try:
+        # Active Rules Count
+        cursor.execute("SELECT COUNT(*) as count FROM rules WHERE status = 'Active'")
+        row = cursor.fetchone()
+        active_rules_count = row['count'] if row else 0
+
+        # Passed Checks Count (Latest execution status of each rule)
+        cursor.execute("""
+            SELECT COUNT(*) as count FROM rule_executions 
+            WHERE id IN (
+                SELECT MAX(id) FROM rule_executions 
+                GROUP BY platform, table_name, column_name, rule_type
+            ) AND status = 'pass'
+        """)
+        row = cursor.fetchone()
+        passed_checks_count = row['count'] if row else 0
+
+        # Active Anomalies Count
+        cursor.execute("SELECT COUNT(*) as count FROM anomalies WHERE status = 'Active'")
+        row = cursor.fetchone()
+        anomalies_count = row['count'] if row else 0
+
+        return {
+            "active_rules_count": active_rules_count,
+            "passed_checks_count": passed_checks_count,
+            "anomalies_count": anomalies_count
+        }
+    except Exception as e:
+        print(f"Error fetching dashboard metrics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.get("/api/v1/dashboard/rules")
+async def get_dashboard_rules():
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute("SELECT * FROM rules ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        rules = [dict(row) for row in rows]
+        return {"status": "success", "rules": rules}
+    except Exception as e:
+        print(f"Error fetching dashboard rules: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.get("/api/v1/dashboard/anomalies")
+async def get_dashboard_anomalies():
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute("SELECT * FROM anomalies WHERE status = 'Active' ORDER BY detected_at DESC")
+        rows = cursor.fetchall()
+        anomalies = [dict(row) for row in rows]
+        return {"status": "success", "anomalies": anomalies}
+    except Exception as e:
+        print(f"Error fetching dashboard anomalies: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.post("/api/v1/dashboard/rules/sync")
+async def sync_dashboard_rules(request: RuleSyncRequest):
+    conn, cursor = get_db_connection()
+    try:
+        # Clear existing rules to perfectly synchronize with client local state
+        # Determine distinct tables to clear existing rules for those tables only
+        tables_to_clear = set()
+        for r in request.rules:
+            tables_to_clear.add((r.database_name, r.schema_name, r.table_name))
+        for db_name, sch_name, tbl_name in tables_to_clear:
+            cursor.execute(
+                "DELETE FROM rules WHERE database_name = %s AND schema_name = %s AND table_name = %s" if DATABASE_URL else
+                "DELETE FROM rules WHERE database_name = ? AND schema_name = ? AND table_name = ?",
+                (db_name, sch_name, tbl_name)
+            )
+        
+        for r in request.rules:
+            import json
+            params_str = json.dumps(r.rule_params) if r.rule_params else "{}"
+            insert_query = """
+                INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """ if DATABASE_URL else """
+                INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            cursor.execute(insert_query, (
+                r.platform, r.database_name, r.schema_name, r.table_name, r.column_name, r.rule_type, params_str, r.status
+            ))
+        conn.commit()
+        cursor.execute("SELECT * FROM rules ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        rules = [dict(row) for row in rows]
+        return {"status": "success", "rules": rules}
+    except Exception as e:
+        print(f"Error syncing rules: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+
+# ── Lightweight summary endpoint (used by old code paths) ──────────────────
+@app.get("/api/v1/dashboard/invalid_records")
+async def get_invalid_records(table_name: str):
+    """Return aggregated failed-rows counts from local DB."""
+    conn, cursor = get_db_connection()
+    try:
+        ph = "%s" if DATABASE_URL else "?"
+        cursor.execute(
+            f"SELECT column_name, rule_type, failed_rows, status FROM rule_executions WHERE table_name = {ph} AND failed_rows > 0",
+            (table_name,)
+        )
+        rows = cursor.fetchall()
+        records = [dict(row) for row in rows]
+        return {"status": "success", "records": records}
+    except Exception as e:
+        print(f"Error fetching invalid records: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+class FailedCheckItem(BaseModel):
+    column_name: str
+    rule_type: str   # 'Null Check' | 'Unique Check' (or their _CHECK variants)
+
+class SampleFailedRecordsRequest(BaseModel):
+    platform: str
+    table_name: str
+    failed_checks: list[FailedCheckItem]
+    credentials: Optional[Dict[str, Any]] = None
+
+
+@app.post("/api/v1/dashboard/sample_failed_records")
+async def sample_failed_records(request: SampleFailedRecordsRequest):
+    """
+    For each failed DQ check (Unique / Null), run a live Snowflake query that
+    returns up to 5 sample rows that caused the failure.
+
+    Response shape:
+    {
+      "status": "success",
+      "groups": [
+        {
+          "column_name": "FIRST_NAME",
+          "rule_type": "Unique Check",
+          "columns": ["ATTRIBUTE_NAME", "DQ_CHECK", "ACTOR_ID", "FIRST_NAME", ...],
+          "rows": [["FIRST_NAME", "Unique Check", 1, "NICK", ...], ...]
+        },
+        ...
+      ]
+    }
+    """
+    groups = []
+
+    if request.platform != "snowflake":
+        # Databricks support can be added later
+        return {"status": "success", "groups": []}
+
+    creds = request.credentials or {}
+    try:
+        snowflake_engine.connect(creds)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Snowflake connection failed: {e}")
+
+    try:
+        for check in request.failed_checks:
+            col = check.column_name
+            rule = check.rule_type.upper()
+
+            if "UNIQUE" in rule:
+                sql = f"""
+                    SELECT
+                        '{col}' AS ATTRIBUTE_NAME,
+                        'Unique Check' AS DQ_CHECK,
+                        a.*
+                    FROM {request.table_name} a
+                    JOIN (
+                        SELECT {col}
+                        FROM {request.table_name}
+                        GROUP BY {col}
+                        HAVING COUNT(*) > 1
+                    ) d
+                    ON a.{col} = d.{col}
+                    ORDER BY a.{col}
+                    LIMIT 5
+                """
+            elif "NULL" in rule:
+                sql = f"""
+                    SELECT
+                        '{col}' AS ATTRIBUTE_NAME,
+                        'Null Check' AS DQ_CHECK,
+                        *
+                    FROM {request.table_name}
+                    WHERE {col} IS NULL
+                    LIMIT 5
+                """
+            else:
+                # Skip unsupported rule types for now
+                continue
+
+            try:
+                raw_rows = snowflake_engine.execute_query(sql)
+                if not raw_rows:
+                    continue
+                # DictCursor returns list of dicts – normalise to lower-case keys
+                columns = [k.lower() for k in raw_rows[0].keys()]
+                rows = [[str(row[k]) for k in raw_rows[0].keys()] for row in raw_rows]
+                groups.append({
+                    "column_name": col,
+                    "rule_type": "Unique Check" if "UNIQUE" in rule else "Null Check",
+                    "columns": columns,
+                    "rows": rows
+                })
+            except Exception as e:
+                print(f"Sample query failed for {col} / {rule}: {e}")
+                # Continue with remaining checks even if one fails
+                continue
+    finally:
+        snowflake_engine.disconnect()
+
+    return {"status": "success", "groups": groups}
+
+@app.post("/api/v1/dashboard/executions")
+async def log_dashboard_executions(request: ExecutionLogRequest):
+    import datetime
+    run_start = datetime.datetime.utcnow()
+    conn, cursor = get_db_connection()
+    try:
+        executions_data = []
+        for ex in request.executions:
+            executions_data.append((
+                request.platform, request.table_name, ex.column_name, ex.rule_type, ex.total_rows, ex.failed_rows, ex.status
+            ))
+            
+            # If failed, log an anomaly automatically
+            if ex.failed_rows > 0 or ex.status == 'fail':
+                msg_text = f"{request.table_name}: {ex.column_name} column failed {ex.rule_type}. {ex.failed_rows} failed rows."
+                title_text = f"{ex.rule_type} Failure"
+                if ex.rule_type == 'Null Check' or ex.rule_type == 'NULL_CHECK':
+                    title_text = "Null Rate Violation"
+                    msg_text = f"{request.table_name}: {ex.column_name} column showed a sudden jump in nulls ({ex.failed_rows} records)."
+                elif ex.rule_type == 'Unique Check' or ex.rule_type == 'UNIQUE_CHECK':
+                    title_text = "Uniqueness Violation"
+                    msg_text = f"{request.table_name}: {ex.column_name} column has duplicates."
+                
+                check_anomaly_query = """
+                    SELECT id FROM anomalies 
+                    WHERE title = %s AND msg = %s AND status = 'Active'
+                """ if DATABASE_URL else """
+                    SELECT id FROM anomalies 
+                    WHERE title = ? AND msg = ? AND status = 'Active'
+                """
+                cursor.execute(check_anomaly_query, (title_text, msg_text))
+                if not cursor.fetchone():
+                    cursor.execute(
+                        "INSERT INTO anomalies (title, msg, type, status) VALUES (%s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO anomalies (title, msg, type, status) VALUES (?, ?, ?, ?)",
+                        (title_text, msg_text, "null" if "null" in title_text.lower() else "uniqueness", "Active")
+                    )
+
+        execs_query = """
+            INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """ if DATABASE_URL else """
+            INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """
+        cursor.executemany(execs_query, executions_data)
+
+        # ── Build and persist a run-level summary row in dq_run_history ──────
+        if request.executions:
+            total_rows_agg   = max((ex.total_rows for ex in request.executions), default=0)
+            failed_rows_agg  = sum(ex.failed_rows for ex in request.executions)
+            passed_rows_agg  = total_rows_agg - failed_rows_agg
+            # Score = average across all rule scores
+            scores = [
+                round((1 - ex.failed_rows / ex.total_rows) * 100, 1) if ex.total_rows > 0 else 100
+                for ex in request.executions
+            ]
+            dq_score = round(sum(scores) / len(scores), 1) if scores else 100
+
+            if failed_rows_agg == 0:
+                run_status = 'Passed'
+            elif passed_rows_agg == 0:
+                run_status = 'Failed'
+            else:
+                run_status = 'Partially Passed'
+
+            run_end = datetime.datetime.utcnow()
+            duration_ms = int((run_end - run_start).total_seconds() * 1000)
+            run_date = run_end.strftime('%Y-%m-%d')
+            run_time = run_end.strftime('%H:%M:%S UTC')
+
+            history_query = """
+                INSERT INTO dq_run_history
+                    (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """ if DATABASE_URL else """
+                INSERT INTO dq_run_history
+                    (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            cursor.execute(history_query, (
+                request.table_name, run_date, run_time, dq_score,
+                total_rows_agg, passed_rows_agg, failed_rows_agg,
+                run_status, request.executed_by or 'User', duration_ms
+            ))
+
+        conn.commit()
+        return {"status": "success", "message": f"Successfully logged {len(request.executions)} executions."}
+    except Exception as e:
+        print(f"Error logging executions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+@app.post("/api/v1/dashboard/anomalies/resolve")
+async def resolve_dashboard_anomaly(request: AnomalyResolveRequest):
+    conn, cursor = get_db_connection()
+    try:
+        query = "UPDATE anomalies SET status = %s WHERE id = %s" if DATABASE_URL else "UPDATE anomalies SET status = ? WHERE id = ?"
+        cursor.execute(query, ("Resolved", request.id))
+        conn.commit()
+        return {"status": "success", "message": f"Anomaly {request.id} resolved successfully."}
+    except Exception as e:
+        print(f"Error resolving anomaly: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.post("/api/v1/dashboard/warehouse_analytics")
+async def get_dashboard_warehouse_analytics(request: DashboardRequest):
+    try:
+        platform = request.platform.lower()
+        creds = request.credentials or {}
+        
+        # Connect to the platform
+        if platform == "snowflake":
+            snowflake_engine.connect(creds)
+        elif platform == "databricks":
+            databricks_engine.connect(creds)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
+        
+        queries = []
+        # Attempt to fetch query history
+        try:
+            if platform == "snowflake":
+                # Try table query history first
+                try:
+                    sql = "SELECT QUERY_TEXT FROM TABLE(INFORMATION_SCHEMA.QUERY_HISTORY(RESULT_LIMIT => 500)) ORDER BY START_TIME DESC"
+                    queries = snowflake_engine.execute_query(sql)
+                except Exception:
+                    sql = "SELECT QUERY_TEXT FROM TABLE(INFORMATION_SCHEMA.QUERY_HISTORY_BY_SESSION(RESULT_LIMIT => 500)) ORDER BY START_TIME DESC"
+                    queries = snowflake_engine.execute_query(sql)
+            elif platform == "databricks":
+                sql = "SELECT statement_text as QUERY_TEXT FROM system.query.history ORDER BY start_time DESC LIMIT 500"
+                queries = databricks_engine.execute_query(sql)
+        except Exception as q_err:
+            print(f"Query history retrieval failed, falling back: {q_err}")
+            queries = []
+            
+        # Disconnect engine
+        if platform == "snowflake":
+            snowflake_engine.disconnect()
+        elif platform == "databricks":
+            databricks_engine.disconnect()
+            
+        # Analyze queries if we found any
+        top_table_name = None
+        reads_count = 0
+        
+        if queries:
+            analytics = UsageAnalyzer.analyze_queries(queries)
+            top_tables = analytics.get("top_tables", [])
+            if top_tables:
+                top_table_name = top_tables[0]["name"]
+                reads_count = top_tables[0]["count"]
+                
+        # If no top table found via query history, fall back to local database or SHOW TABLES
+        if not top_table_name:
+            conn, cursor = get_db_connection()
+            try:
+                cursor.execute("SELECT table_name FROM dq_run_history ORDER BY id DESC LIMIT 1")
+                row = cursor.fetchone()
+                if row:
+                    top_table_name = row['table_name']
+                else:
+                    cursor.execute("SELECT table_name FROM rules LIMIT 1")
+                    row = cursor.fetchone()
+                    if row:
+                        top_table_name = row['table_name']
+            except Exception as db_err:
+                print(f"Error querying local DB for fallback table: {db_err}")
+            finally:
+                conn.close()
+                
+        # If still no table, try remote SHOW TABLES
+        if not top_table_name:
+            try:
+                if platform == "snowflake":
+                    snowflake_engine.connect(creds)
+                    try:
+                        res = snowflake_engine.execute_query("SHOW TABLES LIMIT 1")
+                        if res:
+                            top_table_name = res[0].get('name') or res[0].get('NAME')
+                    except Exception:
+                        pass
+                    snowflake_engine.disconnect()
+                elif platform == "databricks":
+                    databricks_engine.connect(creds)
+                    try:
+                        res = databricks_engine.execute_query("SHOW TABLES LIMIT 1")
+                        if res:
+                            top_table_name = res[0].get('tableName') or res[0].get('tableName'.upper())
+                    except Exception:
+                        pass
+                    databricks_engine.disconnect()
+            except Exception as remote_err:
+                print(f"Error querying remote DB for fallback: {remote_err}")
+                
+        # Final fallback
+        if not top_table_name:
+            top_table_name = "N/A"
+            reads_count = 0
+            dq_score = 100.0
+        else:
+            # Query local DB for the DQ score of this table
+            dq_score = 100.0
+            short_name = top_table_name.split('.')[-1]
+            conn, cursor = get_db_connection()
+            try:
+                cursor.execute(
+                    "SELECT dq_score FROM dq_run_history WHERE LOWER(table_name) = ? OR LOWER(table_name) = ? ORDER BY id DESC LIMIT 1",
+                    (top_table_name.lower(), short_name.lower())
+                )
+                row = cursor.fetchone()
+                if row:
+                    dq_score = row['dq_score']
+            except Exception as db_err:
+                print(f"Error fetching DQ score: {db_err}")
+            finally:
+                conn.close()
+                
+        return {
+            "status": "success",
+            "table_name": top_table_name,
+            "reads": reads_count,
+            "dq_score": dq_score
+        }
+    except Exception as e:
+        import traceback
+        print(f"Warehouse analytics failed: {traceback.format_exc()}")
+        return {
+            "status": "success",
+            "table_name": "No active table",
+            "reads": 0,
+            "dq_score": 100.0
+        }
+
+
+@app.post("/api/v1/dashboard/query_logs")
+async def get_dashboard_query_logs(request: DashboardRequest):
+    try:
+        platform = request.platform.lower()
+        creds = request.credentials or {}
+        
+        # Connect to the platform
+        if platform == "snowflake":
+            snowflake_engine.connect(creds)
+        elif platform == "databricks":
+            databricks_engine.connect(creds)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
+            
+        raw_queries = []
+        try:
+            if platform == "snowflake":
+                try:
+                    sql = """
+                    SELECT 
+                        QUERY_TEXT, 
+                        USER_NAME, 
+                        START_TIME, 
+                        TOTAL_ELAPSED_TIME
+                    FROM TABLE(INFORMATION_SCHEMA.QUERY_HISTORY(RESULT_LIMIT => 10))
+                    ORDER BY START_TIME DESC
+                    """
+                    raw_queries = snowflake_engine.execute_query(sql)
+                except Exception:
+                    sql = """
+                    SELECT 
+                        QUERY_TEXT, 
+                        USER_NAME, 
+                        START_TIME, 
+                        TOTAL_ELAPSED_TIME
+                    FROM TABLE(INFORMATION_SCHEMA.QUERY_HISTORY_BY_SESSION(RESULT_LIMIT => 10))
+                    ORDER BY START_TIME DESC
+                    """
+                    raw_queries = snowflake_engine.execute_query(sql)
+            elif platform == "databricks":
+                sql = """
+                SELECT 
+                    statement_text as QUERY_TEXT, 
+                    executed_by as USER_NAME, 
+                    start_time as START_TIME, 
+                    duration as TOTAL_ELAPSED_TIME
+                FROM system.query.history 
+                ORDER BY start_time DESC 
+                LIMIT 10
+                """
+                raw_queries = databricks_engine.execute_query(sql)
+        except Exception as q_err:
+            print(f"Query logs retrieval failed, falling back: {q_err}")
+            raw_queries = []
+            
+        # Disconnect engine
+        if platform == "snowflake":
+            snowflake_engine.disconnect()
+        elif platform == "databricks":
+            databricks_engine.disconnect()
+            
+        formatted_logs = []
+        for row in raw_queries:
+            q_text = row.get("QUERY_TEXT") or row.get("query_text") or ""
+            user_name = row.get("USER_NAME") or row.get("user_name") or "Unknown"
+            
+            # Format duration
+            duration_val = row.get("TOTAL_ELAPSED_TIME") or row.get("total_elapsed_time") or 0
+            if duration_val < 1000:
+                duration_str = f"{int(duration_val)}ms"
+            else:
+                duration_str = f"{duration_val / 1000:.1f}s"
+                
+            formatted_logs.append({
+                "query": q_text,
+                "user": user_name,
+                "duration": duration_str
+            })
+            
+        return {
+            "status": "success",
+            "queries": formatted_logs
+        }
+    except Exception as e:
+        print(f"Query logs failed: {e}")
+        return {
+            "status": "success",
+            "queries": []
+        }
+
+
+@app.post("/api/v1/dashboard/lineage")
+async def get_dashboard_lineage(request: DashboardRequest):
+    platform = request.platform.lower()
+    creds = request.credentials or {}
+    
+    # Establish connection
+    try:
+        if platform == "snowflake":
+            snowflake_engine.connect(creds)
+        elif platform == "databricks":
+            databricks_engine.connect(creds)
+        else:
+            return {"status": "success", "nodes": [], "edges": []}
+    except Exception as conn_err:
+        print(f"Lineage connection failed: {conn_err}")
+        return {"status": "success", "nodes": [], "edges": []}
+        
+    try:
+        # Determine database & schema
+        db_name = creds.get("database")
+        schema_name = creds.get("schema")
+        
+        if not db_name or not schema_name:
+            try:
+                if platform == "snowflake":
+                    res = snowflake_engine.execute_query("SELECT CURRENT_DATABASE() as DB, CURRENT_SCHEMA() as SCH")
+                    if res:
+                        db_name = res[0].get("DB") or res[0].get("db")
+                        schema_name = res[0].get("SCH") or res[0].get("sch")
+                elif platform == "databricks":
+                    res = databricks_engine.execute_query("SELECT CURRENT_CATALOG() as DB, CURRENT_SCHEMA() as SCH")
+                    if res:
+                        db_name = res[0].get("DB") or res[0].get("db")
+                        schema_name = res[0].get("SCH") or res[0].get("sch")
+            except Exception as ctx_err:
+                print(f"Error querying active DB context: {ctx_err}")
+                
+        # If still not found, try to list catalogs and get first catalog/schema
+        if not db_name or not schema_name:
+            try:
+                if platform == "snowflake":
+                    dbs = snowflake_engine.execute_query("SHOW DATABASES LIMIT 1")
+                    if dbs:
+                        db_name = dbs[0].get("name") or dbs[0].get("NAME")
+                        schs = snowflake_engine.execute_query(f"SHOW SCHEMAS IN DATABASE {db_name} LIMIT 1")
+                        if schs:
+                            schema_name = schs[0].get("name") or schs[0].get("NAME")
+                elif platform == "databricks":
+                    dbs = databricks_engine.execute_query("SHOW CATALOGS LIMIT 1")
+                    if dbs:
+                        db_name = dbs[0].get("catalog") or dbs[0].get("CATALOG")
+                        schs = databricks_engine.execute_query(f"SHOW SCHEMAS IN {db_name} LIMIT 1")
+                        if schs:
+                            schema_name = schs[0].get("databaseName") or schs[0].get("DATABASE_NAME")
+            except Exception as fallback_err:
+                print(f"Lineage database/schema fallback failed: {fallback_err}")
+                
+        if not db_name or not schema_name:
+            print("No active database and schema found for lineage inference.")
+            return {"status": "success", "nodes": [], "edges": []}
+            
+        # Generate the SQL to fetch columns from information schema
+        sql_query = QueryGenerator.generate_information_schema_sql(platform, db_name, schema_name)
+        columns = snowflake_engine.execute_query(sql_query) if platform == "snowflake" else databricks_engine.execute_query(sql_query)
+        
+        # Infer lineage relationships using LineageEngine
+        lineage_graph = LineageEngine.infer_relationships(columns)
+        return {
+            "status": "success",
+            "nodes": lineage_graph.get("nodes", []),
+            "edges": lineage_graph.get("edges", []),
+            "database": db_name,
+            "schema": schema_name
+        }
+    except Exception as e:
+        print(f"Lineage endpoint failed: {e}")
+        return {"status": "success", "nodes": [], "edges": []}
+    finally:
+        if platform == "snowflake":
+            snowflake_engine.disconnect()
+        elif platform == "databricks":
+            databricks_engine.disconnect()
+
+
+@app.get("/api/v1/dashboard/run_history")
+async def get_run_history(table_name: str):
+    """Return all historical DQ runs for a table, newest first."""
+    conn, cursor = get_db_connection()
+    try:
+        ph = "%s" if DATABASE_URL else "?"
+        cursor.execute(
+            f"""
+            SELECT id, table_name, run_date, run_time, dq_score,
+                   total_rows, passed_rows, failed_rows, status,
+                   executed_by, duration_ms, executed_at
+            FROM dq_run_history
+            WHERE table_name = {ph}
+            ORDER BY id DESC
+            """,
+            (table_name,)
+        )
+        rows = cursor.fetchall()
+        history = [dict(r) for r in rows]
+        return {"status": "success", "history": history}
+    except Exception as e:
+        print(f"Error fetching run history: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+# ──────────────────────────────────────────────────────────────────────
+# AUTOMATED SCHEDULING SYSTEM
+# ──────────────────────────────────────────────────────────────────────
+
+import datetime
+import json
+import traceback
+import threading
+import time
+
+def parse_iso_or_time(time_str: str) -> datetime.time:
+    try:
+        if "T" in time_str:
+            dt = datetime.datetime.fromisoformat(time_str.replace("Z", ""))
+            return dt.time()
+        parts = time_str.split(":")
+        h = int(parts[0])
+        m = int(parts[1]) if len(parts) > 1 else 0
+        s = int(parts[2]) if len(parts) > 2 else 0
+        return datetime.time(h, m, s)
+    except:
+        return datetime.time(0, 0, 0)
+
+def calculate_next_run_time(frequency: str, custom_config_str: Optional[str], start_time_str: str, timezone_str: Optional[str] = "UTC", last_run_dt: Optional[datetime.datetime] = None) -> Optional[datetime.datetime]:
+    current_utc = datetime.datetime.utcnow()
+    
+    if frequency in ("Disabled", "Not Scheduled", ""):
+        return None
+        
+    presets = {
+        "5 minutes": datetime.timedelta(minutes=5),
+        "10 minutes": datetime.timedelta(minutes=10),
+        "20 minutes": datetime.timedelta(minutes=20),
+        "30 minutes": datetime.timedelta(minutes=30),
+        "1 hour": datetime.timedelta(hours=1),
+        "4 hours": datetime.timedelta(hours=4),
+        "6 hours": datetime.timedelta(hours=6),
+        "12 hours": datetime.timedelta(hours=12),
+        "24 hours": datetime.timedelta(hours=24)
+    }
+    
+    if frequency in presets:
+        delta = presets[frequency]
+        if last_run_dt:
+            return last_run_dt + delta
+        else:
+            try:
+                start_dt = datetime.datetime.fromisoformat(start_time_str.replace("Z", ""))
+                if start_dt > current_utc:
+                    return start_dt
+            except:
+                pass
+            return current_utc + delta
+
+    if frequency == "Other" and custom_config_str:
+        try:
+            config = json.loads(custom_config_str)
+            unit = config.get("type")
+            val = int(config.get("value", 1))
+            
+            if unit == "minutes":
+                base = last_run_dt or current_utc
+                return base + datetime.timedelta(minutes=val)
+            elif unit == "hours":
+                base = last_run_dt or current_utc
+                return base + datetime.timedelta(hours=val)
+            elif unit == "days":
+                base = last_run_dt or current_utc
+                return base + datetime.timedelta(days=val)
+            
+            elif unit == "weekly":
+                target_days = config.get("days", [])
+                interval = int(config.get("interval", 1))
+                t = parse_iso_or_time(start_time_str)
+                start_search = last_run_dt + datetime.timedelta(minutes=1) if last_run_dt else current_utc
+                
+                day_map = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6}
+                target_wdays = [day_map[d.lower()] for d in target_days if d.lower() in day_map]
+                if not target_wdays:
+                    target_wdays = [0]
+                
+                for i in range(1, 30):
+                    candidate = start_search + datetime.timedelta(days=i)
+                    if candidate.weekday() in target_wdays:
+                        next_dt = datetime.datetime.combine(candidate.date(), t)
+                        if next_dt > current_utc:
+                            return next_dt
+                return current_utc + datetime.timedelta(days=7 * interval)
+                
+            elif unit == "monthly":
+                mode = config.get("mode", "date")
+                t = parse_iso_or_time(start_time_str)
+                start_search = last_run_dt + datetime.timedelta(minutes=1) if last_run_dt else current_utc
+                
+                if mode == "date":
+                    day_of_month = int(config.get("date", 1))
+                    for m_offset in range(12):
+                        year = start_search.year
+                        month = start_search.month + m_offset
+                        while month > 12:
+                            month -= 12
+                            year += 1
+                        try:
+                            candidate_date = datetime.date(year, month, day_of_month)
+                            next_dt = datetime.datetime.combine(candidate_date, t)
+                            if next_dt > current_utc:
+                                return next_dt
+                        except ValueError:
+                            pass
+                else:
+                    index = int(config.get("index", 1))
+                    day_name = config.get("day", "Monday")
+                    day_map = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6}
+                    target_wday = day_map.get(day_name.lower(), 0)
+                    
+                    for m_offset in range(12):
+                        year = start_search.year
+                        month = start_search.month + m_offset
+                        while month > 12:
+                            month -= 12
+                            year += 1
+                            
+                        matching_dates = []
+                        for d in range(1, 32):
+                            try:
+                                dt = datetime.date(year, month, d)
+                                if dt.weekday() == target_wday:
+                                    matching_dates.append(dt)
+                            except ValueError:
+                                break
+                        
+                        if matching_dates:
+                            if index == -1:
+                                target_date = matching_dates[-1]
+                            else:
+                                idx = min(index - 1, len(matching_dates) - 1)
+                                target_date = matching_dates[idx]
+                                
+                            next_dt = datetime.datetime.combine(target_date, t)
+                            if next_dt > current_utc:
+                                return next_dt
+            
+        except Exception as e:
+            print(f"Error calculating custom config scheduling: {e}")
+            
+    return current_utc + datetime.timedelta(days=1)
+
+
+def execute_schedule_job(schedule_id: int):
+    conn, cursor = get_db_connection()
+    try:
+        query = "SELECT * FROM schedules WHERE id = %s" if DATABASE_URL else "SELECT * FROM schedules WHERE id = ?"
+        cursor.execute(query, (schedule_id,))
+        schedule = cursor.fetchone()
+        if not schedule or not schedule["enabled"]:
+            return
+            
+        platform = schedule["platform"]
+        db_name = schedule["database_name"]
+        sch_name = schedule["schema_name"]
+        tbl_name = schedule["table_name"]
+        run_type = schedule["run_type"]
+        frequency = schedule["frequency"]
+        custom_config = schedule["custom_config"]
+        start_time = schedule["start_time"]
+        timezone = schedule["timezone"]
+        
+        engine = snowflake_engine if platform == "snowflake" else databricks_engine
+        
+    except Exception as e:
+        print(f"Error initializing job {schedule_id}: {e}")
+        return
+    finally:
+        conn.close()
+        
+    run_start = datetime.datetime.utcnow()
+    
+    try:
+        # Connect using env credentials
+        engine.connect(None)
+        
+        if run_type == "profile":
+            sql_query = QueryGenerator.generate_metadata_sql(platform, 'columns', db_name, sch_name, tbl_name)
+            result = engine.execute_query(sql_query)
+            
+            columns = []
+            if result:
+                if platform == "snowflake":
+                    for row in result:
+                        val = row.get('column_name') or row.get('COLUMN_NAME')
+                        if val: columns.append(val)
+                elif platform == "databricks":
+                    for row in result:
+                        val = row.get('col_name') or row.get('COL_NAME')
+                        if val: columns.append(val)
+            
+            col_profiles = {}
+            for col in columns:
+                if not col:
+                    continue
+                prof_query = QueryGenerator.generate_profiling_sql(platform, db_name, sch_name, tbl_name, col)
+                res = engine.execute_query(prof_query)
+                if res:
+                    raw = res[0]
+                    normalized = {k.lower(): v for k, v in raw.items()} if raw else {}
+                    col_profiles[col] = normalized
+            
+            count_query = f"SELECT COUNT(*) as row_count FROM {db_name}.{sch_name}.{tbl_name}"
+            count_res = engine.execute_query(count_query)
+            row_count = count_res[0].get('row_count') or count_res[0].get('ROW_COUNT') or 0
+            
+            conn_db, cursor_db = get_db_connection()
+            try:
+                profiles_json = json.dumps(col_profiles)
+                if DATABASE_URL:
+                    upsert_query = """
+                        INSERT INTO column_profiles (platform, database_name, schema_name, table_name, profile_data, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                        ON CONFLICT (platform, database_name, schema_name, table_name)
+                        DO UPDATE SET profile_data = EXCLUDED.profile_data, updated_at = CURRENT_TIMESTAMP
+                    """
+                else:
+                    upsert_query = """
+                        INSERT OR REPLACE INTO column_profiles (platform, database_name, schema_name, table_name, profile_data, updated_at)
+                        VALUES (?, ?, ?, ?, ?, datetime('now'))
+                    """
+                cursor_db.execute(upsert_query, (platform, db_name, sch_name, tbl_name, profiles_json))
+                
+                run_end = datetime.datetime.utcnow()
+                duration_ms = int((run_end - run_start).total_seconds() * 1000)
+                run_date = run_end.strftime('%Y-%m-%d')
+                run_time = run_end.strftime('%H:%M:%S UTC')
+                
+                history_query = """
+                    INSERT INTO dq_run_history
+                        (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """ if DATABASE_URL else """
+                    INSERT INTO dq_run_history
+                        (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """
+                cursor_db.execute(history_query, (
+                    tbl_name, run_date, run_time, 100.0,
+                    row_count, row_count, 0,
+                    'Passed', 'Scheduled', duration_ms
+                ))
+                conn_db.commit()
+            finally:
+                conn_db.close()
+                
+        elif run_type == "evaluate":
+            conn_db, cursor_db = get_db_connection()
+            rules = []
+            try:
+                query_rules = """
+                    SELECT * FROM rules 
+                    WHERE database_name = %s AND schema_name = %s AND table_name = %s AND status = 'Active'
+                """ if DATABASE_URL else """
+                    SELECT * FROM rules 
+                    WHERE database_name = ? AND schema_name = ? AND table_name = ? AND status = 'Active'
+                """
+                cursor_db.execute(query_rules, (db_name, sch_name, tbl_name))
+                rules = [dict(r) for r in cursor_db.fetchall()]
+            finally:
+                conn_db.close()
+                
+            executions = []
+            for rule in rules:
+                params = json.loads(rule["rule_params"]) if isinstance(rule["rule_params"], str) else (rule["rule_params"] or {})
+                sql = QueryGenerator.generate_dq_rule_sql(
+                    platform=platform,
+                    table=f"{db_name}.{sch_name}.{tbl_name}",
+                    column=rule["column_name"],
+                    rule_type=rule["rule_type"],
+                    rule_params=params
+                )
+                res = engine.execute_query(sql)
+                if res and len(res) > 0:
+                    first_row = res[0]
+                    total_rows = first_row.get('TOTAL_ROWS') or first_row.get('total_rows') or 0
+                    failed_rows = first_row.get('FAILED_ROWS') or first_row.get('failed_rows') or 0
+                    status = 'pass' if failed_rows == 0 else 'fail'
+                    executions.append({
+                        "column_name": rule["column_name"],
+                        "rule_type": rule["rule_type"],
+                        "total_rows": total_rows,
+                        "failed_rows": failed_rows,
+                        "status": status
+                    })
+            
+            if executions:
+                conn_db, cursor_db = get_db_connection()
+                try:
+                    executions_data = []
+                    for ex in executions:
+                        executions_data.append((
+                            platform, tbl_name, ex["column_name"], ex["rule_type"], ex["total_rows"], ex["failed_rows"], ex["status"]
+                        ))
+                        
+                        if ex["failed_rows"] > 0:
+                            msg_text = f"{tbl_name}: {ex['column_name']} column failed {ex['rule_type']}. {ex['failed_rows']} failed rows."
+                            title_text = f"{ex['rule_type']} Failure"
+                            if ex['rule_type'] in ('Null Check', 'NULL_CHECK'):
+                                title_text = "Null Rate Violation"
+                                msg_text = f"{tbl_name}: {ex['column_name']} column showed a sudden jump in nulls ({ex['failed_rows']} records)."
+                            elif ex['rule_type'] in ('Unique Check', 'UNIQUE_CHECK'):
+                                title_text = "Uniqueness Violation"
+                                msg_text = f"{tbl_name}: {ex['column_name']} column has duplicates."
+                                
+                            check_anomaly = """
+                                SELECT id FROM anomalies WHERE title = %s AND msg = %s AND status = 'Active'
+                            """ if DATABASE_URL else """
+                                SELECT id FROM anomalies WHERE title = ? AND msg = ? AND status = 'Active'
+                            """
+                            cursor_db.execute(check_anomaly, (title_text, msg_text))
+                            if not cursor_db.fetchone():
+                                cursor_db.execute(
+                                    "INSERT INTO anomalies (title, msg, type, status) VALUES (%s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO anomalies (title, msg, type, status) VALUES (?, ?, ?, ?)",
+                                    (title_text, msg_text, "null" if "null" in title_text.lower() else "uniqueness", "Active")
+                                )
+                    
+                    execs_query = """
+                        INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """ if DATABASE_URL else """
+                        INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """
+                    cursor_db.executemany(execs_query, executions_data)
+                    
+                    total_rows_agg = max((ex["total_rows"] for ex in executions), default=0)
+                    failed_rows_agg = sum(ex["failed_rows"] for ex in executions)
+                    passed_rows_agg = total_rows_agg - failed_rows_agg
+                    scores = [
+                        round((1 - ex["failed_rows"] / ex["total_rows"]) * 100, 1) if ex["total_rows"] > 0 else 100
+                        for ex in executions
+                    ]
+                    dq_score = round(sum(scores) / len(scores), 1) if scores else 100
+                    
+                    if failed_rows_agg == 0:
+                        run_status = 'Passed'
+                    elif passed_rows_agg == 0:
+                        run_status = 'Failed'
+                    else:
+                        run_status = 'Partially Passed'
+                        
+                    run_end = datetime.datetime.utcnow()
+                    duration_ms = int((run_end - run_start).total_seconds() * 1000)
+                    run_date = run_end.strftime('%Y-%m-%d')
+                    run_time = run_end.strftime('%H:%M:%S UTC')
+                    
+                    history_query = """
+                        INSERT INTO dq_run_history
+                            (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """ if DATABASE_URL else """
+                        INSERT INTO dq_run_history
+                            (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """
+                    cursor_db.execute(history_query, (
+                        tbl_name, run_date, run_time, dq_score,
+                        total_rows_agg, passed_rows_agg, failed_rows_agg,
+                        run_status, 'Scheduled', duration_ms
+                    ))
+                    conn_db.commit()
+                finally:
+                    conn_db.close()
+                    
+        conn_db, cursor_db = get_db_connection()
+        try:
+            next_run = calculate_next_run_time(frequency, custom_config, start_time, timezone, run_start)
+            next_run_str = next_run.isoformat() if next_run else None
+            
+            update_query = """
+                UPDATE schedules
+                SET status = 'Active', last_run_time = %s, next_run_time = %s, last_error = NULL
+                WHERE id = %s
+            """ if DATABASE_URL else """
+                UPDATE schedules
+                SET status = 'Active', last_run_time = ?, next_run_time = ?, last_error = NULL
+                WHERE id = ?
+            """
+            cursor_db.execute(update_query, (run_start.isoformat(), next_run_str, schedule_id))
+            conn_db.commit()
+        finally:
+            conn_db.close()
+            
+    except Exception as e:
+        err_msg = f"{str(e)}\n{traceback.format_exc()}"
+        print(f"Scheduled run failed for schedule {schedule_id}: {err_msg}")
+        
+        conn_db, cursor_db = get_db_connection()
+        try:
+            next_run = calculate_next_run_time(frequency, custom_config, start_time, timezone, run_start)
+            next_run_str = next_run.isoformat() if next_run else None
+            
+            update_query = """
+                UPDATE schedules
+                SET status = 'Failed', last_run_time = %s, next_run_time = %s, last_error = %s
+                WHERE id = %s
+            """ if DATABASE_URL else """
+                UPDATE schedules
+                SET status = 'Failed', last_run_time = ?, next_run_time = ?, last_error = ?
+                WHERE id = ?
+            """
+            cursor_db.execute(update_query, (run_start.isoformat(), next_run_str, str(e), schedule_id))
+            
+            run_end = datetime.datetime.utcnow()
+            duration_ms = int((run_end - run_start).total_seconds() * 1000)
+            run_date = run_end.strftime('%Y-%m-%d')
+            run_time = run_end.strftime('%H:%M:%S UTC')
+            
+            history_query = """
+                INSERT INTO dq_run_history
+                    (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """ if DATABASE_URL else """
+                INSERT INTO dq_run_history
+                    (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            cursor_db.execute(history_query, (
+                tbl_name, run_date, run_time, 0.0,
+                0, 0, 0,
+                'Failed', 'Scheduled', duration_ms
+            ))
+            
+            anom_title = "Scheduled Run Failure"
+            anom_msg = f"Scheduled {run_type} run failed for table {tbl_name}. Error: {str(e)}"
+            insert_anom = """
+                INSERT INTO anomalies (title, msg, type, status) VALUES (%s, %s, %s, %s)
+            """ if DATABASE_URL else """
+                INSERT INTO anomalies (title, msg, type, status) VALUES (?, ?, ?, ?)
+            """
+            cursor_db.execute(insert_anom, (anom_title, anom_msg, "failure", "Active"))
+            
+            conn_db.commit()
+        finally:
+            conn_db.close()
+    finally:
+        try:
+            engine.disconnect()
+        except:
+            pass
+
+
+"""
+def check_and_trigger_schedules():
+    import datetime
+    current_utc = datetime.datetime.utcnow().isoformat()
+    conn, cursor = get_db_connection()
+    due_schedules = []
+    try:
+        query = "SELECT id FROM schedules WHERE enabled = 1 AND next_run_time IS NOT NULL AND next_run_time <= ?"
+        if DATABASE_URL:
+            query = "SELECT id FROM schedules WHERE enabled = 1 AND next_run_time IS NOT NULL AND next_run_time <= %s"
+        cursor.execute(query, (current_utc,))
+        due_schedules = [row["id"] for row in cursor.fetchall()]
+    except Exception as e:
+        print(f"Error checking due schedules: {e}")
+    finally:
+        conn.close()
+        
+    for schedule_id in due_schedules:
+        t = threading.Thread(target=execute_schedule_job, args=(schedule_id,), daemon=True)
+        t.start()
+
+
+def start_scheduler():
+    def loop():
+        time.sleep(5)
+        while True:
+            try:
+                check_and_trigger_schedules()
+            except Exception as e:
+                print(f"Background scheduler error: {e}")
+            time.sleep(10)
+            
+    thread = threading.Thread(target=loop, daemon=True)
+    thread.start()
+    print("Background scheduler thread started successfully.")
+"""
+
+# Native Snowflake Scheduling Migration
+# The Python-based orchestrator above has been deprecated.
+# DQ Scheduling is now handled natively via Snowflake TASKS calling SP_RUN_DQ_JOB.
+
+
+@app.get("/api/v1/dashboard/schedules")
+async def get_schedules(table_name: str, platform: str = "snowflake", database_name: str = "UNICORN", schema_name: str = "DEV"):
+    conn, cursor = get_db_connection()
+    try:
+        query = """
+            SELECT * FROM schedules 
+            WHERE database_name = %s AND schema_name = %s AND table_name = %s
+        """ if DATABASE_URL else """
+            SELECT * FROM schedules 
+            WHERE database_name = ? AND schema_name = ? AND table_name = ?
+        """
+        cursor.execute(query, (database_name, schema_name, table_name))
+        rows = cursor.fetchall()
+        schedules = [dict(row) for row in rows]
+        
+        types_present = [s["run_type"] for s in schedules]
+        for run_type in ["profile", "evaluate"]:
+            if run_type not in types_present:
+                insert_query = """
+                    INSERT INTO schedules 
+                        (platform, database_name, schema_name, table_name, run_type, frequency, custom_config, start_time, timezone, status, enabled)
+                    VALUES (%s, %s, %s, %s, %s, %s, NULL, %s, %s, %s, 0)
+                """ if DATABASE_URL else """
+                    INSERT INTO schedules 
+                        (platform, database_name, schema_name, table_name, run_type, frequency, custom_config, start_time, timezone, status, enabled)
+                    VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0)
+                """
+                start_time_str = datetime.datetime.utcnow().isoformat()
+                cursor.execute(insert_query, (
+                    platform, database_name, schema_name, table_name, run_type, "Disabled", start_time_str, "UTC", "Active"
+                ))
+                conn.commit()
+                
+        cursor.execute(query, (database_name, schema_name, table_name))
+        rows = cursor.fetchall()
+        schedules = [dict(row) for row in rows]
+        
+        return {"status": "success", "schedules": schedules}
+    except Exception as e:
+        print(f"Error fetching schedules: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.post("/api/v1/dashboard/schedules")
+async def save_schedule(request: ScheduleCreateUpdate):
+    conn, cursor = get_db_connection()
+    try:
+        query_check = """
+            SELECT id, last_run_time FROM schedules 
+            WHERE database_name = %s AND schema_name = %s AND table_name = %s AND run_type = %s
+        """ if DATABASE_URL else """
+            SELECT id, last_run_time FROM schedules 
+            WHERE database_name = ? AND schema_name = ? AND table_name = ? AND run_type = ?
+        """
+        cursor.execute(query_check, (request.database_name, request.schema_name, request.table_name, request.run_type))
+        row = cursor.fetchone()
+        
+        custom_config_str = json.dumps(request.custom_config) if request.custom_config else None
+        
+        next_run_str = None
+        if request.enabled and request.frequency not in ("Disabled", "Not Scheduled", ""):
+            last_run = None
+            if row and row["last_run_time"]:
+                try:
+                    last_run = datetime.datetime.fromisoformat(row["last_run_time"])
+                except:
+                    pass
+            next_run = calculate_next_run_time(
+                request.frequency, custom_config_str, request.start_time, request.timezone, last_run
+            )
+            if next_run:
+                next_run_str = next_run.isoformat()
+        
+        if row:
+            update_query = """
+                UPDATE schedules
+                SET platform = %s, frequency = %s, custom_config = %s, start_time = %s, timezone = %s, enabled = %s, next_run_time = %s, status = 'Active', last_error = NULL
+                WHERE id = %s
+            """ if DATABASE_URL else """
+                UPDATE schedules
+                SET platform = ?, frequency = ?, custom_config = ?, start_time = ?, timezone = ?, enabled = ?, next_run_time = ?, status = 'Active', last_error = NULL
+                WHERE id = ?
+            """
+            cursor.execute(update_query, (
+                request.platform, request.frequency, custom_config_str, request.start_time, request.timezone,
+                1 if request.enabled else 0, next_run_str, row["id"]
+            ))
+        else:
+            insert_query = """
+                INSERT INTO schedules 
+                    (platform, database_name, schema_name, table_name, run_type, frequency, custom_config, start_time, timezone, status, enabled, next_run_time)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'Active', %s, %s)
+            """ if DATABASE_URL else """
+                INSERT INTO schedules 
+                    (platform, database_name, schema_name, table_name, run_type, frequency, custom_config, start_time, timezone, status, enabled, next_run_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?, ?)
+            """
+            cursor.execute(insert_query, (
+                request.platform, request.database_name, request.schema_name, request.table_name, request.run_type,
+                request.frequency, custom_config_str, request.start_time, request.timezone,
+                1 if request.enabled else 0, next_run_str
+            ))
+            
+        conn.commit()
+        return {"status": "success", "message": "Schedule updated successfully"}
+    except Exception as e:
+        print(f"Error saving schedule: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.patch("/api/v1/dashboard/schedules/{schedule_id}")
+async def patch_schedule(schedule_id: int, payload: Dict[str, Any] = Body(...)):
+    conn, cursor = get_db_connection()
+    try:
+        query_select = "SELECT * FROM schedules WHERE id = %s" if DATABASE_URL else "SELECT * FROM schedules WHERE id = ?"
+        cursor.execute(query_select, (schedule_id,))
+        schedule = cursor.fetchone()
+        if not schedule:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+            
+        fields_to_update = []
+        params = []
+        for key in ["enabled", "status"]:
+            if key in payload:
+                val = payload[key]
+                if key == "enabled":
+                    val = 1 if val else 0
+                fields_to_update.append(f"{key} = %s" if DATABASE_URL else f"{key} = ?")
+                params.append(val)
+                
+        if "enabled" in payload:
+            enabled = payload["enabled"]
+            if enabled and schedule["frequency"] not in ("Disabled", "Not Scheduled", ""):
+                last_run = None
+                if schedule["last_run_time"]:
+                    try:
+                        last_run = datetime.datetime.fromisoformat(schedule["last_run_time"])
+                    except:
+                        pass
+                next_run = calculate_next_run_time(
+                    schedule["frequency"], schedule["custom_config"], schedule["start_time"], schedule["timezone"], last_run
+                )
+                next_run_str = next_run.isoformat() if next_run else None
+            else:
+                next_run_str = None
+                
+            fields_to_update.append("next_run_time = %s" if DATABASE_URL else "next_run_time = ?")
+            params.append(next_run_str)
+            
+            fields_to_update.append("last_error = NULL")
+            fields_to_update.append("status = 'Active'")
+            
+        if not fields_to_update:
+            return {"status": "success", "message": "No changes made"}
+            
+        query_update = f"UPDATE schedules SET {', '.join(fields_to_update)} WHERE id = " + ("%s" if DATABASE_URL else "?")
+        params.append(schedule_id)
+        
+        cursor.execute(query_update, tuple(params))
+        conn.commit()
+        return {"status": "success", "message": "Schedule patched successfully"}
+    except Exception as e:
+        print(f"Error patching schedule: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.get("/api/v1/dashboard/column_profiles")
+async def get_column_profiles(platform: str, database_name: str, schema_name: str, table_name: str):
+    conn, cursor = get_db_connection()
+    try:
+        query = """
+            SELECT profile_data FROM column_profiles 
+            WHERE platform = %s AND database_name = %s AND schema_name = %s AND table_name = %s
+        """ if DATABASE_URL else """
+            SELECT profile_data FROM column_profiles 
+            WHERE platform = ? AND database_name = ? AND schema_name = ? AND table_name = ?
+        """
+        cursor.execute(query, (platform, database_name, schema_name, table_name))
+        row = cursor.fetchone()
+        if row:
+            profile_data = json.loads(row["profile_data"])
+            return {"status": "success", "profile": profile_data}
+        return {"status": "success", "profile": None}
+    except Exception as e:
+        print(f"Error fetching cached column profiles: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.post("/api/v1/dashboard/schedules/{schedule_id}/run")
+async def trigger_schedule_now(schedule_id: int):
+    t = threading.Thread(target=execute_schedule_job, args=(schedule_id,), daemon=True)
+    t.start()
+    return {"status": "success", "message": "Scheduled run triggered in background"}
+
+
+# start_scheduler() # Deprecated in favor of Snowflake TASKS
+
+@app.get("/api/v1/dq/runs")
+async def get_dq_runs():
+    try:
+        snowflake_engine.connect(None)
+        query = "SELECT * FROM DQ_RUN_HISTORY ORDER BY start_time DESC LIMIT 100"
+        runs = snowflake_engine.execute_query(query)
+        if not runs:
+            runs = []
+            
+        # Format datetime objects
+        for run in runs:
+            # Snowflake connector returns standard python dates, but they might need stringifying
+            # Lowercase keys to be safe or just pass as-is if fastapi json serializer handles it
+            pass
+            
+        return {"status": "success", "runs": runs}
+    except Exception as e:
+        print(f"Error fetching DQ runs: {e}")
+        return {"status": "error", "message": str(e), "runs": []}
+    finally:
+        try: snowflake_engine.disconnect()
+        except: pass
+
+@app.get("/api/v1/dq/runs/{run_id}")
+async def get_dq_run_details(run_id: str):
+    try:
+        snowflake_engine.connect(None)
+        run_query = f"SELECT * FROM DQ_RUN_HISTORY WHERE run_id = '{run_id}'"
+        steps_query = f"SELECT * FROM DQ_STEP_LOGS WHERE run_id = '{run_id}' ORDER BY start_time ASC"
+        
+        run_result = snowflake_engine.execute_query(run_query)
+        if not run_result:
+            raise HTTPException(status_code=404, detail="Run not found")
+            
+        steps = snowflake_engine.execute_query(steps_query)
+        if not steps:
+            steps = []
+            
+        return {"status": "success", "run_details": run_result[0], "steps": steps}
+    except Exception as e:
+        print(f"Error fetching DQ run details: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        try: snowflake_engine.disconnect()
+        except: pass
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
