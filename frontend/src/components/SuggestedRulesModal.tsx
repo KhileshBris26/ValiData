@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { API_BASE } from '../api';
-import { X, CheckCircle, Loader2, Save } from 'lucide-react';
+import { X, Loader2, Save } from 'lucide-react';
 import './SuggestedRulesModal.css';
 
 interface GeneratedRule {

@@ -2153,7 +2153,7 @@ const DataQualityDetail: React.FC = () => {
         columns={dynamicColumns}
         onRulesApplied={async () => {
           setRefreshTrigger(prev => prev + 1);
-          await loadRulesFromBackend(); // Force refresh rules from backend immediately
+          await pullRulesFromBackend(); // Force refresh rules from backend immediately
         }}
       />
     </div>
