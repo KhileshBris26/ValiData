@@ -81,10 +81,14 @@ const SuggestedRulesModal: React.FC<SuggestedRulesModalProps> = ({
           temp_id: `temp_rule_${idx}`,
           selected: true
         })));
+      } else {
+        setError(response.data.error_message || "Failed to generate rules for the selected columns.");
       }
     } catch (err: any) {
       console.error("Rule generation failed", err);
-      setError(err.response?.data?.detail || "Failed to generate rules.");
+      // Ensure we extract the deepest error message
+      const errMsg = err.response?.data?.detail?.error || err.response?.data?.detail || err.message || "Failed to generate rules.";
+      setError(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
     } finally {
       setIsGenerating(false);
     }
