@@ -8,6 +8,7 @@ import axios from 'axios';
 import { usePlatform } from '../context/PlatformContext';
 import { useClickOutside } from '../hooks/useClickOutside';
 import './DataQualityDetail.css';
+import SuggestedRulesModal from '../components/SuggestedRulesModal';
 
 import { API_BASE } from '../api';
 
@@ -816,60 +817,9 @@ const DataQualityDetail: React.FC = () => {
     await pushRulesToBackend();
   };
 
-  const [suggestingRules, setSuggestingRules] = useState(false);
-  const handleSuggestRules = async () => {
-    setSuggestingRules(true);
-    try {
-      const saved = localStorage.getItem('robin_credentials');
-      let credentials = null;
-      if (saved) credentials = JSON.parse(saved)[platform];
-
-      // Suggest for the first 3 columns to keep it manageable
-      for (const col of dynamicColumns.slice(0, 3)) {
-        const res = await axios.post(`${API_BASE}/ai/suggest_rules`, {
-          platform,
-          table_name: table,
-          column_name: col.attribute,
-          credentials
-        });
-        
-        if (res.data.ai_suggestions) {
-          const rawText = res.data.ai_suggestions[0]?.ai_suggestion || "";
-          // Extract lines that look like rules (numbered list)
-          const lines = rawText.split('\n').filter((l: string) => /^\d+\./.test(l.trim()));
-          
-          const storageKey = `robin_rule_v2|${database}|${schema}|${table}|${col.attribute}`;
-          const existingRules = JSON.parse(localStorage.getItem(storageKey) || '[]');
-          let changed = false;
-
-          lines.forEach((l: string) => {
-            const ruleName = l.replace(/^\d+\.\s*/, '').trim();
-            if (ruleName && !existingRules.some((r: any) => r.label === ruleName)) {
-              existingRules.push({
-                label: ruleName,
-                score: '100%',
-                status: 'valid' as const,
-                platform
-              });
-              changed = true;
-            }
-          });
-          
-          if (changed) {
-            localStorage.setItem(storageKey, JSON.stringify(existingRules));
-          }
-        }
-      }
-      
-      localStorage.removeItem('robin_applied_rules'); // Clear legacy cache
-      setHasEvaluated(true);
-      setRefreshTrigger(prev => prev + 1);
-      await pushRulesToBackend();
-    } catch (e) {
-      console.error("AI Suggestion failed", e);
-    } finally {
-      setSuggestingRules(false);
-    }
+  const [isSuggestRulesModalOpen, setIsSuggestRulesModalOpen] = useState(false);
+  const handleSuggestRules = () => {
+    setIsSuggestRulesModalOpen(true);
   };
 
   const handleEvaluationSnapshot = async () => {
@@ -1751,8 +1701,8 @@ const DataQualityDetail: React.FC = () => {
             <>
               <div className="dq-table-actions">
                 <div className="filter-input-wrapper"><Filter size={16} /><input type="text" placeholder="Filter" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-                <button className="btn-suggested-rules" onClick={handleSuggestRules} disabled={suggestingRules}>
-                  {suggestingRules ? 'Thinking...' : 'Suggested Rules'}
+                <button className="btn-suggested-rules" onClick={handleSuggestRules}>
+                  Suggested Rules
                 </button>
               </div>
               <div className="dq-scrollable-table">
@@ -2192,6 +2142,20 @@ const DataQualityDetail: React.FC = () => {
           </div>
         </div>
       )}
+
+      <SuggestedRulesModal
+        isOpen={isSuggestRulesModalOpen}
+        onClose={() => setIsSuggestRulesModalOpen(false)}
+        platform={platform}
+        database={database!}
+        schema={schema!}
+        table={table!}
+        columns={dynamicColumns}
+        onRulesApplied={async () => {
+          setRefreshTrigger(prev => prev + 1);
+          await loadRulesFromBackend(); // Force refresh rules from backend immediately
+        }}
+      />
     </div>
   );
 };

@@ -120,5 +120,26 @@ class FetchRolesRequest(BaseModel):
     platform: Literal["snowflake", "databricks"]
     credentials: Optional[Dict[str, Any]] = None
 
+class SuggestRulesRequest(BaseModel):
+    platform: Literal["snowflake", "databricks"]
+    database_name: str
+    schema_name: str
+    table_name: str
+    selected_columns: list[str]
+    credentials: Optional[Dict[str, Any]] = None
 
+class SuggestedRuleItem(BaseModel):
+    column_name: str
+    rule_type: str
+    rule_description: str
+    rule_params: Optional[Dict[str, Any]] = None
+    confidence_score: str
+    source: Literal["RULE_BASED", "AI"]
 
+class ApplyRulesRequest(BaseModel):
+    platform: Literal["snowflake", "databricks"]
+    database_name: str
+    schema_name: str
+    table_name: str
+    rules: list[SuggestedRuleItem]
+    credentials: Optional[Dict[str, Any]] = None
