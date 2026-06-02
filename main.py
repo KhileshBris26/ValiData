@@ -368,6 +368,8 @@ def init_db():
                     PRIMARY KEY (platform, database_name, schema_name, table_name)
                 )
             """)
+        # Commit table creations before potentially failing ALTER statements
+        conn.commit()
         
         # Migration for existing users table
         new_columns = {
@@ -387,8 +389,9 @@ def init_db():
         for col, col_type in new_columns.items():
             try:
                 cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
+                conn.commit()
             except Exception:
-                pass # Column likely already exists
+                conn.rollback() # Required in Postgres to clear aborted transaction state
         
         # Pre-seed Khilesh account
         password = "ValiData26"
@@ -1015,9 +1018,44 @@ async def suggest_rules_v2(request: SuggestRulesRequest):
         else:
             raise Exception("Platform not implemented for rule suggestions")
             
-        log_query = "INSERT INTO dq_rule_generation_logs (request_id, table_name, columns_selected, rules_generated, generation_type, status, error_message, timestamp) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO dq_rule_generation_logs (request_id, table_name, columns_selected, rules_generated, generation_type, status, error_message, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-        cursor.execute(log_query, (request_id, request.table_name, json.dumps(request.selected_columns), len(generated_rules), generation_type, status, error_message, current_time))
-        conn.commit()
+        # Ensure table exists before inserting
+        create_log_table = """
+        CREATE TABLE IF NOT EXISTS dq_rule_generation_logs (
+            id SERIAL PRIMARY KEY,
+            request_id TEXT,
+            table_name TEXT,
+            columns_selected TEXT,
+            rules_generated INTEGER,
+            generation_type TEXT,
+            status TEXT,
+            error_message TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """ if DATABASE_URL else """
+        CREATE TABLE IF NOT EXISTS dq_rule_generation_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id TEXT,
+            table_name TEXT,
+            columns_selected TEXT,
+            rules_generated INTEGER,
+            generation_type TEXT,
+            status TEXT,
+            error_message TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+        try:
+            cursor.execute(create_log_table)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
+        try:
+            log_query = "INSERT INTO dq_rule_generation_logs (request_id, table_name, columns_selected, rules_generated, generation_type, status, error_message, timestamp) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO dq_rule_generation_logs (request_id, table_name, columns_selected, rules_generated, generation_type, status, error_message, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            cursor.execute(log_query, (request_id, request.table_name, json.dumps(request.selected_columns), len(generated_rules), generation_type, status, error_message, current_time))
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
         if len(generated_rules) == 0:
             error_message = "No rules could be generated for the selected columns."
@@ -1033,12 +1071,45 @@ async def suggest_rules_v2(request: SuggestRulesRequest):
     except Exception as e:
         import traceback
         traceback.print_exc()
+        
+        # Ensure table exists before inserting error
+        create_log_table = """
+        CREATE TABLE IF NOT EXISTS dq_rule_generation_logs (
+            id SERIAL PRIMARY KEY,
+            request_id TEXT,
+            table_name TEXT,
+            columns_selected TEXT,
+            rules_generated INTEGER,
+            generation_type TEXT,
+            status TEXT,
+            error_message TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """ if DATABASE_URL else """
+        CREATE TABLE IF NOT EXISTS dq_rule_generation_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id TEXT,
+            table_name TEXT,
+            columns_selected TEXT,
+            rules_generated INTEGER,
+            generation_type TEXT,
+            status TEXT,
+            error_message TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+        try:
+            cursor.execute(create_log_table)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+
         try:
             log_query = "INSERT INTO dq_rule_generation_logs (request_id, table_name, columns_selected, rules_generated, generation_type, status, error_message, timestamp) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO dq_rule_generation_logs (request_id, table_name, columns_selected, rules_generated, generation_type, status, error_message, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
             cursor.execute(log_query, (request_id, request.table_name, json.dumps(request.selected_columns), 0, generation_type, "FAILED", str(e), current_time))
             conn.commit()
         except:
-            pass
+            conn.rollback()
         # Return a 200 with error structure instead of 500, or we can just raise a proper HTTP Exception but standardizing the return helps.
         # But wait, the previous code raised HTTPException 500. Let's return the structured response but with status_code=500.
         raise HTTPException(status_code=500, detail={"error": str(e), "stage": "DATABASE_FETCH"})
