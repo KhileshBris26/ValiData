@@ -5,7 +5,7 @@ import { X, Loader2, Save } from 'lucide-react';
 import './SuggestedRulesModal.css';
 
 interface GeneratedRule {
-  temp_id: string; // generated locally for list keys
+  temp_id: string;
   column_name: string;
   rule_type: string;
   rule_description: string;
@@ -36,11 +36,11 @@ const SuggestedRulesModal: React.FC<SuggestedRulesModalProps> = ({
   columns,
   onRulesApplied
 }) => {
-  const [selectedColumns, setSelectedColumns] = useState<string[]>(columns.map(c => c.attribute));
+  const [selectedColumns, setSelectedColumns] = useState<string[]>(columns ? columns.map(c => c.attribute) : []);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [rules, setRules] = useState<GeneratedRule[]>([]);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string>('');
   
   if (!isOpen) return null;
 
@@ -63,32 +63,57 @@ const SuggestedRulesModal: React.FC<SuggestedRulesModalProps> = ({
     try {
       const saved = localStorage.getItem('robin_credentials');
       let credentials = null;
-      if (saved) credentials = JSON.parse(saved)[platform];
+      if (saved) {
+        try {
+          credentials = JSON.parse(saved)[platform];
+        } catch (e) {
+          // ignore parsing error
+        }
+      }
 
       const response = await axios.post(`${API_BASE}/dq/suggest-rules`, {
-        platform,
-        database_name: database,
-        schema_name: schema,
-        table_name: table,
+        platform: String(platform || ''),
+        database_name: String(database || ''),
+        schema_name: String(schema || ''),
+        table_name: String(table || ''),
         selected_columns: selectedColumns,
         credentials
       });
       
-      if (response.data.status === 'success') {
-        const rawRules = response.data.rules || [];
+      if (response && response.data && response.data.status === 'success') {
+        const rawRules = Array.isArray(response.data.rules) ? response.data.rules : [];
         setRules(rawRules.map((r: any, idx: number) => ({
-          ...r,
           temp_id: `temp_rule_${idx}`,
+          column_name: String(r?.column_name || ''),
+          rule_type: String(r?.rule_type || ''),
+          rule_description: String(r?.rule_description || ''),
+          rule_params: r?.rule_params,
+          confidence_score: String(r?.confidence_score || ''),
+          source: String(r?.source || ''),
           selected: true
         })));
       } else {
-        setError(response.data.error_message || "Failed to generate rules for the selected columns.");
+        const msg = response?.data?.error_message;
+        setError(typeof msg === 'string' ? msg : "Failed to generate rules for the selected columns.");
       }
     } catch (err: any) {
       console.error("Rule generation failed", err);
-      // Ensure we extract the deepest error message
-      const errMsg = err.response?.data?.detail?.error || err.response?.data?.detail || err.message || "Failed to generate rules.";
-      setError(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
+      try {
+        const detail = err.response?.data?.detail;
+        if (detail) {
+          if (typeof detail === 'string') {
+            setError(detail);
+          } else if (typeof detail.error === 'string') {
+            setError(detail.error);
+          } else {
+            setError(JSON.stringify(detail));
+          }
+        } else {
+          setError(err.message || "Failed to generate rules.");
+        }
+      } catch (safeErr) {
+        setError("An unexpected error occurred.");
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -115,13 +140,17 @@ const SuggestedRulesModal: React.FC<SuggestedRulesModalProps> = ({
     try {
       const saved = localStorage.getItem('robin_credentials');
       let credentials = null;
-      if (saved) credentials = JSON.parse(saved)[platform];
+      if (saved) {
+        try {
+          credentials = JSON.parse(saved)[platform];
+        } catch (e) { }
+      }
 
       await axios.post(`${API_BASE}/dq/apply-rules`, {
-        platform,
-        database_name: database,
-        schema_name: schema,
-        table_name: table,
+        platform: String(platform || ''),
+        database_name: String(database || ''),
+        schema_name: String(schema || ''),
+        table_name: String(table || ''),
         rules: rulesToApply,
         credentials
       });
@@ -130,38 +159,43 @@ const SuggestedRulesModal: React.FC<SuggestedRulesModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error("Apply rules failed", err);
-      setError(err.response?.data?.detail || "Failed to apply rules.");
+      try {
+        const detail = err.response?.data?.detail;
+        setError(typeof detail === 'string' ? detail : (err.message || "Failed to apply rules."));
+      } catch (safeErr) {
+        setError("An unexpected error occurred while saving.");
+      }
     } finally {
       setIsApplying(false);
     }
   };
 
-  const selectedCount = rules.filter(r => r.selected).length;
-  const hasRules = rules.length > 0;
+  const selectedCount = Array.isArray(rules) ? rules.filter(r => r && r.selected).length : 0;
+  const hasRules = Array.isArray(rules) && rules.length > 0;
 
   return (
     <div className="srm-overlay">
       <div className="srm-modal">
         <div className="srm-header">
-          <h3>Suggested Rules for {table}</h3>
+          <h3>Suggested Rules for {String(table || '')}</h3>
           <button className="srm-close-btn" onClick={onClose}><X size={20} /></button>
         </div>
         
         <div className="srm-body">
-          {error && <div className="srm-error">{error}</div>}
+          {error ? <div className="srm-error">{String(error)}</div> : null}
           
           <div className="srm-top-bar">
             <div className="srm-col-selector">
               <label>Select Columns:</label>
               <div className="srm-checkbox-group">
-                {columns.map(c => (
-                  <label key={c.attribute} className="srm-checkbox-label">
+                {Array.isArray(columns) && columns.map(c => (
+                  <label key={c?.attribute || Math.random()} className="srm-checkbox-label">
                     <input 
                       type="checkbox" 
-                      checked={selectedColumns.includes(c.attribute)} 
-                      onChange={() => handleColumnToggle(c.attribute)} 
+                      checked={selectedColumns.includes(c?.attribute || '')} 
+                      onChange={() => handleColumnToggle(c?.attribute || '')} 
                     />
-                    {c.attribute}
+                    {String(c?.attribute || '')}
                   </label>
                 ))}
               </div>
@@ -175,7 +209,7 @@ const SuggestedRulesModal: React.FC<SuggestedRulesModalProps> = ({
             </button>
           </div>
 
-          {hasRules && (
+          {hasRules ? (
             <div className="srm-rules-container">
               <div className="srm-rules-header">
                 <h4>Generated Rules</h4>
@@ -206,23 +240,23 @@ const SuggestedRulesModal: React.FC<SuggestedRulesModalProps> = ({
                         <td>
                           <input 
                             type="checkbox" 
-                            checked={r.selected} 
+                            checked={!!r.selected} 
                             onChange={() => handleToggleRule(r.temp_id)} 
                           />
                         </td>
-                        <td className="srm-col-name">{r.column_name}</td>
+                        <td className="srm-col-name">{String(r.column_name)}</td>
                         <td className="srm-rule-type">
-                          <span className="srm-badge">{r.rule_type}</span>
+                          <span className="srm-badge">{String(r.rule_type)}</span>
                         </td>
-                        <td>{r.rule_description}</td>
+                        <td>{String(r.rule_description)}</td>
                         <td>
                           <span className={`srm-badge-source ${r.source === 'AI' ? 'ai' : 'rule-based'}`}>
-                            {r.source}
+                            {String(r.source)}
                           </span>
                         </td>
                         <td>
                           <span className="srm-confidence">
-                            {r.confidence_score}
+                            {String(r.confidence_score)}
                           </span>
                         </td>
                       </tr>
@@ -231,10 +265,10 @@ const SuggestedRulesModal: React.FC<SuggestedRulesModalProps> = ({
                 </table>
               </div>
             </div>
-          )}
+          ) : null}
         </div>
         
-        {hasRules && (
+        {hasRules ? (
           <div className="srm-footer">
             <span className="srm-selection-count">{selectedCount} rules selected</span>
             <button 
@@ -245,7 +279,7 @@ const SuggestedRulesModal: React.FC<SuggestedRulesModalProps> = ({
               {isApplying ? <><Loader2 size={16} className="spinner" /> Saving...</> : <><Save size={16} /> Save & Apply</>}
             </button>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
