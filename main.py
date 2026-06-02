@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from models.rules import RuleExecutionRequest, ProfileRequest, AISuggestionRequest, MetadataRequest, LineageRequest, AnalyticsRequest, CatalogRequest, TableSummaryRequest, AIChatRequest, RuleSyncRequest, ExecutionLogRequest, AnomalyResolveRequest, ScheduleCreateUpdate, DashboardRequest, FetchRolesRequest, SuggestRulesRequest, ApplyRulesRequest, SuggestedRuleItem
+from models.catalog_metadata import SaveMetadataRequest, FetchMetadataRequest, FetchAllMetadataRequest
 from core.query_generator import QueryGenerator
 from core.lineage_engine import LineageEngine
 from core.usage_analyzer import UsageAnalyzer
@@ -180,6 +181,35 @@ def init_db():
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS data_catalog_metadata (
+                    platform TEXT,
+                    database_name TEXT,
+                    schema_name TEXT,
+                    table_name TEXT,
+                    column_name TEXT,
+                    description TEXT,
+                    terms TEXT,
+                    is_auto_generated BOOLEAN DEFAULT FALSE,
+                    is_locked BOOLEAN DEFAULT FALSE,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_by TEXT,
+                    PRIMARY KEY (platform, database_name, schema_name, table_name, column_name)
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS metadata_audit_log (
+                    id SERIAL PRIMARY KEY,
+                    platform TEXT,
+                    table_name TEXT,
+                    action TEXT,
+                    old_value TEXT,
+                    new_value TEXT,
+                    user_name TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    status TEXT
+                )
+            """)
         else:
             # SQLite syntax
             cursor.execute("""
@@ -223,6 +253,35 @@ def init_db():
                     status TEXT,
                     error_message TEXT,
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS data_catalog_metadata (
+                    platform TEXT,
+                    database_name TEXT,
+                    schema_name TEXT,
+                    table_name TEXT,
+                    column_name TEXT,
+                    description TEXT,
+                    terms TEXT,
+                    is_auto_generated BOOLEAN DEFAULT FALSE,
+                    is_locked BOOLEAN DEFAULT FALSE,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_by TEXT,
+                    PRIMARY KEY (platform, database_name, schema_name, table_name, column_name)
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS metadata_audit_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    platform TEXT,
+                    table_name TEXT,
+                    action TEXT,
+                    old_value TEXT,
+                    new_value TEXT,
+                    user_name TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    status TEXT
                 )
             """)
             cursor.execute("""
@@ -1010,6 +1069,155 @@ async def ai_chat(request: AIChatRequest):
         return {"status": "success", "platform": request.platform, "response": ai_response}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+import json
+
+@app.post("/api/v1/metadata/save")
+async def save_catalog_metadata(request: SaveMetadataRequest):
+    conn, cursor = get_db_connection()
+    try:
+        terms_str = json.dumps(request.terms) if request.terms else "[]"
+        
+        # Log to audit trail
+        # First check if exists
+        cursor.execute("""
+            SELECT description, terms FROM data_catalog_metadata
+            WHERE platform = %s AND database_name = %s AND schema_name = %s AND table_name = %s AND column_name = %s
+        """ if DATABASE_URL else """
+            SELECT description, terms FROM data_catalog_metadata
+            WHERE platform = ? AND database_name = ? AND schema_name = ? AND table_name = ? AND column_name = ?
+        """, (request.platform, request.database_name, request.schema_name, request.table_name, request.column_name))
+        
+        row = cursor.fetchone()
+        action = "UPDATE" if row else "INSERT"
+        old_val = f"desc: {row['description']}, terms: {row['terms']}" if row else "None"
+        new_val = f"desc: {request.description}, terms: {terms_str}"
+
+        # UPSERT
+        if DATABASE_URL:
+            # PostgreSQL upsert
+            cursor.execute("""
+                INSERT INTO data_catalog_metadata 
+                (platform, database_name, schema_name, table_name, column_name, description, terms, is_auto_generated, updated_by, last_updated)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (platform, database_name, schema_name, table_name, column_name)
+                DO UPDATE SET description = EXCLUDED.description, terms = EXCLUDED.terms, 
+                              is_auto_generated = EXCLUDED.is_auto_generated, updated_by = EXCLUDED.updated_by, last_updated = CURRENT_TIMESTAMP
+            """, (request.platform, request.database_name, request.schema_name, request.table_name, request.column_name, 
+                  request.description, terms_str, request.is_auto_generated, "current_user"))
+        else:
+            # SQLite upsert
+            cursor.execute("""
+                INSERT INTO data_catalog_metadata 
+                (platform, database_name, schema_name, table_name, column_name, description, terms, is_auto_generated, updated_by, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT (platform, database_name, schema_name, table_name, column_name)
+                DO UPDATE SET description = excluded.description, terms = excluded.terms, 
+                              is_auto_generated = excluded.is_auto_generated, updated_by = excluded.updated_by, last_updated = CURRENT_TIMESTAMP
+            """, (request.platform, request.database_name, request.schema_name, request.table_name, request.column_name, 
+                  request.description, terms_str, request.is_auto_generated, "current_user"))
+        
+        # Log to audit
+        cursor.execute("""
+            INSERT INTO metadata_audit_log (platform, table_name, action, old_value, new_value, user_name, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """ if DATABASE_URL else """
+            INSERT INTO metadata_audit_log (platform, table_name, action, old_value, new_value, user_name, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (request.platform, request.table_name, action, old_val, new_val, "current_user", "SUCCESS"))
+        
+        conn.commit()
+        return {"status": "success", "message": "Metadata saved successfully"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to save metadata: {str(e)}")
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.post("/api/v1/metadata/fetch")
+async def fetch_catalog_metadata(request: FetchMetadataRequest):
+    conn, cursor = get_db_connection()
+    try:
+        cursor.execute("""
+            SELECT description, terms, is_auto_generated, last_updated 
+            FROM data_catalog_metadata
+            WHERE platform = %s AND database_name = %s AND schema_name = %s AND table_name = %s AND column_name = %s
+        """ if DATABASE_URL else """
+            SELECT description, terms, is_auto_generated, last_updated 
+            FROM data_catalog_metadata
+            WHERE platform = ? AND database_name = ? AND schema_name = ? AND table_name = ? AND column_name = ?
+        """, (request.platform, request.database_name, request.schema_name, request.table_name, request.column_name))
+        
+        row = cursor.fetchone()
+        if row:
+            terms_arr = []
+            if row['terms']:
+                try:
+                    terms_arr = json.loads(row['terms'])
+                except:
+                    pass
+            return {
+                "status": "success",
+                "description": row['description'],
+                "terms": terms_arr,
+                "is_auto_generated": bool(row['is_auto_generated']),
+                "last_updated": row['last_updated']
+            }
+        else:
+            return {"status": "success", "description": "", "terms": [], "is_auto_generated": False}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.post("/api/v1/metadata/fetch-all")
+async def fetch_all_catalog_metadata(request: FetchAllMetadataRequest):
+    conn, cursor = get_db_connection()
+    try:
+        if request.database_name and request.schema_name:
+            cursor.execute("""
+                SELECT table_name, description, terms, is_auto_generated, last_updated 
+                FROM data_catalog_metadata
+                WHERE platform = %s AND database_name = %s AND schema_name = %s AND column_name = ''
+            """ if DATABASE_URL else """
+                SELECT table_name, description, terms, is_auto_generated, last_updated 
+                FROM data_catalog_metadata
+                WHERE platform = ? AND database_name = ? AND schema_name = ? AND column_name = ''
+            """, (request.platform, request.database_name, request.schema_name))
+        else:
+            cursor.execute("""
+                SELECT table_name, description, terms, is_auto_generated, last_updated 
+                FROM data_catalog_metadata
+                WHERE platform = %s AND column_name = ''
+            """ if DATABASE_URL else """
+                SELECT table_name, description, terms, is_auto_generated, last_updated 
+                FROM data_catalog_metadata
+                WHERE platform = ? AND column_name = ''
+            """, (request.platform,))
+        
+        rows = cursor.fetchall()
+        result = {}
+        for row in rows:
+            terms_arr = []
+            if row['terms']:
+                try:
+                    terms_arr = json.loads(row['terms'])
+                except:
+                    pass
+            result[row['table_name']] = {
+                "description": row['description'],
+                "terms": terms_arr,
+                "is_auto_generated": bool(row['is_auto_generated']),
+                "last_updated": row['last_updated']
+            }
+        return {"status": "success", "metadata": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.post("/api/v1/metadata/entities")
 async def get_metadata_entities(request: MetadataRequest):

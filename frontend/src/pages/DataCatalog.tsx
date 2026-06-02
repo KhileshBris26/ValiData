@@ -30,15 +30,38 @@ const DataCatalog: React.FC = () => {
           credentials
         });
         
+        // Fetch persistent metadata
+        let metadataMap: any = {};
+        try {
+          // We can use the first DB and Schema for the fetch-all (assuming it's a single DB context for now, or fetch all without DB/Schema filter if the backend supports it. The backend currently filters by DB and Schema. Wait, the catalog view might show multiple DBs.
+          // Let's call fetch-all for the first db/schema or modify the backend.
+          // Actually, the current catalog API returns tables from a specific db/schema but the UI seems to aggregate.
+          // The backend fetch-all takes db and schema. Let's just fetch it using the first table's DB/Schema to be safe, or just do a general fetch.
+          // Since the user is passing platform, database_name, schema_name to the fetch-all, we should extract it from the first table or pass empty strings.
+          // Let's modify the fetch-all to not require DB/schema if empty.
+          // I'll call fetch-all with empty DB/schema to get everything for the platform.
+          const metaRes = await axios.post(`${API_BASE}/metadata/fetch-all`, {
+            platform,
+            database_name: "",
+            schema_name: ""
+          });
+          if (metaRes.data.metadata) {
+            metadataMap = metaRes.data.metadata;
+          }
+        } catch (err) {
+          console.error("Failed to fetch metadata", err);
+        }
+        
         // Enrich backend names with deterministic data synced with TableDetail
         const enriched = (res.data.tables || []).map((t: any) => {
           const name = t.NAME || t.name;
           const db = t.DATABASE || t.database;
           const sch = t.SCHEMA || t.schema;
           
-          // Check localStorage for user updates (synced with TableDetail)
-          const hasDesc = localStorage.getItem(`robin_has_saved_desc_${name}`) === 'true';
-          const terms = JSON.parse(localStorage.getItem(`robin_terms_${name}`) || '[]');
+          const tableMeta = metadataMap[name] || {};
+          const desc = tableMeta.description || '';
+          const hasDesc = desc.length > 0;
+          const terms = tableMeta.terms || [];
           
           // Calculate scores using the exact same logic as TableDetail (Weighted Pillars)
           const savedQuality = localStorage.getItem(`robin_table_quality_${name}`);
@@ -65,7 +88,7 @@ const DataCatalog: React.FC = () => {
             name: name,
             database: db,
             schema: sch,
-            description: hasDesc ? `User-curated description active for ${name}` : `Auto-discovered catalog item from ${db}.${sch}`,
+            description: hasDesc ? desc : `Auto-discovered catalog item from ${db}.${sch}`,
             terms: terms.length > 0 ? terms : [],
             trustIndex: totalTrustScore > 60 ? 'Trusted' : 'Limited',
             trustScore: totalTrustScore,

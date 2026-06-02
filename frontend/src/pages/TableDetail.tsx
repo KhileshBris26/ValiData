@@ -108,11 +108,11 @@ const TableDetail: React.FC = () => {
     "Flight Number", "Seat Class", "Departure Time", "Arrival Time", "Frequent Flyer ID", "Baggage Weight", "Gate Number"
   ].sort();
 
-  const [summary, setSummary] = useState(() => localStorage.getItem(`robin_summary_${table}`) || '');
+  const [summary, setSummary] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
-  const [editedSummary, setEditedSummary] = useState(summary);
-  const [hasSavedDescription, setHasSavedDescription] = useState(() => localStorage.getItem(`robin_has_saved_desc_${table}`) === 'true');
+  const [editedSummary, setEditedSummary] = useState('');
+  const [hasSavedDescription, setHasSavedDescription] = useState(false);
   const [activeTab, setActiveTab] = useState('Overview');
   const [expandedNodes, setExpandedNodes] = useState<string[]>([]);
   const [attrFilters, setAttrFilters] = useState<{ [key: string]: string }>({});
@@ -135,19 +135,42 @@ const TableDetail: React.FC = () => {
   const [panelTab, setPanelTab] = useState('Configuration');
   
   // Glossary state
-  const [selectedTerms, setSelectedTerms] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(`robin_terms_${table}`) || '[]'); } catch { return []; }
-  });
+  const [selectedTerms, setSelectedTerms] = useState<string[]>([]);
+
+  const fetchTableMetadata = useCallback(async () => {
+    if (!database || !schema || !table) return;
+    try {
+      const res = await axios.post(`${API_BASE}/metadata/fetch`, {
+        platform,
+        database_name: database,
+        schema_name: schema,
+        table_name: table,
+        column_name: ""
+      });
+      if (res.data.status === 'success') {
+        const desc = res.data.description || '';
+        setSummary(desc);
+        setEditedSummary(desc);
+        setHasSavedDescription(desc.length > 0);
+        if (res.data.terms && Array.isArray(res.data.terms)) {
+          setSelectedTerms(res.data.terms);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch catalog metadata", err);
+    }
+  }, [platform, database, schema, table]);
+
+  useEffect(() => {
+    fetchTableMetadata();
+  }, [fetchTableMetadata]);
 
   useEffect(() => {
     if (table) {
-      localStorage.setItem(`robin_summary_${table}`, summary);
-      localStorage.setItem(`robin_has_saved_desc_${table}`, hasSavedDescription.toString());
       localStorage.setItem(`robin_shut_down_rules_${table}`, JSON.stringify(shutDownRules));
       localStorage.setItem(`robin_deleted_rules_${table}`, JSON.stringify(deletedRules));
-      localStorage.setItem(`robin_terms_${table}`, JSON.stringify(selectedTerms));
     }
-  }, [table, summary, hasSavedDescription, shutDownRules, deletedRules, selectedTerms]);
+  }, [table, shutDownRules, deletedRules]);
   const glossaryRef = useRef<HTMLDivElement>(null);
   const [isGlossaryOpen, setIsGlossaryOpen] = useState(false);
   useClickOutside(glossaryRef, () => setIsGlossaryOpen(false));
@@ -381,33 +404,58 @@ const TableDetail: React.FC = () => {
       if (saved) {
         credentials = JSON.parse(saved)[platform];
       }
-      // Try the backend endpoint first
-      const res = await axios.post(`${API_BASE}/ai/table_summary`, {
-        platform,
-        table_name: table,
-        credentials
-      });
-      if (res.data.summary) {
-        setSummary(res.data.summary);
-        setEditedSummary(res.data.summary);
-        setHasSavedDescription(true);
-        setIsRegenerating(false);
-        return;
+      
+      let generatedDesc = '';
+      try {
+        const res = await axios.post(`${API_BASE}/ai/table_summary`, {
+          platform, table_name: table, credentials
+        });
+        if (res.data.summary) generatedDesc = res.data.summary;
+      } catch (err) {}
+      
+      if (!generatedDesc) {
+        generatedDesc = generateAiDescription(table || '', database || '', schema || '');
       }
+      
+      await axios.post(`${API_BASE}/metadata/save`, {
+        platform,
+        database_name: database,
+        schema_name: schema,
+        table_name: table,
+        column_name: "",
+        description: generatedDesc,
+        terms: selectedTerms,
+        is_auto_generated: true
+      });
+      
+      setSummary(generatedDesc);
+      setEditedSummary(generatedDesc);
+      setHasSavedDescription(true);
     } catch (err) {
-      // Backend endpoint not available — use smart client-side fallback
+      console.error("Failed to save AI description", err);
+    } finally {
+      setIsRegenerating(false);
     }
-    const generated = generateAiDescription(table || '', database || '', schema || '');
-    setSummary(generated);
-    setEditedSummary(generated);
-    setHasSavedDescription(true);
-    setIsRegenerating(false);
   };
 
-  const handleSave = () => {
-    setSummary(editedSummary);
-    setHasSavedDescription(editedSummary.length > 0);
-    setIsEditing(false);
+  const handleSave = async () => {
+    try {
+      await axios.post(`${API_BASE}/metadata/save`, {
+        platform,
+        database_name: database,
+        schema_name: schema,
+        table_name: table,
+        column_name: "",
+        description: editedSummary,
+        terms: selectedTerms,
+        is_auto_generated: false
+      });
+      setSummary(editedSummary);
+      setHasSavedDescription(editedSummary.length > 0);
+      setIsEditing(false);
+    } catch (err) {
+      console.error("Failed to save description", err);
+    }
   };
 
   const handleCancel = () => {
@@ -415,11 +463,28 @@ const TableDetail: React.FC = () => {
     setIsEditing(false);
   };
 
-  const toggleTerm = (term: string) => {
+  const toggleTerm = async (term: string) => {
+    let newTerms;
     if (selectedTerms.includes(term)) {
-      setSelectedTerms(selectedTerms.filter(t => t !== term));
+      newTerms = selectedTerms.filter(t => t !== term);
     } else {
-      setSelectedTerms([...selectedTerms, term]);
+      newTerms = [...selectedTerms, term];
+    }
+    
+    try {
+      await axios.post(`${API_BASE}/metadata/save`, {
+        platform,
+        database_name: database,
+        schema_name: schema,
+        table_name: table,
+        column_name: "",
+        description: summary,
+        terms: newTerms,
+        is_auto_generated: false
+      });
+      setSelectedTerms(newTerms);
+    } catch (err) {
+      console.error("Failed to save terms", err);
     }
   };
 
