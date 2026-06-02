@@ -30,23 +30,41 @@ const DataCatalog: React.FC = () => {
           credentials
         });
         
-        // Fetch persistent metadata
+        // Fetch persistent metadata across multiple schemas
         let metadataMap: any = {};
         try {
-          // We can use the first DB and Schema for the fetch-all (assuming it's a single DB context for now, or fetch all without DB/Schema filter if the backend supports it. The backend currently filters by DB and Schema. Wait, the catalog view might show multiple DBs.
-          // Let's call fetch-all for the first db/schema or modify the backend.
-          // Actually, the current catalog API returns tables from a specific db/schema but the UI seems to aggregate.
-          // The backend fetch-all takes db and schema. Let's just fetch it using the first table's DB/Schema to be safe, or just do a general fetch.
-          // Since the user is passing platform, database_name, schema_name to the fetch-all, we should extract it from the first table or pass empty strings.
-          // Let's modify the fetch-all to not require DB/schema if empty.
-          // I'll call fetch-all with empty DB/schema to get everything for the platform.
-          const metaRes = await axios.post(`${API_BASE}/metadata/fetch-all`, {
-            platform,
-            database_name: "",
-            schema_name: ""
-          });
-          if (metaRes.data.metadata) {
-            metadataMap = metaRes.data.metadata;
+          if (res.data.tables && res.data.tables.length > 0) {
+            // Group by DB and Schema
+            const schemaSet = new Set<string>();
+            res.data.tables.forEach((t: any) => {
+              const db = t.DATABASE || t.database;
+              const sch = t.SCHEMA || t.schema;
+              if (db && sch) {
+                schemaSet.add(`${db}||${sch}`);
+              }
+            });
+
+            const promises = Array.from(schemaSet).map(async (schemaKey) => {
+              const [db, sch] = schemaKey.split("||");
+              try {
+                const metaRes = await axios.post(`${API_BASE}/metadata/fetch-all`, {
+                  platform,
+                  database_name: db,
+                  schema_name: sch
+                });
+                if (metaRes.data.metadata) {
+                  return metaRes.data.metadata;
+                }
+              } catch (e) {
+                console.error(`Failed to fetch metadata for ${db}.${sch}`, e);
+              }
+              return {};
+            });
+
+            const results = await Promise.all(promises);
+            results.forEach(resMap => {
+              metadataMap = { ...metadataMap, ...resMap };
+            });
           }
         } catch (err) {
           console.error("Failed to fetch metadata", err);
