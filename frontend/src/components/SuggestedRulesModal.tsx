@@ -188,6 +188,22 @@ const SuggestedRulesModal: React.FC<SuggestedRulesModalProps> = ({
             <div className="srm-col-selector">
               <label>Select Columns:</label>
               <div className="srm-checkbox-group">
+                {Array.isArray(columns) && columns.length > 0 && (
+                  <label className="srm-checkbox-label srm-select-all-cols">
+                    <input 
+                      type="checkbox" 
+                      checked={selectedColumns.length === columns.length} 
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedColumns(columns.map(c => c?.attribute || ''));
+                        } else {
+                          setSelectedColumns([]);
+                        }
+                      }} 
+                    />
+                    <strong>Select All</strong>
+                  </label>
+                )}
                 {Array.isArray(columns) && columns.map(c => (
                   <label key={c?.attribute || Math.random()} className="srm-checkbox-label">
                     <input 
