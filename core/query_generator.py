@@ -115,8 +115,8 @@ class QueryGenerator:
         safe_prompt = history_text.replace("'", "''")
         
         if platform.lower() == "snowflake":
-            # Using Claude 3.5 Sonnet for top-tier reasoning
-            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE('claude-3-5-sonnet', '{safe_prompt}') AS ai_response"
+            # Using mistral-large for cross-region compatibility (Claude 3.5 Sonnet is AWS only)
+            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-large', '{safe_prompt}') AS ai_response"
         elif platform.lower() == "databricks":
             # Using Large Llama 3.1 for high-end reasoning
             sql = f"SELECT ai_query('databricks-meta-llama-3-1-70b-instruct', '{safe_prompt}') AS ai_response"
