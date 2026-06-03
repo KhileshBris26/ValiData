@@ -1200,6 +1200,19 @@ async def ai_chat(request: AIChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/v1/ai/test")
+async def ai_test(request: CatalogRequest):
+    try:
+        if request.platform == "snowflake":
+            snowflake_engine.connect(request.credentials)
+            sql = "SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-large', 'Say hello') AS ai_response"
+            result = snowflake_engine.execute_query(sql)
+            snowflake_engine.disconnect()
+            return {"status": "success", "response": result}
+        return {"status": "error", "detail": "Test only implemented for Snowflake"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+
 import json
 
 @app.post("/api/v1/metadata/save")

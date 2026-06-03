@@ -130,7 +130,7 @@ const AIAgent: React.FC = () => {
       const fallbackMsg: ChatMessage = {
         id: String(Date.now() + 1),
         sender: 'agent',
-        text: "I'm currently analyzing your warehouse metadata. Based on the " + (activeContext || 'selected table') + " structure, I recommend starting with a Completeness check on your primary keys.",
+        text: `Error connecting to AI: ${err.response?.data?.detail || err.message}`,
         context: activeContext || undefined
       };
       setTopics(topics.map(t => t.id === activeTopicId ? { ...t, messages: [...updatedMessages, fallbackMsg] } : t));
