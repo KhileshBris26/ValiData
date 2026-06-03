@@ -2154,6 +2154,20 @@ const TableDetail: React.FC = () => {
                       />
                     </div>
                     <div className="glossary-options">
+                      {glossarySearch.trim() !== '' && 
+                       !GLOSSARY_OPTIONS.some(o => o.toLowerCase() === glossarySearch.trim().toLowerCase()) && 
+                       !selectedTerms.some(t => t.toLowerCase() === glossarySearch.trim().toLowerCase()) && (
+                        <div 
+                          className="glossary-option" 
+                          onClick={() => {
+                            toggleTerm(glossarySearch.trim());
+                            setGlossarySearch('');
+                          }}
+                          style={{ cursor: 'pointer', color: '#3b82f6', fontWeight: 600, padding: '8px 12px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '4px', marginBottom: '4px' }}
+                        >
+                          + Add "{glossarySearch.trim()}"
+                        </div>
+                      )}
                       {GLOSSARY_OPTIONS.filter(o => o.toLowerCase().includes(glossarySearch.toLowerCase())).map(opt => (
                         <label key={opt} className="glossary-option">
                           <input 
