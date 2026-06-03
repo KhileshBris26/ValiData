@@ -1198,11 +1198,21 @@ async def ai_chat(request: AIChatRequest):
                     # Fallback for Snowflake Trial Accounts where Cortex is disabled
                     last_user_msg = next((m.get("text", "").lower() for m in reversed(request.messages) if m.get("role") == "user"), "")
                     
-                    if "hi" in last_user_msg or "hello" in last_user_msg:
-                        ai_response = f"Hello! I am Bris AI, your Data Quality Intelligence Agent. \n\n*Note: Your Snowflake account is currently a Trial Account, which has Cortex AI disabled. I am running in local simulation mode.* \n\nI am analyzing `{context_table}`. How can I help you investigate data quality or build rules today?"
+                    # Check if the user mentioned a specific table
+                    mentioned_table = None
+                    words = last_user_msg.split()
+                    for idx, word in enumerate(words):
+                        if word == "table" and idx > 0:
+                            mentioned_table = words[idx-1].upper().strip("'\"`")
+                    
+                    target_table = mentioned_table if mentioned_table else context_table
+
+                    if last_user_msg in ["hi", "hello", "hey"]:
+                        context_phrase = f"I see you have the `{context_table}` table selected." if context_table != "Unknown" else "I can analyze your tables."
+                        ai_response = f"Hello! I am Bris AI, your Data Quality Intelligence Agent. \n\n*Note: Your Snowflake account is currently a Trial Account, which has Cortex AI disabled. I am running in local simulation mode.* \n\n{context_phrase} How can I help you investigate data quality or build rules today?"
                     else:
                         ai_response = f"""Summary
-- Simulated analysis for `{context_table}` completed.
+- Simulated analysis for `{target_table}` completed.
 - *Note: Snowflake Cortex AI is disabled on your Trial Account.*
 
 Details

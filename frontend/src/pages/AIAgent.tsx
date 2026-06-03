@@ -146,30 +146,21 @@ const AIAgent: React.FC = () => {
 
   return (
     <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      width: '100vw',
-      height: '100vh',
-      background: 'rgba(15, 23, 42, 0.65)',
-      backdropFilter: 'blur(12px)',
+      width: '100%',
+      height: 'calc(100vh - 0px)', // Match the full height of the main content area
+      background: '#0f172a',
       display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 9999
+      flexDirection: 'column',
+      overflow: 'hidden'
     }}>
       <div style={{
-        width: '1100px',
-        height: '800px',
-        maxWidth: '95vw',
-        maxHeight: '95vh',
+        flex: 1,
+        width: '100%',
+        maxWidth: '100%',
         background: '#0B0F19',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        borderRadius: '16px',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
       }}>
         {/* Top Header of the Popup */}
         <div style={{
@@ -185,12 +176,6 @@ const AIAgent: React.FC = () => {
             <span style={{ fontSize: '1.2rem', fontWeight: 700, color: '#c084fc' }}>AI Agent</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
-            <ExternalLink size={18} style={{ color: '#94a3b8', cursor: 'pointer' }} />
-            <X 
-              size={22} 
-              style={{ color: '#94a3b8', cursor: 'pointer' }} 
-              onClick={() => navigate(-1)}
-            />
           </div>
         </div>
 
