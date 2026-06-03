@@ -125,7 +125,7 @@ const DataQualityDetail: React.FC = () => {
   const fetchLatestEvaluations = async () => {
     if (!table) return;
     try {
-      const res = await axios.get(`${API_BASE}/dashboard/executions/latest?table_name=${encodeURIComponent(table)}`);
+      const res = await axios.get(`${API_BASE}/dashboard/executions/latest?table_name=${encodeURIComponent(table)}&_t=${Date.now()}`);
       if (res.data && res.data.has_evaluated) {
         setHasEvaluated(true);
         const backendExecs = res.data.executions || [];
