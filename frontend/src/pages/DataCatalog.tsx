@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { usePlatform } from '../context/PlatformContext';
 import { useClickOutside } from '../hooks/useClickOutside';
-import { Search, ChevronDown, MoreHorizontal, ChevronLeft, ChevronRight, Tag, ShieldCheck, AlertCircle, Hash, Layers, Loader2 } from 'lucide-react';
+import { Search, ChevronDown, MoreHorizontal, ChevronLeft, ChevronRight, Tag, ShieldCheck, AlertCircle, Hash, Layers, Loader2, RotateCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import './DataCatalog.css';
 
@@ -14,10 +14,16 @@ const DataCatalog: React.FC = () => {
   const [tables, setTables] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     const fetchCatalog = async () => {
-      setLoading(true);
+      if (refreshTrigger > 0) {
+        setIsRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       try {
         let credentials = null;
         const saved = localStorage.getItem('robin_credentials');
@@ -73,7 +79,7 @@ const DataCatalog: React.FC = () => {
         // Fetch backend overall quality scores
         let qualityScoresMap: Record<string, number> = {};
         try {
-          const scoresRes = await axios.get(`${API_BASE}/dashboard/catalog-quality-scores`);
+          const scoresRes = await axios.get(`${API_BASE}/dashboard/catalog-quality-scores?_t=${Date.now()}`);
           if (scoresRes.data && scoresRes.data.scores) {
             qualityScoresMap = scoresRes.data.scores;
           }
@@ -133,9 +139,10 @@ const DataCatalog: React.FC = () => {
         setError(err.response?.data?.detail || err.message || "Failed to fetch catalog. Please check connection settings.");
       }
       setLoading(false);
+      setIsRefreshing(false);
     };
     fetchCatalog();
-  }, [platform]);
+  }, [platform, refreshTrigger]);
 
   // Filtering logic
   const [selectedDBs, setSelectedDBs] = useState<string[]>([]);
@@ -269,6 +276,31 @@ const DataCatalog: React.FC = () => {
               {tab}
             </button>
           ))}
+        </div>
+        <div style={{ marginLeft: '16px' }}>
+          <button 
+            onClick={() => setRefreshTrigger(prev => prev + 1)} 
+            disabled={isRefreshing}
+            className="btn-outline"
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '6px', 
+              padding: '6px 12px', 
+              background: 'rgba(255,255,255,0.05)', 
+              color: 'var(--text-main)', 
+              border: '1px solid rgba(255,255,255,0.1)', 
+              borderRadius: '6px',
+              cursor: isRefreshing ? 'not-allowed' : 'pointer',
+              opacity: isRefreshing ? 0.7 : 1,
+              fontSize: '0.8rem',
+              fontWeight: 500,
+              transition: 'all 0.2s'
+            }}
+          >
+            <RotateCw size={14} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
+            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+          </button>
         </div>
         
         <div className="search-container">
