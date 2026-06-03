@@ -5,7 +5,7 @@ import { useClickOutside } from '../hooks/useClickOutside';
 import { usePlatform } from '../context/PlatformContext';
 import { 
   ChevronRight, ChevronLeft, Database, ShieldCheck, AlertCircle, 
-  BarChart2, Clock, Grid, 
+  Clock, Grid, 
   Edit3, RotateCw, Users, Info, 
   MoreVertical, Hash, Type, Plus, Loader2, Save, X, Search, Power, HelpCircle
 } from 'lucide-react';
@@ -647,9 +647,29 @@ const TableDetail: React.FC = () => {
         
         <div className="header-actions">
           <div className="action-icons">
-            <ShieldCheck size={20} className="icon-btn" />
-            <RotateCw size={20} className="icon-btn" />
-            <BarChart2 size={20} className="icon-btn" />
+            <button 
+              onClick={fetchQualityScore} 
+              disabled={isRefreshingScore}
+              className="btn-outline"
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px', 
+                padding: '6px 14px', 
+                background: 'rgba(255,255,255,0.05)', 
+                color: 'var(--text-main)', 
+                border: '1px solid rgba(255,255,255,0.1)', 
+                borderRadius: '6px',
+                cursor: isRefreshingScore ? 'not-allowed' : 'pointer',
+                opacity: isRefreshingScore ? 0.7 : 1,
+                fontSize: '0.85rem',
+                fontWeight: 500,
+                transition: 'all 0.2s'
+              }}
+            >
+              <RotateCw size={14} style={{ animation: isRefreshingScore ? 'spin 1s linear infinite' : 'none' }} />
+              <span>{isRefreshingScore ? 'Refreshing...' : 'Refresh'}</span>
+            </button>
           </div>
           <div 
             className="dropdown-btn"
