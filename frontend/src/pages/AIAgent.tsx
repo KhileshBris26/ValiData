@@ -959,7 +959,7 @@ const AIAgent: React.FC = () => {
                           <span>@{m.context}</span>
                         </div>
                       )}
-                      <p style={{ margin: 0, color: '#f8fafc', fontSize: '0.95rem', lineHeight: 1.5 }}>
+                      <p style={{ margin: 0, color: '#f8fafc', fontSize: '0.95rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
                         {m.text}
                       </p>
                     </div>
