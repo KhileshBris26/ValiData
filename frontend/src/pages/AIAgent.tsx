@@ -124,7 +124,8 @@ const AIAgent: React.FC = () => {
       };
 
       setTopics(prev => prev.map(t => t.id === activeTopicId ? { ...t, messages: [...t.messages, agentMsg] } : t));
-    } catch (err) {
+    } catch (error) {
+      const err = error as any;
       console.error("AI Chat failed", err);
       // Fallback for demo/latency issues
       const fallbackMsg: ChatMessage = {
