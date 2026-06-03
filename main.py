@@ -1463,23 +1463,6 @@ async def get_metadata_entities(request: MetadataRequest):
         if request.platform == "snowflake":
             snowflake_engine.connect(request.credentials)
             result = snowflake_engine.execute_query(sql_query)
-            mapped = []
-            if result:
-                for r in result:
-                    # DictCursor might return lowercase or uppercase keys
-                    kind = r.get("kind") or r.get("KIND") or r.get("TYPE")
-                    if kind == "TABLE":
-                        db = r.get("database_name") or r.get("DATABASE_NAME") or r.get("DATABASE")
-                        if db and db.upper() not in ('SNOWFLAKE', 'SNOWFLAKE_SAMPLE_DATA'):
-                            mapped.append({
-                                "DATABASE": db,
-                                "SCHEMA": r.get("schema_name") or r.get("SCHEMA_NAME") or r.get("SCHEMA"),
-                                "NAME": r.get("name") or r.get("NAME"),
-                                "TYPE": "TABLE",
-                                "RECORDS": r.get("rows") or r.get("ROWS") or r.get("RECORDS") or 0,
-                                "ATTRIBUTES": 0
-                            })
-            result = mapped
             snowflake_engine.disconnect()
         elif request.platform == "databricks":
             databricks_engine.connect(request.credentials)
