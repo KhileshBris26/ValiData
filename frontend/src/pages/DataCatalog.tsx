@@ -70,6 +70,17 @@ const DataCatalog: React.FC = () => {
           console.error("Failed to fetch metadata", err);
         }
         
+        // Fetch backend overall quality scores
+        let qualityScoresMap: Record<string, number> = {};
+        try {
+          const scoresRes = await axios.get(`${API_BASE}/dashboard/catalog-quality-scores`);
+          if (scoresRes.data && scoresRes.data.scores) {
+            qualityScoresMap = scoresRes.data.scores;
+          }
+        } catch (err) {
+          console.error("Failed to fetch catalog quality scores from backend", err);
+        }
+
         // Enrich backend names with deterministic data synced with TableDetail
         const enriched = (res.data.tables || []).map((t: any) => {
           const name = t.NAME || t.name;
@@ -81,9 +92,8 @@ const DataCatalog: React.FC = () => {
           const hasDesc = desc.length > 0;
           const terms = tableMeta.terms || [];
           
-          // Calculate scores using the exact same logic as TableDetail (Weighted Pillars)
-          const savedQuality = localStorage.getItem(`robin_table_quality_${name}`);
-          const qualityBase = savedQuality ? parseInt(savedQuality) : 100;
+          // Use true backend score instead of localStorage
+          const qualityBase = qualityScoresMap[name] !== undefined ? qualityScoresMap[name] : 100;
 
           const freshnessScore = 100; // Simulated/Warehouse metadata
           const descriptionScoreVal = hasDesc ? 100 : 0;

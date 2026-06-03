@@ -37,7 +37,7 @@ const DataQualityDetail: React.FC = () => {
   }, [table]);
 
   const [activeTab, setActiveTab] = useState('Profiling & Rules');
-  const [hasEvaluated, setHasEvaluated] = useState(() => localStorage.getItem('robin_has_evaluated') === 'true');
+  const [hasEvaluated, setHasEvaluated] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [hoveredRule, setHoveredRule] = useState<string | null>(null);
   const [selectedRuleForPanel, setSelectedRuleForPanel] = useState<string | null>(null);
@@ -72,12 +72,7 @@ const DataQualityDetail: React.FC = () => {
     passed: number;
     failed: number;
     score: number;
-  }>>(() => {
-    try {
-      const saved = localStorage.getItem(`robin_rule_exec_results_${table}`);
-      return saved ? JSON.parse(saved) : {};
-    } catch { return {}; }
-  });
+  }>>({});
 
   // Execution History tab state
   const [runHistory, setRunHistory] = useState<any[]>([]);
@@ -116,14 +111,7 @@ const DataQualityDetail: React.FC = () => {
     validity: number;
     accuracy: number;
     columns: Record<string, string>;
-  } | null>(() => {
-    try {
-      const saved = localStorage.getItem(`robin_evaluated_results_${table}`);
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  } | null>(null);
   const [colProfiles, setColProfiles] = useState<Record<string, any>>(() => {
     try {
       const saved = localStorage.getItem(`robin_col_profiles_${table}`);
@@ -133,14 +121,61 @@ const DataQualityDetail: React.FC = () => {
     }
   });
 
+  
+  const fetchLatestEvaluations = async () => {
+    if (!table) return;
+    try {
+      const res = await axios.get(`${API_BASE}/dashboard/executions/latest?table_name=${encodeURIComponent(table)}`);
+      if (res.data && res.data.has_evaluated) {
+        setHasEvaluated(true);
+        const backendExecs = res.data.executions || [];
+        
+        // Reconstruct evaluatedResults
+        const newEval = {
+            table: table,
+            overall: res.data.overall || 100,
+            validity: res.data.overall || 100, // approximations if validity/accuracy aren't split in backend
+            accuracy: res.data.overall || 100,
+            columns: {} as Record<string, string>
+        };
+        
+        // Reconstruct ruleExecutionResults
+        const newRuleExecResults: Record<string, any> = {};
+        backendExecs.forEach((ex: any) => {
+            const key = `${ex.column_name}|${ex.rule_type}`;
+            const scoreVal = ex.total_rows > 0 ? Math.round((1 - ex.failed_rows / ex.total_rows) * 100) : 100;
+            newRuleExecResults[key] = {
+                total: ex.total_rows,
+                passed: ex.passed_rows || (ex.total_rows - ex.failed_rows),
+                failed: ex.failed_rows,
+                score: scoreVal
+            };
+            
+            // Reconstruct column status based on the lowest score
+            if (!newEval.columns[ex.column_name]) {
+                newEval.columns[ex.column_name] = scoreVal > 80 ? 'high' : scoreVal > 50 ? 'med' : 'low';
+            } else {
+                const currentStatus = newEval.columns[ex.column_name];
+                if (currentStatus === 'high' && scoreVal <= 80) newEval.columns[ex.column_name] = 'med';
+                if (currentStatus === 'med' && scoreVal <= 50) newEval.columns[ex.column_name] = 'low';
+            }
+        });
+        
+        setEvaluatedResults(newEval);
+        setRuleExecutionResults(newRuleExecResults);
+      } else {
+        setHasEvaluated(false);
+        setEvaluatedResults(null);
+        setRuleExecutionResults({});
+      }
+    } catch (e) {
+      console.error("Failed to fetch latest evaluations:", e);
+    }
+  };
+
   useEffect(() => {
     if (table) {
-      try {
-        const savedResults = localStorage.getItem(`robin_evaluated_results_${table}`);
-        setEvaluatedResults(savedResults ? JSON.parse(savedResults) : null);
-      } catch {
-        setEvaluatedResults(null);
-      }
+      fetchLatestEvaluations();
       try {
         const savedProfiles = localStorage.getItem(`robin_col_profiles_${table}`);
         setColProfiles(savedProfiles ? JSON.parse(savedProfiles) : {});
@@ -149,6 +184,7 @@ const DataQualityDetail: React.FC = () => {
       }
     }
   }, [table]);
+
 
   // Local state for Custom Scheduling Modal
   const [customUnit, setCustomUnit] = useState('minutes');
@@ -886,10 +922,10 @@ const DataQualityDetail: React.FC = () => {
       columns: columnDQMap
     };
     setEvaluatedResults(results);
-    localStorage.setItem(`robin_evaluated_results_${table}`, JSON.stringify(results));
-    localStorage.setItem(`robin_table_quality_${table}`, results.overall.toString());
+    
+    
     setHasEvaluated(true);
-    localStorage.setItem('robin_has_evaluated', 'true');
+    
 
     // Step 4: Build per-rule execution map and post to backend
     try {
@@ -917,7 +953,7 @@ const DataQualityDetail: React.FC = () => {
 
       // Persist so values survive tab switches
       setRuleExecutionResults(newRuleExecResults);
-      localStorage.setItem(`robin_rule_exec_results_${table}`, JSON.stringify(newRuleExecResults));
+      
 
       if (executions.length > 0) {
         await axios.post(`${API_BASE}/dashboard/executions`, {
@@ -952,10 +988,15 @@ const DataQualityDetail: React.FC = () => {
           setInvalidLoading(false);
         }
       }
+      
+      // Fetch latest values from backend to ensure UI stays perfectly synced
+      await fetchLatestEvaluations();
     } catch (e) {
       console.error("Failed to log executions to backend", e);
     }
 
+    setIsEvaluating(false);
+    setRefreshTrigger(prev => prev + 1);
   };
 
   // Scores used for UI rendering
@@ -963,11 +1004,7 @@ const DataQualityDetail: React.FC = () => {
   const displayValidity = (evaluatedResults && evaluatedResults.table === table) ? evaluatedResults.validity : 100;
   const displayAccuracy = (evaluatedResults && evaluatedResults.table === table) ? evaluatedResults.accuracy : 100;
 
-  useEffect(() => {
-    if (table && evaluatedResults && evaluatedResults.table === table) {
-      localStorage.setItem(`robin_table_quality_${table}`, displayOverall.toString());
-    }
-  }, [table, displayOverall, evaluatedResults]);
+  
 
   const lastRunChange = useMemo(() => {
     if (numericRowCount === 0) return '0';
