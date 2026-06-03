@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Sparkles, Plus, X, ExternalLink, Folder, Settings as SettingsIcon, MessageSquare, Send, Table,
+  Sparkles, Plus, X, Folder, Settings as SettingsIcon, MessageSquare, Send, Table,
   ChevronRight, ChevronDown, Trash2, ArrowLeft, Loader2
 } from 'lucide-react';
 import axios from 'axios';
