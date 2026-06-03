@@ -346,26 +346,8 @@ class QueryGenerator:
         """
         platform = platform.lower()
         if platform == "snowflake":
-            return """
-            SELECT 
-                t.TABLE_CATALOG AS DATABASE,
-                t.TABLE_SCHEMA AS SCHEMA,
-                t.TABLE_NAME AS NAME,
-                'TABLE' AS TYPE,
-                COALESCE(t.ROW_COUNT, 0) AS RECORDS,
-                COUNT(c.COLUMN_NAME) AS ATTRIBUTES
-            FROM SNOWFLAKE.ACCOUNT_USAGE.TABLES t
-            LEFT JOIN SNOWFLAKE.ACCOUNT_USAGE.COLUMNS c 
-              ON t.TABLE_CATALOG = c.TABLE_CATALOG 
-              AND t.TABLE_SCHEMA = c.TABLE_SCHEMA 
-              AND t.TABLE_NAME = c.TABLE_NAME
-              AND c.DELETED IS NULL
-            WHERE t.DELETED IS NULL
-              AND UPPER(t.TABLE_CATALOG) NOT IN ('SNOWFLAKE', 'SNOWFLAKE_SAMPLE_DATA')
-            GROUP BY 1, 2, 3, 4, 5
-            ORDER BY t.TABLE_CATALOG, t.TABLE_SCHEMA, t.TABLE_NAME
-            LIMIT 100;
-            """
+            return "SHOW TABLES IN ACCOUNT;"
+
         elif platform == "databricks":
             return """
             SELECT 
