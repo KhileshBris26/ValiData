@@ -1003,6 +1003,10 @@ const LoginPage: React.FC = () => {
                 </button>
               </div>
             </form>
+            <button onClick={() => setStep('user_entry')} className="btn-step-back">
+              <ArrowLeft size={16} />
+              <span>Back</span>
+            </button>
           </div>
         )}
 
