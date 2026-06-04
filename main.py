@@ -1210,6 +1210,28 @@ async def ai_chat(request: AIChatRequest):
                     if last_user_msg in ["hi", "hello", "hey"]:
                         context_phrase = f"I see you have the `{context_table}` table selected." if context_table != "Unknown" else "I can analyze your tables."
                         ai_response = f"Hello! I am Bris AI, your Data Quality Intelligence Agent. \n\n*Note: Your Snowflake account is currently a Trial Account, which has Cortex AI disabled. I am running in local simulation mode.* \n\n{context_phrase} How can I help you investigate data quality or build rules today?"
+                    elif "list" in last_user_msg and "tables" in last_user_msg:
+                        # Attempt to extract database name
+                        db_name = None
+                        if "in " in last_user_msg:
+                            parts = last_user_msg.split("in ")
+                            if len(parts) > 1:
+                                db_name = parts[1].split()[0].upper().strip("?'\"`")
+                        
+                        if db_name:
+                            try:
+                                # Execute actual SQL metadata query using the existing connection
+                                df = snowflake_engine.execute_query(f"SHOW TABLES IN DATABASE {db_name}")
+                                if not df.empty:
+                                    table_names = df['name'].tolist() if 'name' in df.columns else df.iloc[:, 1].tolist()
+                                    table_list_str = "\n".join([f"- `{t}`" for t in table_names])
+                                    ai_response = f"Here are the tables in `{db_name}`:\n\n{table_list_str}\n\n*(Note: This is actual metadata fetched via Snowflake SQL, bypassing Cortex AI due to Trial Account restrictions)*"
+                                else:
+                                    ai_response = f"I executed a query against `{db_name}`, but no tables were found or the database does not exist."
+                            except Exception as e:
+                                ai_response = f"I tried to list tables in `{db_name}`, but encountered an error: {str(e)}"
+                        else:
+                            ai_response = "I see you want to list tables, but I couldn't determine the database name from your prompt. E.g. 'Can you list all tables in DQ_DB?'"
                     else:
                         ai_response = f"""Summary
 - Simulated analysis for `{target_table}` completed.
