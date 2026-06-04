@@ -1534,7 +1534,10 @@ async def get_metadata_entities(request: MetadataRequest):
                 key = 'column_name' if request.entity_type == 'columns' else 'name'
                 for row in result:
                     if request.entity_type == 'columns':
-                        entities.append({"name": row.get('column_name'), "type": row.get('data_type'), "nullable": row.get('is_nullable') == 'YES'})
+                        col_name = row.get('column_name') or row.get('COLUMN_NAME')
+                        col_type = row.get('data_type') or row.get('DATA_TYPE')
+                        is_null = row.get('is_nullable') or row.get('IS_NULLABLE')
+                        entities.append({"name": col_name, "type": col_type, "nullable": is_null == 'YES'})
                     else:
                         val = row.get(key) or row.get(key.upper())
                         if val: entities.append(val)

@@ -151,11 +151,12 @@ class QueryGenerator:
                 sql = f"SHOW SCHEMAS IN DATABASE {database_name};"
             elif entity_type == "tables":
                 if not schema_name: raise ValueError("Schema name required for tables.")
-                sql = f"SHOW TABLES IN SCHEMA {database_name}.{schema_name};"
+                # Use SHOW OBJECTS instead of SHOW TABLES so we can support both TABLES and VIEWS
+                sql = f"SHOW OBJECTS IN SCHEMA {database_name}.{schema_name};"
             elif entity_type == "columns":
                 if not table_name: raise ValueError("Table name required for columns.")
-                # snowflake SHOW COLUMNS takes fully qualified table name if you provide the exact identifier, but often `IN TABLE x.y.z` is preferred.
-                sql = f"SHOW COLUMNS IN TABLE {database_name}.{schema_name}.{table_name};"
+                # Query information_schema to support fetching columns for both Tables and Views
+                sql = f"SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM {database_name}.INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '{schema_name.upper()}' AND TABLE_NAME = '{table_name.upper()}';"
         elif platform == "databricks":
             if entity_type == "databases":
                 sql = "SHOW CATALOGS;"
