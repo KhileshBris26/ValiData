@@ -155,8 +155,8 @@ class QueryGenerator:
                 sql = f"SHOW OBJECTS IN SCHEMA {database_name}.{schema_name};"
             elif entity_type == "columns":
                 if not table_name: raise ValueError("Table name required for columns.")
-                # Query information_schema to support fetching columns for both Tables and Views
-                sql = f"SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM {database_name}.INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = '{schema_name.upper()}' AND TABLE_NAME = '{table_name.upper()}';"
+                # DESCRIBE TABLE works for both tables and views, and avoids INFORMATION_SCHEMA permission limitations for secure views
+                sql = f"DESCRIBE TABLE {database_name}.{schema_name}.{table_name};"
         elif platform == "databricks":
             if entity_type == "databases":
                 sql = "SHOW CATALOGS;"
