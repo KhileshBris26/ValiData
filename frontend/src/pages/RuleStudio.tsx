@@ -168,6 +168,8 @@ const RuleStudio: React.FC = () => {
       
     } catch (err: any) {
       console.error("Batch execution failed", err);
+      const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
+      alert(`Rule execution failed: ${detail}`);
     }
     setExecuting(false);
   };

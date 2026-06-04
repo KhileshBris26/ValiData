@@ -797,7 +797,9 @@ async def execute_rule(request: RuleExecutionRequest):
         result = None
         if request.platform == "snowflake":
             snowflake_engine.connect(request.credentials)
-            result = snowflake_engine.execute_query(sql_query)
+            raw_result = snowflake_engine.execute_query(sql_query)
+            # Convert DictCursor rows to plain dicts and normalize keys to uppercase
+            result = [{k.upper(): v for k, v in dict(row).items()} for row in raw_result] if raw_result else []
             snowflake_engine.disconnect()
         elif request.platform == "databricks":
             databricks_engine.connect(request.credentials)
