@@ -15,15 +15,33 @@ class SnowflakeConnector(BaseConnector):
             if not account:
                 raise ValueError("Missing Snowflake account credentials. Please configure connections first.")
 
+            # Filter out empty strings — Snowflake treats '' differently from None
+            warehouse = creds.get("warehouse") or os.getenv("SNOWFLAKE_WAREHOUSE") or None
+            if warehouse and warehouse.strip() == '':
+                warehouse = None
+            database = creds.get("database") or os.getenv("SNOWFLAKE_DATABASE") or None
+            if database and database.strip() == '':
+                database = None
+            schema = creds.get("schema") or os.getenv("SNOWFLAKE_SCHEMA") or None
+            if schema and schema.strip() == '':
+                schema = None
+
             self.conn = snowflake.connector.connect(
                 account=account,
                 user=creds.get("user") or os.getenv("SNOWFLAKE_USER"),
                 password=creds.get("password") or os.getenv("SNOWFLAKE_PASSWORD"),
                 role=creds.get("role") or os.getenv("SNOWFLAKE_ROLE"),
-                warehouse=creds.get("warehouse") or os.getenv("SNOWFLAKE_WAREHOUSE"),
-                database=creds.get("database") or os.getenv("SNOWFLAKE_DATABASE"),
-                schema=creds.get("schema") or os.getenv("SNOWFLAKE_SCHEMA")
+                warehouse=warehouse,
+                database=database,
+                schema=schema
             )
+            # Explicitly activate warehouse in session if provided, 
+            # because some Snowflake roles don't auto-assign a default warehouse
+            if warehouse:
+                try:
+                    self.conn.cursor().execute(f"USE WAREHOUSE {warehouse}")
+                except Exception:
+                    pass  # If it fails, the connect-level warehouse param may have worked
             print("Successfully connected to Snowflake.")
         except DatabaseError as e:
             print(f"Failed to connect to Snowflake: {e}")
