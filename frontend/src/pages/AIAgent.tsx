@@ -54,9 +54,7 @@ const AIAgent: React.FC = () => {
 
   const [activeTopicId, setActiveTopicId] = useState<string>('1');
   const [inputText, setInputText] = useState('');
-  const [activeContext, setActiveContext] = useState<string | null>(() => {
-    return localStorage.getItem('robin_active_context_table') || null;
-  });
+  const [activeContext, setActiveContext] = useState<string | null>(null);
   const [showPromptLibrary, setShowPromptLibrary] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showSteps, setShowSteps] = useState(false);
@@ -75,8 +73,7 @@ const AIAgent: React.FC = () => {
     setTopics([newTopic, ...topics]);
     setActiveTopicId(newId);
     setInputText('');
-    const context = localStorage.getItem('robin_active_context_table') || null;
-    setActiveContext(context);
+    setActiveContext(null);
   };
 
   const handleSendMessage = async (textToSend?: string) => {
