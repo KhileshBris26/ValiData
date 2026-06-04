@@ -269,7 +269,7 @@ const AIAgent: React.FC = () => {
             display: 'flex',
             flexDirection: 'column',
             padding: '2rem',
-            overflowY: 'auto'
+            overflow: 'hidden'
           }}>
 
             {activeTopic.messages.length === 0 ? (
@@ -917,8 +917,8 @@ const AIAgent: React.FC = () => {
               </div>
             ) : (
               /* Chat view when conversations have items */
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1.5rem', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', overflowY: 'auto' }}>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1.5rem', justifyContent: 'space-between', overflow: 'hidden' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1.25rem', overflowY: 'auto', paddingRight: '1rem' }}>
                   {activeTopic.messages.map((m) => (
                     <div 
                       key={m.id} 
