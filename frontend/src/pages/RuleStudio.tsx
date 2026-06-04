@@ -9,6 +9,7 @@ import { API_BASE } from '../api';
 
 interface RuleManifestItem {
   id: string;
+  tablePath: string;
   column: string;
   type: string;
   params: any;
@@ -120,6 +121,7 @@ const RuleStudio: React.FC = () => {
     if (!columnName) return;
     const newItem: RuleManifestItem = {
       id: Math.random().toString(36).substr(2, 9),
+      tablePath: `${database}.${schema}.${tableName}`,
       column: columnName,
       type: ruleType,
       params: ruleType === 'RANGE_CHECK' ? { min_val: minVal, max_val: maxVal } : ruleType === 'PATTERN_CHECK' ? { pattern } : {}
@@ -144,13 +146,12 @@ const RuleStudio: React.FC = () => {
 
     try {
       const batchResults = [];
-      const tablePath = `${database}.${schema}.${tableName}`;
       
       for (const rule of manifest) {
         const res = await axios.post(`${API_BASE}/rules/execute`, {
           platform,
           rule_type: rule.type,
-          table_name: tablePath,
+          table_name: rule.tablePath,
           column_name: rule.column,
           rule_params: rule.params,
           credentials
@@ -210,7 +211,7 @@ const RuleStudio: React.FC = () => {
             {manifest.map((m) => (
               <div key={m.id} className="manifest-item">
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <span style={{ fontWeight: 600 }}>{m.column}</span>
+                  <span style={{ fontWeight: 600 }}>{m.tablePath.split('.').pop()} • {m.column}</span>
                   <span style={{ fontSize: '0.7rem', color: '#64748b' }}>{m.type}</span>
                 </div>
                 <Trash2 className="remove-btn" size={16} onClick={() => removeRule(m.id)} />
@@ -281,7 +282,7 @@ const RuleStudio: React.FC = () => {
                     const total = r.results?.[0]?.TOTAL_ROWS || 0;
                     return (
                       <tr key={i}>
-                        <td style={{ fontWeight: 600 }}>{r.rule_meta.column}</td>
+                        <td style={{ fontWeight: 600 }}>{r.rule_meta.tablePath.split('.').pop()} • {r.rule_meta.column}</td>
                         <td>{r.rule_meta.type}</td>
                         <td>{total}</td>
                         <td style={{ color: fails > 0 ? '#ef4444' : '#10b981' }}>{fails}</td>
