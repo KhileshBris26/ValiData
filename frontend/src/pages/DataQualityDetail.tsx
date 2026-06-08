@@ -191,8 +191,8 @@ const DataQualityDetail: React.FC = () => {
         const newEval = {
             table: table,
             overall: res.data.overall || 100,
-            validity: valCount > 0 ? Math.round(valSum / valCount) : (res.data.overall || 100),
-            accuracy: accCount > 0 ? Math.round(accSum / accCount) : (res.data.overall || 100),
+            validity: valCount > 0 ? Math.round(valSum / valCount) : 100,
+            accuracy: accCount > 0 ? Math.round(accSum / accCount) : 100,
             columns: columnsStatus
         };
         
