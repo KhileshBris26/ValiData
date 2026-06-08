@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Users, Server, FileText, Settings, ArrowLeft, LogOut, CheckCircle, Search, Filter } from 'lucide-react';
+import { Shield, Users, Server, FileText, Settings, CheckCircle, Search, Filter } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE } from '../api';
 import './AdminDashboard.css';
@@ -140,15 +140,6 @@ const AdminDashboard: React.FC = () => {
     } catch (e) {
       console.error(e);
     }
-  };
-
-  const handleSignOut = () => {
-    localStorage.removeItem('robin_auth_token');
-    localStorage.removeItem('robin_user');
-    localStorage.removeItem('selected_role');
-    localStorage.removeItem('user_type');
-    localStorage.removeItem('is_authenticated');
-    navigate('/login');
   };
 
   const showSimulatedAction = (actionName: string) => {
