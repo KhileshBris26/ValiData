@@ -629,8 +629,16 @@ async def update_user_status(user_id: str, request: AdminStatusRequest):
 async def delete_user(user_id: str):
     conn, cursor = get_db_connection()
     try:
-        query = "DELETE FROM users WHERE user_id = %s OR id::text = %s" if DATABASE_URL else "DELETE FROM users WHERE user_id = ? OR id = ?"
-        cursor.execute(query, (user_id, user_id))
+        if DATABASE_URL:
+            query = "DELETE FROM users WHERE user_id = %s OR id::text = %s"
+            cursor.execute(query, (user_id, user_id))
+        else:
+            try:
+                query = "DELETE FROM users WHERE user_id = ? OR id = ?"
+                cursor.execute(query, (user_id, user_id))
+            except Exception:
+                query = "DELETE FROM users WHERE id = ?"
+                cursor.execute(query, (user_id,))
         conn.commit()
         return {"status": "success", "message": "User deleted successfully"}
     except Exception as e:
