@@ -18,6 +18,7 @@ export interface AdminUser {
   approved_by?: string;
   revoked_at?: string;
   last_login_at?: string;
+  roles?: string | string[];
 }
 
 const AdminDashboard: React.FC = () => {
