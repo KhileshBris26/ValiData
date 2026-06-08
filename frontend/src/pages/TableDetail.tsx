@@ -424,11 +424,11 @@ const TableDetail: React.FC = () => {
     } else if (name.includes('customer')) {
       return `Customer master data table in ${db}.${sch} containing enriched customer profile attributes including segmentation, product association, revenue data, and approval status. This table links to downstream reporting datasets and is subject to PII classification rules under GDPR. Data is refreshed on a nightly schedule and profiled weekly for completeness and uniqueness violations.`;
     } else if (name.includes('metric') || name.includes('analytics')) {
-      return `Aggregated analytics and metrics table in ${db}.${sch}. Consolidates key business KPIs derived from multiple upstream curated tables. Used as a primary source for executive dashboards and financial reporting. Data is computed via scheduled dbt models and refreshed every 6 hours. Column-level DQ thresholds are enforced to ensure metric reliability.`;
+      return `Aggregated analytics and metrics table in ${db}.${sch}. Consolidates key business KPIs derived from multiple upstream curated tables. Used as a primary source for executive dashboards and financial reporting. Data is computed via scheduled dbt models and refreshed every 6 hours. Column-level validation thresholds are enforced to ensure metric reliability.`;
     } else if (name.includes('enriched')) {
-      return `Gold-layer enriched dataset in ${db}.${sch}. Combines data from multiple silver-layer sources through JOIN operations and business-logic transformations. Optimized for analytical consumption by BI tools and data science teams. Each row represents a fully resolved, deduplicated entity with all dimensional attributes populated.`;
+      return `Gold-layer enriched dataset in ${db}.${sch}. Combines data from multiple silver-layer sources through JOIN operations and business-logic transformations. Optimized for analytical consumption by BI tools and data science teams. Each row represents a fully resolved, deduplicated entity with all dimensional columns populated.`;
     } else {
-      return `Catalog asset discovered in ${db}.${sch}. This table contains structured data managed within the ${platform === 'snowflake' ? 'Snowflake' : 'Databricks'} platform. It participates in the enterprise data lineage graph and is subject to data quality monitoring through Robin's pushdown evaluation engine. Stewardship and glossary terms should be assigned to improve the Data Trust Index score.`;
+      return `Catalog asset discovered in ${db}.${sch}. This table contains structured data managed within the ${platform === 'snowflake' ? 'Snowflake' : 'Databricks'} platform. It participates in the enterprise data lineage graph and is subject to data accuracy monitoring through Robin's pushdown evaluation engine. Ownership and classification tags should be assigned to improve the Data Reliability Index score.`;
     }
   };
 
@@ -1728,11 +1728,11 @@ const TableDetail: React.FC = () => {
         <div className="detail-content">
           {/* Left Column */}
           <div className="content-left">
-            {/* Data Trust Index */}
+            {/* Data Reliability Index */}
             <div className="card glass-panel">
               <div className="card-header-main">
                 <div className="header-title">
-                  <h3>Data trust index</h3>
+                  <h3>Data Reliability Index</h3>
                   <span className="trust-status limited">
                     <AlertCircle size={14} />
                     {overallScore > 80 ? 'Excellent' : overallScore > 50 ? 'Limited' : 'Poor'} {overallScore}
@@ -1743,7 +1743,7 @@ const TableDetail: React.FC = () => {
               <div className="trust-metrics">
                 <div className="metric-group">
                   <div className="metric-row">
-                    <span>Overall score</span>
+                    <span>Overall reliability score</span>
                     <div className="progress-container">
                       <div className="progress-bar" style={{ width: `${trustIndex}%`, background: trustIndex > 80 ? 'var(--success)' : trustIndex > 50 ? '#fbbf24' : '#ef4444' }}></div>
                     </div>
@@ -1753,14 +1753,14 @@ const TableDetail: React.FC = () => {
 
                 <div className="metric-group">
                   <div className="metric-row">
-                    <span>Data quality</span>
+                    <span>Data accuracy</span>
                     <div className="progress-container">
                       <div className="progress-bar" style={{ width: `${qualityBase}%`, background: qualityBase > 80 ? 'var(--success)' : '#64748b' }}></div>
                     </div>
                     <span className="score-val">{qualityBase}</span>
                   </div>
                   <Link to={`/catalog/${database}/${schema}/${table}/dq/primary`} className="dq-link">
-                    <div className="metric-sub-row">Primary DQ monitor</div>
+                    <div className="metric-sub-row">Primary Validation Monitor</div>
                   </Link>
                 </div>
 
@@ -1799,14 +1799,14 @@ const TableDetail: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <p className="card-footer-text">The trust index is a weighted score of Quality (40%), Freshness (20%), and Governance (40%).</p>
+              <p className="card-footer-text">The reliability index is a weighted score of Accuracy (40%), Freshness (20%), and Governance (40%).</p>
             </div>
 
-            {/* DQ Monitors */}
+            {/* Validation Monitors */}
             <div className="card glass-panel">
               <div className="card-header-with-btn">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <h3>DQ Monitors</h3>
+                  <h3>Validation Monitors</h3>
                   <button 
                     onClick={fetchQualityScore} 
                     disabled={isRefreshingScore}
@@ -1821,7 +1821,7 @@ const TableDetail: React.FC = () => {
               <div className="dq-table">
                 <div className="dq-row header">
                   <span>Name</span>
-                  <span>Overall DQ</span>
+                  <span>Validation Rate</span>
                   <span>Last run</span>
                 </div>
                 <div className="dq-row">
@@ -1838,11 +1838,11 @@ const TableDetail: React.FC = () => {
             </div>
 
 
-            {/* Attributes */}
+            {/* Columns */}
             <div className="card glass-panel">
               <div className="card-header-with-btn">
-                <h3>Attributes</h3>
-                <button className="btn-outline">Add Attribute</button>
+                <h3>Columns</h3>
+                <button className="btn-outline">Add Column</button>
               </div>
               <div className="attributes-list">
                 {attributes.map((attr, idx) => (
@@ -2290,7 +2290,7 @@ const TableDetail: React.FC = () => {
             borderBottom: '1px solid #f1f5f9',
             background: '#fcfcfd'
           }}>
-            {['Configuration', 'Implementation', 'Data Quality'].map((tab) => {
+            {['Configuration', 'Implementation', 'Data Accuracy'].map((tab) => {
               const isActive = panelTab === tab;
               return (
                 <button
@@ -2857,7 +2857,7 @@ const TableDetail: React.FC = () => {
               </div>
             )}
 
-            {panelTab === 'Data Quality' && (
+            {panelTab === 'Data Accuracy' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div style={{
                   background: '#ffffff',

@@ -253,14 +253,14 @@ const DataCatalog: React.FC = () => {
   const tabs = ['Published', 'Unpublished', 'All'];
   const filters = [
     { name: 'Terms', icon: Tag },
-    { name: 'Data Quality', icon: ShieldCheck },
+    { name: 'Data Accuracy', icon: ShieldCheck },
     { name: 'Data Source', icon: Database },
     { name: 'Location', icon: MapPin },
-    { name: 'Number of Attributes', icon: Hash },
+    { name: 'Number of Columns', icon: Hash },
     { name: 'Number of Records', icon: Layers },
     { name: 'Processing Date', icon: Calendar },
-    { name: 'Anomaly State', icon: AlertCircle },
-    { name: 'Stewardship', icon: Users },
+    { name: 'Drift / Outlier Alerts', icon: AlertCircle },
+    { name: 'Data Owners / Custodians', icon: Users },
   ];
 
   return (
@@ -361,7 +361,7 @@ const DataCatalog: React.FC = () => {
                     </div>
                   )}
 
-                  {f.name === 'Data Quality' && (
+                  {f.name === 'Data Accuracy' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       {['Excellent (>80%)', 'Good (50%-80%)', 'Poor (<50%)'].map(opt => (
                         <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#1e293b', cursor: 'pointer' }}>
@@ -389,7 +389,7 @@ const DataCatalog: React.FC = () => {
                     </div>
                   )}
 
-                  {f.name === 'Number of Attributes' && (
+                  {f.name === 'Number of Columns' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       {['< 5', '5 - 15', '> 15'].map(opt => (
                         <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: '#1e293b', cursor: 'pointer' }}>
@@ -417,7 +417,7 @@ const DataCatalog: React.FC = () => {
                     </div>
                   )}
 
-                  {['Location', 'Processing Date', 'Anomaly State', 'Stewardship'].includes(f.name) && (
+                  {['Location', 'Processing Date', 'Drift / Outlier Alerts', 'Data Owners / Custodians'].includes(f.name) && (
                     <div style={{ fontSize: '0.8rem', color: '#64748b', padding: '4px' }}>
                       Filters using all catalog assets
                     </div>
@@ -439,9 +439,9 @@ const DataCatalog: React.FC = () => {
             {selectedDBs.length > 0 && <span className="filter-tag">DBs: {selectedDBs.length} <span className="close" onClick={() => setSelectedDBs([])}>×</span></span>}
             {selectedSchemas.length > 0 && <span className="filter-tag">Schemas: {selectedSchemas.length} <span className="close" onClick={() => setSelectedSchemas([])}>×</span></span>}
             {selectedTerms.length > 0 && <span className="filter-tag">Terms: {selectedTerms.length} <span className="close" onClick={() => setSelectedTerms([])}>×</span></span>}
-            {selectedQuality && <span className="filter-tag">Quality: {selectedQuality} <span className="close" onClick={() => setSelectedQuality(null)}>×</span></span>}
+            {selectedQuality && <span className="filter-tag">Accuracy: {selectedQuality} <span className="close" onClick={() => setSelectedQuality(null)}>×</span></span>}
             {selectedSource && <span className="filter-tag">Source: {selectedSource} <span className="close" onClick={() => setSelectedSource(null)}>×</span></span>}
-            {selectedNumAttributes && <span className="filter-tag">Attributes: {selectedNumAttributes} <span className="close" onClick={() => setSelectedNumAttributes(null)}>×</span></span>}
+            {selectedNumAttributes && <span className="filter-tag">Columns: {selectedNumAttributes} <span className="close" onClick={() => setSelectedNumAttributes(null)}>×</span></span>}
             {selectedNumRecords && <span className="filter-tag">Records: {selectedNumRecords} <span className="close" onClick={() => setSelectedNumRecords(null)}>×</span></span>}
           </div>
         </div>
@@ -492,10 +492,10 @@ const DataCatalog: React.FC = () => {
                   </th>
                   <th>Description</th>
                   <th>Terms</th>
-                  <th>Data trust index</th>
-                  <th>Anomalies</th>
-                  <th>Overall Quality</th>
-                  <th># Attributes</th>
+                  <th>Reliability Index</th>
+                  <th>Drift Warnings</th>
+                  <th>Accuracy Score</th>
+                  <th>Columns</th>
                   <th># Records</th>
                   <th>Origin</th>
                 </tr>

@@ -1463,7 +1463,7 @@ const DataQualityDetail: React.FC = () => {
               <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
                 <div style={{ fontSize: '36px', marginBottom: '12px' }}>✅</div>
                 <p style={{ fontWeight: 600, color: '#475569' }}>No Invalid Records Found</p>
-                <p style={{ marginTop: '6px' }}>All DQ checks passed, or no Null/Unique failures were detected.</p>
+                <p style={{ marginTop: '6px' }}>All validation checks passed, or no Null/Unique failures were detected.</p>
                 <p style={{ marginTop: '4px', fontSize: '12px' }}>Click <strong>Profile and Evaluate</strong> to run a live check.</p>
               </div>
             ) : (
@@ -1541,7 +1541,7 @@ const DataQualityDetail: React.FC = () => {
                 <span style={{ fontSize: '12px', color: '#94a3b8' }}>Latest runs first · refreshes when you open this tab</span>
               </div>
               <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '18px' }}>
-                One row per <strong>Profile and Evaluate</strong> run. DQ Score = average pass-rate across all rules executed for the table.
+                One row per <strong>Profile and Evaluate</strong> run. Accuracy Score = average pass-rate across all rules executed for the table.
               </p>
 
               {runHistoryLoading ? (
@@ -1621,7 +1621,7 @@ const DataQualityDetail: React.FC = () => {
                           { label: 'Table Name',      w: '140px' },
                           { label: 'Run Date',        w: '110px' },
                           { label: 'Run Time',        w: '120px' },
-                          { label: 'DQ Score',        w: '110px' },
+                          { label: 'Accuracy Score',  w: '110px' },
                           { label: 'Total Rows',      w: '100px' },
                           { label: 'Passed Rows',     w: '100px' },
                           { label: 'Failed Rows',     w: '100px' },
@@ -1746,8 +1746,8 @@ const DataQualityDetail: React.FC = () => {
                 <table className="dq-main-table">
                   <thead>
                     <tr>
-                      <th>Attribute</th>
-                      <th>Overall DQ</th>
+                      <th>Column Name</th>
+                      <th>Overall Accuracy</th>
                       <th>Terms</th>
                       <th>Profiling summary</th>
                       <th>Min/max</th>
@@ -1758,7 +1758,7 @@ const DataQualityDetail: React.FC = () => {
                   </thead>
                   <tbody>
                     {isLoadingCols ? (
-                      <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px' }}>Loading attributes...</td></tr>
+                      <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px' }}>Loading columns...</td></tr>
                     ) : (
                       activeColumnsList.filter(d => d.attribute.toLowerCase().includes(search.toLowerCase())).map((row, idx) => (
                         <tr key={idx}>
@@ -1972,10 +1972,10 @@ const DataQualityDetail: React.FC = () => {
             <button onClick={() => setSelectedRuleForPanel(null)}><X size={20} /></button>
           </div>
           <div className="side-panel-tabs">
-            {['Configuration', 'Implementation', 'Data Quality'].map(t => <button key={t} className={panelTab === t ? 'active' : ''} onClick={() => setPanelTab(t)}>{t}</button>)}
+            {['Configuration', 'Implementation', 'Data Accuracy & Validation'].map(t => <button key={t} className={panelTab === t ? 'active' : ''} onClick={() => setPanelTab(t)}>{t}</button>)}
           </div>
           <div className="side-panel-content">
-            {panelTab === 'Configuration' ? <p>Rule configuration details...</p> : panelTab === 'Implementation' ? <p>Implementation logic...</p> : <p>Data quality results...</p>}
+            {panelTab === 'Configuration' ? <p>Rule configuration details...</p> : panelTab === 'Implementation' ? <p>Implementation logic...</p> : <p>Data accuracy validation results...</p>}
           </div>
         </div>
       )}

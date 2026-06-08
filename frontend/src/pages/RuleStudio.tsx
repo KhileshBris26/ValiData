@@ -242,7 +242,7 @@ const RuleStudio: React.FC = () => {
           {!results.length && !executing && (
             <div className="empty-results">
               <ListChecks size={48} opacity={0.2} />
-              <p>Configure rules and execute batch to see quality insights.</p>
+              <p>Configure rules and execute batch to see validation insights.</p>
             </div>
           )}
 
@@ -261,7 +261,7 @@ const RuleStudio: React.FC = () => {
                   <div className="value">{summary.total}</div>
                 </div>
                 <div className="health-card">
-                  <div className="label">Quality Score</div>
+                  <div className="label">Validation Pass Rate</div>
                   <div className="value" style={{ color: summary.passed === summary.total ? '#10b981' : '#f59e0b' }}>
                     {Math.round((summary.passed / summary.total) * 100)}%
                   </div>
