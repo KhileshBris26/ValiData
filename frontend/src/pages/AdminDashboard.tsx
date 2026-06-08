@@ -26,6 +26,7 @@ const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'tools' | 'users'>('users');
   const [pendingRequests, setPendingRequests] = useState<AdminUser[]>([]);
   const [processedRequests, setProcessedRequests] = useState<AdminUser[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Search & filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -41,6 +42,7 @@ const AdminDashboard: React.FC = () => {
   }, [navigate]);
 
   const loadRequests = async () => {
+    setIsLoading(true);
     try {
       const response = await axios.get(`${API_BASE}/admin/users`);
       const allUsers = response.data.users || [];
@@ -50,6 +52,8 @@ const AdminDashboard: React.FC = () => {
       setProcessedRequests(processed);
     } catch (e) {
       console.error("Failed to load users", e);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -332,7 +336,12 @@ const AdminDashboard: React.FC = () => {
 
                 <h2 className="requests-section-title">Pending Access Requests</h2>
                 <div className="admin-table-container">
-                  {filteredPending.length === 0 ? (
+                  {isLoading ? (
+                    <div className="empty-state">
+                      <div className="spinner" style={{ margin: '0 auto 10px', width: '24px', height: '24px', border: '3px solid rgba(59, 130, 246, 0.3)', borderTopColor: '#3b82f6', borderRadius: '50%' }}></div>
+                      Loading requests...
+                    </div>
+                  ) : filteredPending.length === 0 ? (
                     <div className="empty-state">No pending access requests match the filters.</div>
                   ) : (
                     <table className="admin-table">
@@ -376,7 +385,12 @@ const AdminDashboard: React.FC = () => {
 
                 <h2 className="requests-section-title">All Users</h2>
                 <div className="admin-table-container">
-                  {filteredProcessed.length === 0 ? (
+                  {isLoading ? (
+                    <div className="empty-state">
+                      <div className="spinner" style={{ margin: '0 auto 10px', width: '24px', height: '24px', border: '3px solid rgba(59, 130, 246, 0.3)', borderTopColor: '#3b82f6', borderRadius: '50%' }}></div>
+                      Loading users...
+                    </div>
+                  ) : filteredProcessed.length === 0 ? (
                     <div className="empty-state">No users match the filters.</div>
                   ) : (
                     <table className="admin-table">
