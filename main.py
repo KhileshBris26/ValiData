@@ -384,7 +384,9 @@ def init_db():
             "revoked_at": "TIMESTAMP",
             "last_login_at": "TIMESTAMP",
             "roles": "TEXT",
-            "credentials": "TEXT"
+            "credentials": "TEXT",
+            "otp_code": "TEXT",
+            "otp_expires_at": "TIMESTAMP"
         }
         for col, col_type in new_columns.items():
             try:
@@ -464,6 +466,111 @@ class AdminStatusRequest(BaseModel):
 class AdminRoleRequest(BaseModel):
     is_admin: bool
     admin_username: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    otp: str
+    new_password: str
+
+@app.post("/api/v1/auth/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest):
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    import secrets
+    from datetime import datetime, timedelta
+    
+    conn, cursor = get_db_connection()
+    try:
+        query = "SELECT username, full_name FROM users WHERE email = %s" if DATABASE_URL else "SELECT username, full_name FROM users WHERE email = ?"
+        cursor.execute(query, (request.email,))
+        user = cursor.fetchone()
+        
+        if not user:
+            return {"status": "success", "message": "If that email is registered, an OTP has been sent."}
+            
+        otp = "".join([str(secrets.randbelow(10)) for _ in range(6)])
+        expires_at = datetime.utcnow() + timedelta(minutes=10)
+        
+        update_query = "UPDATE users SET otp_code = %s, otp_expires_at = %s WHERE email = %s" if DATABASE_URL else "UPDATE users SET otp_code = ?, otp_expires_at = ? WHERE email = ?"
+        cursor.execute(update_query, (otp, expires_at, request.email))
+        conn.commit()
+        
+        smtp_user = os.getenv("SMTP_USER", "validatasupport@gmail.com")
+        smtp_pass = os.getenv("SMTP_PASSWORD")
+        
+        if smtp_pass and smtp_pass != "your-16-char-app-password":
+            msg = MIMEMultipart()
+            msg['From'] = smtp_user
+            msg['To'] = request.email
+            msg['Subject'] = "ValiData - Password Reset OTP"
+            
+            body = f'''
+            <html>
+              <body style="font-family: sans-serif; padding: 20px;">
+                <h2>Password Reset Request</h2>
+                <p>Hello {user['full_name'] or user['username']},</p>
+                <p>You requested to reset your password. Here is your One-Time Password (OTP):</p>
+                <h1 style="color: #4f46e5; letter-spacing: 5px;">{otp}</h1>
+                <p>This code will expire in 10 minutes.</p>
+                <p>If you did not request this, please ignore this email.</p>
+                <p>Thanks,<br>The ValiData Team</p>
+              </body>
+            </html>
+            '''
+            msg.attach(MIMEText(body, 'html'))
+            
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+        else:
+            print(f"MOCK EMAIL (No SMTP Password): OTP for {request.email} is {otp}")
+            
+        return {"status": "success", "message": "If that email is registered, an OTP has been sent."}
+    except Exception as e:
+        print(f"Forgot password error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process request")
+    finally:
+        conn.close()
+
+@app.post("/api/v1/auth/reset-password")
+async def reset_password(request: ResetPasswordRequest):
+    from datetime import datetime
+    conn, cursor = get_db_connection()
+    try:
+        query = "SELECT otp_code, otp_expires_at FROM users WHERE email = %s" if DATABASE_URL else "SELECT otp_code, otp_expires_at FROM users WHERE email = ?"
+        cursor.execute(query, (request.email,))
+        user = cursor.fetchone()
+        
+        if not user or not user['otp_code']:
+            raise HTTPException(status_code=400, detail="Invalid request or OTP expired.")
+            
+        expires_at = user['otp_expires_at']
+        if isinstance(expires_at, str):
+            try:
+                expires_at = datetime.fromisoformat(expires_at.replace('Z', ''))
+            except Exception:
+                pass 
+                
+        if datetime.utcnow() > expires_at or user['otp_code'] != request.otp:
+            raise HTTPException(status_code=400, detail="Invalid or expired OTP.")
+            
+        pw_hash = hashlib.sha256(request.new_password.encode()).hexdigest()
+        update_query = "UPDATE users SET password_hash = %s, otp_code = NULL, otp_expires_at = NULL WHERE email = %s" if DATABASE_URL else "UPDATE users SET password_hash = ?, otp_code = NULL, otp_expires_at = NULL WHERE email = ?"
+        cursor.execute(update_query, (pw_hash, request.email))
+        conn.commit()
+        
+        return {"status": "success", "message": "Password reset successfully!"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Reset password error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to reset password")
+    finally:
+        conn.close()
 
 @app.post("/api/v1/auth/register")
 async def register(request: RegisterRequest):

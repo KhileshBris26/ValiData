@@ -7,7 +7,7 @@ import { authService, decryptData } from '../services/authService';
 import { API_BASE } from '../api';
 import './LoginPage.css';
 
-type ScreenStep = 'platform' | 'role' | 'admin_login' | 'user_entry' | 'user_signin' | 'user_signup' | 'user_connect' | 'user_select_role';
+type ScreenStep = 'platform' | 'role' | 'admin_login' | 'user_entry' | 'user_signin' | 'user_signup' | 'user_connect' | 'user_select_role' | 'forgot_password';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -30,6 +30,12 @@ const LoginPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+
+  // Forgot Password states
+  const [forgotPasswordStep, setForgotPasswordStep] = useState<1 | 2 | 3>(1);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
 
   // Snowflake connection credentials states
   const [sfAccount, setSfAccount] = useState('');
@@ -200,6 +206,55 @@ const LoginPage: React.FC = () => {
       setError('Please fill in all credentials.');
     }
     setIsLoading(false);
+  };
+
+  const handleSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError('');
+    setSuccessMessage('');
+    
+    if (!forgotEmail) {
+      setError('Please enter your email.');
+      setIsLoading(false);
+      return;
+    }
+    
+    const res = await authService.sendOtp(forgotEmail);
+    if (res.success) {
+      setSuccessMessage(res.message);
+      setForgotPasswordStep(2);
+    } else {
+      setError(res.message);
+    }
+    setIsLoading(false);
+  };
+
+  const handleVerifyOtpAndReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (forgotPasswordStep === 2) {
+      if (!forgotOtp) { setError('Please enter the OTP'); return; }
+      setForgotPasswordStep(3);
+      setError('');
+      setSuccessMessage('OTP accepted. Please enter your new password.');
+    } else if (forgotPasswordStep === 3) {
+      setIsLoading(true);
+      setError('');
+      if (!forgotNewPassword) { setError('Please enter a new password'); setIsLoading(false); return; }
+      
+      const res = await authService.resetPassword(forgotEmail, forgotOtp, forgotNewPassword);
+      if (res.success) {
+        setSuccessMessage('Password reset successfully! You can now log in.');
+        setForgotPasswordStep(1);
+        setForgotEmail('');
+        setForgotOtp('');
+        setForgotNewPassword('');
+        setStep('user_signin');
+      } else {
+        setError(res.message);
+      }
+      setIsLoading(false);
+    }
   };
 
   // Handle User sign up submit
@@ -712,6 +767,16 @@ const LoginPage: React.FC = () => {
                   />
                 </div>
               </div>
+              
+              <div style={{ textAlign: 'right', marginTop: '-10px', marginBottom: '15px' }}>
+                <a 
+                  href="#" 
+                  onClick={(e) => { e.preventDefault(); setStep('forgot_password'); setForgotPasswordStep(1); setError(''); setSuccessMessage(''); }}
+                  style={{ color: '#8b5cf6', fontSize: '13px', textDecoration: 'none' }}
+                >
+                  Forgot Password?
+                </a>
+              </div>
 
               <button type="submit" className="btn-login" disabled={isLoading}>
                 {isLoading ? (
@@ -1123,6 +1188,99 @@ const LoginPage: React.FC = () => {
               <ArrowLeft size={16} />
               <span>Reconnect</span>
             </button>
+          </div>
+        )}
+
+        {/* Forgot Password Flow */}
+        {step === 'forgot_password' && (
+          <div className="login-flow-step">
+            <h2 className="step-title">Reset Password</h2>
+            <p className="step-subtitle">
+              {forgotPasswordStep === 1 && "Enter your email to receive a One-Time Password."}
+              {forgotPasswordStep === 2 && "Enter the 6-digit OTP sent to your email."}
+              {forgotPasswordStep === 3 && "Enter your new password."}
+            </p>
+
+            <form onSubmit={forgotPasswordStep === 1 ? handleSendOtp : handleVerifyOtpAndReset} className="login-form">
+              {error && <div className="error-message">{error}</div>}
+              {successMessage && <div className="success-message">{successMessage}</div>}
+
+              {forgotPasswordStep === 1 && (
+                <div className="input-group">
+                  <label htmlFor="forgot-email">Email Address</label>
+                  <div className="input-wrapper">
+                    <Mail size={18} className="input-icon" />
+                    <input 
+                      id="forgot-email"
+                      type="email" 
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      placeholder="e.g. you@company.com"
+                      required={forgotPasswordStep === 1}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {forgotPasswordStep === 2 && (
+                <div className="input-group">
+                  <label htmlFor="forgot-otp">One-Time Password (OTP)</label>
+                  <div className="input-wrapper">
+                    <Key size={18} className="input-icon" />
+                    <input 
+                      id="forgot-otp"
+                      type="text" 
+                      value={forgotOtp}
+                      onChange={(e) => setForgotOtp(e.target.value)}
+                      placeholder="6-digit code"
+                      required={forgotPasswordStep === 2}
+                      maxLength={6}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {forgotPasswordStep === 3 && (
+                <div className="input-group">
+                  <label htmlFor="forgot-new-password">New Password</label>
+                  <div className="input-wrapper">
+                    <Lock size={18} className="input-icon" />
+                    <input 
+                      id="forgot-new-password"
+                      type="password" 
+                      value={forgotNewPassword}
+                      onChange={(e) => setForgotNewPassword(e.target.value)}
+                      placeholder="Enter new secure password"
+                      required={forgotPasswordStep === 3}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <button type="submit" className="btn-primary" disabled={isLoading} style={{ marginTop: '10px' }}>
+                {isLoading ? (
+                  <><Loader2 className="spinner" size={18} /> Processing...</>
+                ) : (
+                  <>
+                    {forgotPasswordStep === 1 && "Send OTP"}
+                    {forgotPasswordStep === 2 && "Verify OTP"}
+                    {forgotPasswordStep === 3 && "Reset Password"}
+                  </>
+                )}
+              </button>
+            </form>
+
+            <div style={{ textAlign: 'center', marginTop: '20px' }}>
+              <button 
+                type="button" 
+                onClick={() => { setStep('user_signin'); setError(''); setSuccessMessage(''); }} 
+                className="btn-secondary"
+                style={{ width: '100%' }}
+              >
+                <ArrowLeft size={16} />
+                <span>Back to Login</span>
+              </button>
+            </div>
           </div>
         )}
       </div>

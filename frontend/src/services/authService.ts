@@ -122,6 +122,30 @@ class AuthServiceClass {
       return { success: false, message: error.response?.data?.detail || 'Failed to update role' };
     }
   }
+
+  // Send OTP for password reset
+  async sendOtp(email: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await axios.post(`${API_BASE}/auth/forgot-password`, { email });
+      return { success: true, message: response.data.message };
+    } catch (error: any) {
+      return { success: false, message: error.response?.data?.detail || 'Failed to send OTP' };
+    }
+  }
+
+  // Reset password using OTP
+  async resetPassword(email: string, otp: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await axios.post(`${API_BASE}/auth/reset-password`, {
+        email,
+        otp,
+        new_password: newPassword
+      });
+      return { success: true, message: response.data.message };
+    } catch (error: any) {
+      return { success: false, message: error.response?.data?.detail || 'Failed to reset password' };
+    }
+  }
   
   // Legacy Migration - Push localStorage users to backend
   async migrateLegacyUsers(): Promise<void> {
