@@ -1829,7 +1829,9 @@ const TableDetail: React.FC = () => {
                     <span className="dq-name clickable">Primary</span>
                   </Link>
                   <div className="dq-progress">
-                    <div className="dq-bar" style={{ width: `${qualityBase}%` }}></div>
+                    <div className="dq-progress-track">
+                      <div className="dq-bar" style={{ width: `${qualityBase}%` }}></div>
+                    </div>
                     <span>{qualityBase}%</span>
                   </div>
                   <span className="dq-date">{lastRunDate}</span>

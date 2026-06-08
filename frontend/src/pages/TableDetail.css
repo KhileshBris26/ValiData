@@ -333,13 +333,22 @@
   display: flex;
   align-items: center;
   gap: 1rem;
+  width: 100%;
+}
+
+.dq-progress-track {
+  flex: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  overflow: hidden;
 }
 
 .dq-bar {
-  flex: 1;
-  height: 8px;
+  height: 100%;
   background: var(--success);
   border-radius: 4px;
+  transition: width 0.3s ease;
 }
 
 .dq-date {
