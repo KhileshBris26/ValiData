@@ -135,8 +135,8 @@ const DataQualityDetail: React.FC = () => {
         setHasEvaluated(true);
         const backendExecs = res.data.executions || [];
         
-        const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Freshness', 'Validity'];
-        const accuracyLabels = ['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY'];
+        const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Pattern Check', 'Freshness', 'Validity'];
+        const accuracyLabels = ['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY', 'Blank Check'];
         
         let valSum = 0; let valCount = 0;
         let accSum = 0; let accCount = 0;
@@ -157,11 +157,22 @@ const DataQualityDetail: React.FC = () => {
                 score: scoreVal
             };
             
-            if (validityLabels.some(lbl => ex.rule_type.toUpperCase().includes(lbl.toUpperCase()))) {
+            const normalizedRule = ex.rule_type.replace(/_/g, ' ').toUpperCase();
+            
+            const isValidity = validityLabels.some(lbl => {
+                const normalizedLabel = lbl.replace(/_/g, ' ').toUpperCase();
+                return normalizedRule.includes(normalizedLabel) || normalizedLabel.includes(normalizedRule);
+            });
+            const isAccuracy = accuracyLabels.some(lbl => {
+                const normalizedLabel = lbl.replace(/_/g, ' ').toUpperCase();
+                return normalizedRule.includes(normalizedLabel) || normalizedLabel.includes(normalizedRule);
+            });
+            
+            if (isValidity) {
                 valSum += scoreVal;
                 valCount++;
             }
-            if (accuracyLabels.some(lbl => ex.rule_type.toUpperCase().includes(lbl.toUpperCase()))) {
+            if (isAccuracy) {
                 accSum += scoreVal;
                 accCount++;
             }
@@ -915,8 +926,8 @@ const DataQualityDetail: React.FC = () => {
     let totalRuleCount = 0;
     let valSum = 0; let valCount = 0;
     let accSum = 0; let accCount = 0;
-    const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Freshness', 'Validity'];
-    const accuracyLabels = ['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY'];
+    const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Pattern Check', 'Freshness', 'Validity'];
+    const accuracyLabels = ['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY', 'Blank Check'];
 
     const columnDQMap: Record<string, string> = {};
     activeColumnsList.forEach(col => {
@@ -928,10 +939,22 @@ const DataQualityDetail: React.FC = () => {
         colSum += s;
         totalScoreSum += s;
         totalRuleCount++;
-        if (validityLabels.some(lbl => rule.label.toUpperCase().includes(lbl.toUpperCase()))) {
+        
+        const normalizedRule = rule.label.replace(/_/g, ' ').toUpperCase();
+        
+        const isValidity = validityLabels.some(lbl => {
+            const normalizedLabel = lbl.replace(/_/g, ' ').toUpperCase();
+            return normalizedRule.includes(normalizedLabel) || normalizedLabel.includes(normalizedRule);
+        });
+        const isAccuracy = accuracyLabels.some(lbl => {
+            const normalizedLabel = lbl.replace(/_/g, ' ').toUpperCase();
+            return normalizedRule.includes(normalizedLabel) || normalizedLabel.includes(normalizedRule);
+        });
+        
+        if (isValidity) {
           valSum += s; valCount++;
         }
-        if (accuracyLabels.some(lbl => rule.label.toUpperCase().includes(lbl.toUpperCase()))) {
+        if (isAccuracy) {
           accSum += s; accCount++;
         }
       });
@@ -1024,8 +1047,8 @@ const DataQualityDetail: React.FC = () => {
   };
 
   const getCalculationDetails = (type: 'validity' | 'accuracy') => {
-    const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Freshness', 'Validity'];
-    const accuracyLabels = ['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY'];
+    const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Pattern Check', 'Freshness', 'Validity'];
+    const accuracyLabels = ['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY', 'Blank Check'];
     
     const targetLabels = type === 'validity' ? validityLabels : accuracyLabels;
     const details: { column: string; rule: string; score: number; passed: number; total: number }[] = [];
@@ -1035,7 +1058,13 @@ const DataQualityDetail: React.FC = () => {
       const column = parts[0];
       const rule = parts.slice(1).join('|');
       
-      if (targetLabels.some(lbl => rule.toUpperCase().includes(lbl.toUpperCase()))) {
+      const normalizedRule = rule.replace(/_/g, ' ').toUpperCase();
+      const isMatched = targetLabels.some(lbl => {
+        const normalizedLabel = lbl.replace(/_/g, ' ').toUpperCase();
+        return normalizedRule.includes(normalizedLabel) || normalizedLabel.includes(normalizedRule);
+      });
+      
+      if (isMatched) {
         details.push({
           column,
           rule,
