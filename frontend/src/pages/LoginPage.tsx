@@ -249,7 +249,8 @@ const LoginPage: React.FC = () => {
         setForgotEmail('');
         setForgotOtp('');
         setForgotNewPassword('');
-        setStep('user_signin');
+        const backStep = localStorage.getItem('selected_role') === 'admin' ? 'admin_login' : 'user_signin';
+        setStep(backStep);
       } else {
         setError(res.message);
       }
@@ -684,6 +685,16 @@ const LoginPage: React.FC = () => {
                     required
                   />
                 </div>
+              </div>
+
+              <div style={{ textAlign: 'right', marginTop: '-10px', marginBottom: '15px' }}>
+                <a 
+                  href="#" 
+                  onClick={(e) => { e.preventDefault(); setStep('forgot_password'); setForgotPasswordStep(1); setError(''); setSuccessMessage(''); }}
+                  style={{ color: '#8b5cf6', fontSize: '13px', textDecoration: 'none' }}
+                >
+                  Forgot Password?
+                </a>
               </div>
 
               <button type="submit" className="btn-login" disabled={isLoading}>
@@ -1273,7 +1284,16 @@ const LoginPage: React.FC = () => {
 
             <button 
               type="button" 
-              onClick={() => { setStep('user_signin'); setError(''); setSuccessMessage(''); setForgotPasswordStep(1); setForgotEmail(''); setForgotOtp(''); setForgotNewPassword(''); }} 
+              onClick={() => { 
+                const backStep = localStorage.getItem('selected_role') === 'admin' ? 'admin_login' : 'user_signin';
+                setStep(backStep); 
+                setError(''); 
+                setSuccessMessage(''); 
+                setForgotPasswordStep(1); 
+                setForgotEmail(''); 
+                setForgotOtp(''); 
+                setForgotNewPassword(''); 
+              }} 
               className="btn-step-back"
             >
               <ArrowLeft size={16} />
