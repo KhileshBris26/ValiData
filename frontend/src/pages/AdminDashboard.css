@@ -1,9 +1,9 @@
 .admin-container {
-  min-height: 100vh;
+  min-height: 100%;
   display: flex;
   align-items: flex-start;
   justify-content: stretch;
-  background: #020617;
+  background: transparent;
   position: relative;
   overflow-y: auto;
   font-family: 'Inter', sans-serif;

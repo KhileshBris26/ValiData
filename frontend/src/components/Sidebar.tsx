@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Wand2, Database, GitMerge, History, KeyRound, BookOpen, Sun, Moon, Sparkles, Radio, Bell } from 'lucide-react';
+import { LayoutDashboard, Wand2, Database, GitMerge, History, KeyRound, BookOpen, Sun, Moon, Sparkles, Radio, Bell, Users } from 'lucide-react';
 import './Sidebar.css';
 
 const Sidebar: React.FC = () => {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const userType = localStorage.getItem('user_type');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -50,6 +51,13 @@ const Sidebar: React.FC = () => {
           <History size={20} />
           <span>Usage Analytics</span>
         </NavLink>
+
+        {userType === 'admin' && (
+          <NavLink to="/admin-dashboard" className={({isActive}) => isActive ? "nav-item active" : "nav-item"}>
+            <Users size={20} />
+            <span>User Management</span>
+          </NavLink>
+        )}
 
         <div className="nav-section-title">Data Observability</div>
         <NavLink to="/observability/connections" className={({isActive}) => isActive ? "nav-item active" : "nav-item"}>

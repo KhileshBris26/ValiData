@@ -246,14 +246,7 @@ const AdminDashboard: React.FC = () => {
             </div>
           </div>
           <div className="admin-header-actions">
-            <button onClick={() => navigate('/')} className="btn-admin-nav">
-              <ArrowLeft size={16} />
-              <span>Go to main app</span>
-            </button>
-            <button onClick={handleSignOut} className="btn-admin-signout">
-              <LogOut size={16} />
-              <span>Sign Out</span>
-            </button>
+            {/* Nav and SignOut handled by main app TopBar */}
           </div>
         </div>
 

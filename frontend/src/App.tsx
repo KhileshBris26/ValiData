@@ -45,14 +45,6 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route 
-            path="/admin-dashboard" 
-            element={
-              <ProtectedRoute>
-                <AdminDashboard />
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
             path="/*" 
             element={
               <ProtectedRoute>
@@ -134,6 +126,7 @@ function AuthenticatedApp() {
             <Route path="/catalog/:database/:schema/:table/dq/primary" element={<DataQualityDetail />} />
             <Route path="/catalog/:database/:schema/:table/dq/primary/create-rule/:column" element={<CreateRule />} />
             <Route path="/rule/:ruleName" element={<RuleDetail />} />
+            <Route path="/admin-dashboard" element={<AdminDashboard />} />
           </Routes>
         </main>
       </div>
