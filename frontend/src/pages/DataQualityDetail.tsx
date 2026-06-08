@@ -130,17 +130,18 @@ const DataQualityDetail: React.FC = () => {
         setHasEvaluated(true);
         const backendExecs = res.data.executions || [];
         
-        // Reconstruct evaluatedResults
-        const newEval = {
-            table: table,
-            overall: res.data.overall || 100,
-            validity: res.data.overall || 100, // approximations if validity/accuracy aren't split in backend
-            accuracy: res.data.overall || 100,
-            columns: {} as Record<string, string>
-        };
+        const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Freshness', 'Validity'];
+        const accuracyLabels = ['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY'];
         
+        let valSum = 0; let valCount = 0;
+        let accSum = 0; let accCount = 0;
+
         // Reconstruct ruleExecutionResults
         const newRuleExecResults: Record<string, any> = {};
+        
+        // Temporary columns status mapping
+        const columnsStatus: Record<string, string> = {};
+
         backendExecs.forEach((ex: any) => {
             const key = `${ex.column_name}|${ex.rule_type}`;
             const scoreVal = ex.total_rows > 0 ? Math.round((1 - ex.failed_rows / ex.total_rows) * 100) : 100;
@@ -151,15 +152,33 @@ const DataQualityDetail: React.FC = () => {
                 score: scoreVal
             };
             
+            if (validityLabels.some(lbl => ex.rule_type.toUpperCase().includes(lbl.toUpperCase()))) {
+                valSum += scoreVal;
+                valCount++;
+            }
+            if (accuracyLabels.some(lbl => ex.rule_type.toUpperCase().includes(lbl.toUpperCase()))) {
+                accSum += scoreVal;
+                accCount++;
+            }
+
             // Reconstruct column status based on the lowest score
-            if (!newEval.columns[ex.column_name]) {
-                newEval.columns[ex.column_name] = scoreVal > 80 ? 'high' : scoreVal > 50 ? 'med' : 'low';
+            if (!columnsStatus[ex.column_name]) {
+                columnsStatus[ex.column_name] = scoreVal > 80 ? 'high' : scoreVal > 50 ? 'med' : 'low';
             } else {
-                const currentStatus = newEval.columns[ex.column_name];
-                if (currentStatus === 'high' && scoreVal <= 80) newEval.columns[ex.column_name] = 'med';
-                if (currentStatus === 'med' && scoreVal <= 50) newEval.columns[ex.column_name] = 'low';
+                const currentStatus = columnsStatus[ex.column_name];
+                if (currentStatus === 'high' && scoreVal <= 80) columnsStatus[ex.column_name] = 'med';
+                if (currentStatus === 'med' && scoreVal <= 50) columnsStatus[ex.column_name] = 'low';
             }
         });
+        
+        // Reconstruct evaluatedResults with dynamically split scores
+        const newEval = {
+            table: table,
+            overall: res.data.overall || 100,
+            validity: valCount > 0 ? Math.round(valSum / valCount) : (res.data.overall || 100),
+            accuracy: accCount > 0 ? Math.round(accSum / accCount) : (res.data.overall || 100),
+            columns: columnsStatus
+        };
         
         setEvaluatedResults(newEval);
         setRuleExecutionResults(newRuleExecResults);
