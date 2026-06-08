@@ -40,6 +40,7 @@ const DataQualityDetail: React.FC = () => {
   const [hasEvaluated, setHasEvaluated] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [hoveredRule, setHoveredRule] = useState<string | null>(null);
+  const [hoveredDim, setHoveredDim] = useState<'validity' | 'accuracy' | null>(null);
   const [selectedRuleForPanel, setSelectedRuleForPanel] = useState<string | null>(null);
   const [panelTab, setPanelTab] = useState('Configuration');
 
@@ -1102,8 +1103,107 @@ const DataQualityDetail: React.FC = () => {
           <div className="metric-card">
             <span className="m-label">DQ Dimensions</span>
             <div className="dimensions-list">
-              <div className="dim-row"><span className="dim-dot green"></span><span className="dim-pct">{displayValidity}%</span><span className="dim-lbl">Validity</span></div>
-              <div className="dim-row"><span className="dim-dot pink"></span><span className="dim-pct">{displayAccuracy}%</span><span className="dim-lbl">Accuracy</span></div>
+              <div 
+                className="dim-row" 
+                style={{ position: 'relative', cursor: 'pointer' }}
+                onMouseEnter={() => setHoveredDim('validity')}
+                onMouseLeave={() => setHoveredDim(null)}
+              >
+                <span className="dim-dot green"></span>
+                <span className="dim-pct">{displayValidity}%</span>
+                <span className="dim-lbl">Validity</span>
+                
+                {hoveredDim === 'validity' && (
+                  <div style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 8px)',
+                    left: '0',
+                    width: '280px',
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+                    zIndex: 1000,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    color: '#1e293b',
+                    textAlign: 'left',
+                    cursor: 'default'
+                  }}>
+                    <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', margin: 0 }}>Validity Score Calculation</h4>
+                    <p style={{ fontSize: '11px', color: '#475569', margin: 0, lineHeight: '1.4' }}>
+                      <strong>Formula:</strong> Average pass rate of all active Validity rules.
+                    </p>
+                    <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '6px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                        Parameters included:
+                      </span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {['Email Format', 'Date Format', 'Pattern Match', 'Freshness', 'Validity'].map(lbl => (
+                          <span key={lbl} style={{
+                            background: '#f1f5f9', color: '#475569', fontSize: '10px', 
+                            padding: '2px 6px', borderRadius: '4px', fontWeight: 500
+                          }}>{lbl}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ position: 'absolute', top: '-6px', left: '20px', transform: 'rotate(45deg)', width: '12px', height: '12px', background: '#ffffff', borderTop: '1px solid #e2e8f0', borderLeft: '1px solid #e2e8f0' }} />
+                  </div>
+                )}
+              </div>
+              
+              <div 
+                className="dim-row" 
+                style={{ position: 'relative', cursor: 'pointer' }}
+                onMouseEnter={() => setHoveredDim('accuracy')}
+                onMouseLeave={() => setHoveredDim(null)}
+              >
+                <span className="dim-dot pink"></span>
+                <span className="dim-pct">{displayAccuracy}%</span>
+                <span className="dim-lbl">Accuracy</span>
+                
+                {hoveredDim === 'accuracy' && (
+                  <div style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 8px)',
+                    left: '0',
+                    width: '280px',
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+                    zIndex: 1000,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    color: '#1e293b',
+                    textAlign: 'left',
+                    cursor: 'default'
+                  }}>
+                    <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', margin: 0 }}>Accuracy Score Calculation</h4>
+                    <p style={{ fontSize: '11px', color: '#475569', margin: 0, lineHeight: '1.4' }}>
+                      <strong>Formula:</strong> Average pass rate of all active Accuracy rules.
+                    </p>
+                    <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '6px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px' }}>
+                        Parameters included:
+                      </span>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY'].map(lbl => (
+                          <span key={lbl} style={{
+                            background: '#f1f5f9', color: '#475569', fontSize: '10px', 
+                            padding: '2px 6px', borderRadius: '4px', fontWeight: 500
+                          }}>{lbl}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ position: 'absolute', top: '-6px', left: '20px', transform: 'rotate(45deg)', width: '12px', height: '12px', background: '#ffffff', borderTop: '1px solid #e2e8f0', borderLeft: '1px solid #e2e8f0' }} />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <div className="metric-card graph-card">
