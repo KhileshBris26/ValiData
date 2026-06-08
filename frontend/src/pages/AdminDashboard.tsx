@@ -105,6 +105,18 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to completely delete this user? This action cannot be undone.")) return;
+    try {
+      await axios.delete(`${API_BASE}/admin/users/${id}`);
+      setActiveMessage(`User deleted successfully!`);
+      setTimeout(() => setActiveMessage(null), 4000);
+      loadRequests();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleSignOut = () => {
     localStorage.removeItem('robin_auth_token');
     localStorage.removeItem('robin_user');
@@ -348,8 +360,11 @@ const AdminDashboard: React.FC = () => {
                               <button onClick={() => handleApprove(req.user_id || req.id)} className="btn-approve">
                                 Approve
                               </button>
-                              <button onClick={() => handleReject(req.user_id || req.id)} className="btn-reject">
+                              <button onClick={() => handleReject(req.user_id || req.id)} className="btn-reject" style={{ marginRight: '8px' }}>
                                 Reject
+                              </button>
+                              <button onClick={() => handleDelete(req.user_id || req.id)} className="btn-reject" style={{ background: 'transparent', border: '1px solid #ef4444' }}>
+                                Delete
                               </button>
                             </td>
                           </tr>
@@ -393,15 +408,18 @@ const AdminDashboard: React.FC = () => {
                             <td>{req.last_login_at || 'Never'}</td>
                             <td style={{ textAlign: 'right' }}>
                               {req.status === 'APPROVED' && (
-                                <button onClick={() => handleRevoke(req.user_id || req.id)} className="btn-reject" style={{ padding: '4px 10px' }}>
+                                <button onClick={() => handleRevoke(req.user_id || req.id)} className="btn-reject" style={{ padding: '4px 10px', marginRight: '8px' }}>
                                   Revoke Access
                                 </button>
                               )}
                               {(req.status === 'REJECTED' || req.status === 'REVOKED') && (
-                                <button onClick={() => handleReactivate(req.user_id || req.id)} className="btn-approve" style={{ padding: '4px 10px' }}>
+                                <button onClick={() => handleReactivate(req.user_id || req.id)} className="btn-approve" style={{ padding: '4px 10px', marginRight: '8px' }}>
                                   Re-activate
                                 </button>
                               )}
+                              <button onClick={() => handleDelete(req.user_id || req.id)} className="btn-reject" style={{ padding: '4px 10px', background: 'transparent', border: '1px solid #ef4444' }}>
+                                Delete
+                              </button>
                             </td>
                           </tr>
                         ))}

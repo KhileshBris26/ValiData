@@ -625,6 +625,20 @@ async def update_user_status(user_id: str, request: AdminStatusRequest):
     finally:
         conn.close()
 
+@app.delete("/api/v1/admin/users/{user_id}")
+async def delete_user(user_id: str):
+    conn, cursor = get_db_connection()
+    try:
+        query = "DELETE FROM users WHERE user_id = %s OR id::text = %s" if DATABASE_URL else "DELETE FROM users WHERE user_id = ? OR id = ?"
+        cursor.execute(query, (user_id, user_id))
+        conn.commit()
+        return {"status": "success", "message": "User deleted successfully"}
+    except Exception as e:
+        print(f"Delete user error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete user")
+    finally:
+        conn.close()
+
 @app.post("/api/v1/auth/migrate_legacy_users")
 async def migrate_legacy_users(request: MigrateUsersRequest):
     conn, cursor = get_db_connection()
