@@ -1257,30 +1257,28 @@ const LoginPage: React.FC = () => {
                 </div>
               )}
 
-              <button type="submit" className="btn-primary" disabled={isLoading} style={{ marginTop: '10px' }}>
+              <button type="submit" className="btn-login" disabled={isLoading}>
                 {isLoading ? (
-                  <><Loader2 className="spinner" size={18} /> Processing...</>
+                  <Loader2 className="spinner" size={20} />
                 ) : (
                   <>
-                    {forgotPasswordStep === 1 && "Send OTP"}
-                    {forgotPasswordStep === 2 && "Verify OTP"}
-                    {forgotPasswordStep === 3 && "Reset Password"}
+                    {forgotPasswordStep === 1 && <><Mail size={18} /><span>Send OTP</span></>}
+                    {forgotPasswordStep === 2 && <><Key size={18} /><span>Verify OTP</span></>}
+                    {forgotPasswordStep === 3 && <><Lock size={18} /><span>Reset Password</span></>}
+                    <ArrowRight size={18} />
                   </>
                 )}
               </button>
             </form>
 
-            <div style={{ textAlign: 'center', marginTop: '20px' }}>
-              <button 
-                type="button" 
-                onClick={() => { setStep('user_signin'); setError(''); setSuccessMessage(''); }} 
-                className="btn-secondary"
-                style={{ width: '100%' }}
-              >
-                <ArrowLeft size={16} />
-                <span>Back to Login</span>
-              </button>
-            </div>
+            <button 
+              type="button" 
+              onClick={() => { setStep('user_signin'); setError(''); setSuccessMessage(''); setForgotPasswordStep(1); setForgotEmail(''); setForgotOtp(''); setForgotNewPassword(''); }} 
+              className="btn-step-back"
+            >
+              <ArrowLeft size={16} />
+              <span>Back to Login</span>
+            </button>
           </div>
         )}
       </div>
