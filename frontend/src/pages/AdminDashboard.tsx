@@ -121,6 +121,26 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  const handleToggleAdmin = async (id: string, currentRoles?: string | string[]) => {
+    let rolesArray: string[] = [];
+    if (typeof currentRoles === 'string') {
+        try { rolesArray = JSON.parse(currentRoles); } catch { rolesArray = []; }
+    } else if (Array.isArray(currentRoles)) {
+        rolesArray = currentRoles;
+    }
+    const isAdmin = rolesArray.includes('ADMIN');
+    const newIsAdmin = !isAdmin;
+    
+    try {
+      await axios.post(`${API_BASE}/admin/users/${id}/admin_access`, { is_admin: newIsAdmin, admin_username: localStorage.getItem('robin_user') || 'Admin' });
+      setActiveMessage(`Admin access ${newIsAdmin ? 'granted' : 'revoked'} successfully!`);
+      setTimeout(() => setActiveMessage(null), 4000);
+      loadRequests();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleSignOut = () => {
     localStorage.removeItem('robin_auth_token');
     localStorage.removeItem('robin_user');
@@ -400,6 +420,7 @@ const AdminDashboard: React.FC = () => {
                           <th>Username</th>
                           <th>Platform</th>
                           <th>Status</th>
+                          <th>Privilege</th>
                           <th>Created At</th>
                           <th>Last Login</th>
                           <th style={{ textAlign: 'right' }}>Actions</th>
@@ -417,6 +438,25 @@ const AdminDashboard: React.FC = () => {
                               <span className={`badge ${req.status.toLowerCase()}`}>
                                 {req.status}
                               </span>
+                            </td>
+                            <td>
+                              {(() => {
+                                let rolesArray: string[] = [];
+                                if (typeof req.roles === 'string') {
+                                    try { rolesArray = JSON.parse(req.roles); } catch { rolesArray = []; }
+                                } else if (Array.isArray(req.roles)) {
+                                    rolesArray = req.roles;
+                                }
+                                const isAdmin = rolesArray.includes('ADMIN');
+                                return (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    {isAdmin ? <span className="badge approved" style={{ width: '50px', textAlign: 'center' }}>Admin</span> : <span className="badge pending" style={{ width: '50px', textAlign: 'center' }}>User</span>}
+                                    <button onClick={() => handleToggleAdmin(req.user_id || req.id, req.roles)} className={isAdmin ? "btn-reject" : "btn-approve"} style={{ padding: '2px 8px', fontSize: '11px', border: isAdmin ? '1px solid #ef4444' : '1px solid #10b981', background: 'transparent' }}>
+                                      {isAdmin ? "Demote" : "Promote"}
+                                    </button>
+                                  </div>
+                                );
+                              })()}
                             </td>
                             <td>{req.created_at}</td>
                             <td>{req.last_login_at || 'Never'}</td>

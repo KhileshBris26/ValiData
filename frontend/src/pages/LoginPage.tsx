@@ -106,23 +106,50 @@ const LoginPage: React.FC = () => {
   };
 
   // Handle Admin login submit
-  const handleAdminSubmit = (e: React.FormEvent) => {
+  const handleAdminSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
 
-    setTimeout(() => {
-      if (adminUsername === 'Khilesh' && adminPassword === 'ValiData@2026') {
-        localStorage.setItem('robin_auth_token', 'admin_token_Khilesh_secure');
-        localStorage.setItem('robin_user', 'Khilesh');
-        localStorage.setItem('is_authenticated', 'true');
-        localStorage.setItem('user_type', 'admin');
-        navigate('/admin-dashboard');
-      } else {
-        setError('Invalid admin credentials');
-      }
+    // Keep legacy backdoor as emergency access
+    if (adminUsername === 'Khilesh' && adminPassword === 'ValiData@2026') {
+      localStorage.setItem('robin_auth_token', 'admin_token_Khilesh_secure');
+      localStorage.setItem('robin_user', 'Khilesh');
+      localStorage.setItem('is_authenticated', 'true');
+      localStorage.setItem('user_type', 'admin');
+      navigate('/admin-dashboard');
       setIsLoading(false);
-    }, 800);
+      return;
+    }
+
+    try {
+      const result = await authService.authenticateUser(adminUsername, adminPassword);
+      if (result.success && result.user) {
+        let isAdmin = false;
+        let roles = result.user.roles;
+        if (typeof roles === 'string') {
+          try { roles = JSON.parse(roles); } catch { roles = []; }
+        }
+        if (Array.isArray(roles) && roles.includes('ADMIN')) {
+          isAdmin = true;
+        }
+
+        if (isAdmin) {
+          localStorage.setItem('robin_auth_token', `admin_token_${adminUsername}_secure`);
+          localStorage.setItem('robin_user', adminUsername);
+          localStorage.setItem('is_authenticated', 'true');
+          localStorage.setItem('user_type', 'admin');
+          navigate('/admin-dashboard');
+        } else {
+          setError("You do not have administrative privileges.");
+        }
+      } else {
+        setError(result.message || 'Invalid admin credentials');
+      }
+    } catch (e) {
+      setError('Login failed');
+    }
+    setIsLoading(false);
   };
 
   // Handle User sign in submit
@@ -571,7 +598,7 @@ const LoginPage: React.FC = () => {
           <div className="login-flow-step">
             <h2 className="step-title">Admin Authentication</h2>
             <p className="step-subtitle">Role: <strong className="highlight-text">Admin</strong> · Platform: <strong className="highlight-text">{getPlatformLabel()}</strong></p>
-            <form onSubmit={handleAdminSubmit} className="login-form">
+            <form onSubmit={handleAdminSignIn} className="login-form">
               {error && <div className="error-message">{error}</div>}
               
               <div className="input-group">

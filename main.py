@@ -461,6 +461,10 @@ class AdminStatusRequest(BaseModel):
     status: str
     admin_username: str
 
+class AdminRoleRequest(BaseModel):
+    is_admin: bool
+    admin_username: str
+
 @app.post("/api/v1/auth/register")
 async def register(request: RegisterRequest):
     conn, cursor = get_db_connection()
@@ -644,6 +648,29 @@ async def delete_user(user_id: str):
     except Exception as e:
         print(f"Delete user error: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete user")
+    finally:
+        conn.close()
+
+@app.post("/api/v1/admin/users/{user_id}/admin_access")
+async def toggle_admin_access(user_id: str, request: AdminRoleRequest):
+    conn, cursor = get_db_connection()
+    try:
+        roles_json = '["PUBLIC", "ADMIN"]' if request.is_admin else '["PUBLIC"]'
+        if DATABASE_URL:
+            query = "UPDATE users SET roles = %s WHERE user_id = %s OR id::text = %s"
+            cursor.execute(query, (roles_json, user_id, user_id))
+        else:
+            try:
+                query = "UPDATE users SET roles = ? WHERE user_id = ? OR id = ?"
+                cursor.execute(query, (roles_json, user_id, user_id))
+            except Exception:
+                query = "UPDATE users SET roles = ? WHERE id = ?"
+                cursor.execute(query, (roles_json, user_id))
+        conn.commit()
+        return {"status": "success", "message": "Admin access updated"}
+    except Exception as e:
+        print(f"Admin access error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update admin access")
     finally:
         conn.close()
 
