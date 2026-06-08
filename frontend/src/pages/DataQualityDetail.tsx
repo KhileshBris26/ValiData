@@ -41,6 +41,10 @@ const DataQualityDetail: React.FC = () => {
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [hoveredRule, setHoveredRule] = useState<string | null>(null);
   const [hoveredDim, setHoveredDim] = useState<'validity' | 'accuracy' | null>(null);
+  const [calculationModal, setCalculationModal] = useState<{
+    type: 'validity' | 'accuracy';
+    tableName: string;
+  } | null>(null);
   const [selectedRuleForPanel, setSelectedRuleForPanel] = useState<string | null>(null);
   const [panelTab, setPanelTab] = useState('Configuration');
 
@@ -1019,6 +1023,32 @@ const DataQualityDetail: React.FC = () => {
     setRefreshTrigger(prev => prev + 1);
   };
 
+  const getCalculationDetails = (type: 'validity' | 'accuracy') => {
+    const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Freshness', 'Validity'];
+    const accuracyLabels = ['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY'];
+    
+    const targetLabels = type === 'validity' ? validityLabels : accuracyLabels;
+    const details: { column: string; rule: string; score: number; passed: number; total: number }[] = [];
+    
+    Object.entries(ruleExecutionResults).forEach(([key, val]) => {
+      const parts = key.split('|');
+      const column = parts[0];
+      const rule = parts.slice(1).join('|');
+      
+      if (targetLabels.some(lbl => rule.toUpperCase().includes(lbl.toUpperCase()))) {
+        details.push({
+          column,
+          rule,
+          score: val.score,
+          passed: val.passed,
+          total: val.total
+        });
+      }
+    });
+    
+    return details;
+  };
+
   // Scores used for UI rendering
   const displayOverall = (evaluatedResults && evaluatedResults.table === table) ? evaluatedResults.overall : 100;
   const displayValidity = (evaluatedResults && evaluatedResults.table === table) ? evaluatedResults.validity : 100;
@@ -1108,30 +1138,35 @@ const DataQualityDetail: React.FC = () => {
                 style={{ position: 'relative', cursor: 'pointer' }}
                 onMouseEnter={() => setHoveredDim('validity')}
                 onMouseLeave={() => setHoveredDim(null)}
+                onClick={() => setCalculationModal({ type: 'validity', tableName: table || '' })}
+                title="Click to see Validity calculation breakdown"
               >
                 <span className="dim-dot green"></span>
-                <span className="dim-pct">{displayValidity}%</span>
+                <span className="dim-pct" style={{ textDecoration: 'underline dashed rgba(255,255,255,0.4)' }}>{displayValidity}%</span>
                 <span className="dim-lbl">Validity</span>
                 
                 {hoveredDim === 'validity' && (
-                  <div style={{
-                    position: 'absolute',
-                    top: 'calc(100% + 8px)',
-                    left: '0',
-                    width: '280px',
-                    background: '#ffffff',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    padding: '12px',
-                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
-                    zIndex: 1000,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '8px',
-                    color: '#1e293b',
-                    textAlign: 'left',
-                    cursor: 'default'
-                  }}>
+                  <div 
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 8px)',
+                      left: '0',
+                      width: '280px',
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+                      zIndex: 1000,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      color: '#1e293b',
+                      textAlign: 'left',
+                      cursor: 'default'
+                    }}
+                  >
                     <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', margin: 0 }}>Validity Score Calculation</h4>
                     <p style={{ fontSize: '11px', color: '#475569', margin: 0, lineHeight: '1.4' }}>
                       <strong>Formula:</strong> Average pass rate of all active Validity rules.
@@ -1159,30 +1194,35 @@ const DataQualityDetail: React.FC = () => {
                 style={{ position: 'relative', cursor: 'pointer' }}
                 onMouseEnter={() => setHoveredDim('accuracy')}
                 onMouseLeave={() => setHoveredDim(null)}
+                onClick={() => setCalculationModal({ type: 'accuracy', tableName: table || '' })}
+                title="Click to see Accuracy calculation breakdown"
               >
                 <span className="dim-dot pink"></span>
-                <span className="dim-pct">{displayAccuracy}%</span>
+                <span className="dim-pct" style={{ textDecoration: 'underline dashed rgba(255,255,255,0.4)' }}>{displayAccuracy}%</span>
                 <span className="dim-lbl">Accuracy</span>
                 
                 {hoveredDim === 'accuracy' && (
-                  <div style={{
-                    position: 'absolute',
-                    top: 'calc(100% + 8px)',
-                    left: '0',
-                    width: '280px',
-                    background: '#ffffff',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    padding: '12px',
-                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
-                    zIndex: 1000,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '8px',
-                    color: '#1e293b',
-                    textAlign: 'left',
-                    cursor: 'default'
-                  }}>
+                  <div 
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 8px)',
+                      left: '0',
+                      width: '280px',
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+                      zIndex: 1000,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      color: '#1e293b',
+                      textAlign: 'left',
+                      cursor: 'default'
+                    }}
+                  >
                     <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', margin: 0 }}>Accuracy Score Calculation</h4>
                     <p style={{ fontSize: '11px', color: '#475569', margin: 0, lineHeight: '1.4' }}>
                       <strong>Formula:</strong> Average pass rate of all active Accuracy rules.
@@ -2293,6 +2333,126 @@ const DataQualityDetail: React.FC = () => {
                 }}
               >
                 {savingSchedule ? 'Saving...' : 'Save Schedule'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {calculationModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+          background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(4px)',
+          zIndex: 3000, display: 'flex', justifyContent: 'center', alignItems: 'center'
+        }}>
+          <div style={{
+            background: '#ffffff', borderRadius: '12px', padding: '24px', width: '600px',
+            maxHeight: '80vh', overflowY: 'auto',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            border: '1px solid #e2e8f0', color: '#1e293b', position: 'relative'
+          }}>
+            {/* Modal Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', margin: 0, textTransform: 'capitalize' }}>
+                {calculationModal.type} Score Breakdown
+              </h3>
+              <button
+                onClick={() => setCalculationModal(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
+              Detailed scoring calculation for table <code>{calculationModal.tableName}</code> based on the latest execution rules.
+            </p>
+
+            {/* Calculations Breakdown */}
+            {(() => {
+              const details = getCalculationDetails(calculationModal.type);
+              const totalScore = details.reduce((acc, curr) => acc + curr.score, 0);
+              const count = details.length;
+              const average = count > 0 ? Math.round(totalScore / count) : 100;
+              
+              return (
+                <div>
+                  {count === 0 ? (
+                    <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #e2e8f0' }}>
+                      <p style={{ margin: 0, fontSize: '13px' }}>No active rules executed for this dimension.</p>
+                      <p style={{ margin: '4px 0 0 0', fontSize: '12px', fontWeight: 600, color: '#6366f1' }}>Defaulting to 100%</p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      {/* Formula Box */}
+                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px' }}>
+                        <div style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a', marginBottom: '8px' }}>Scoring Formula:</div>
+                        <div style={{ fontFamily: 'monospace', fontSize: '13px', color: '#4f46e5', background: '#e0e7ff', padding: '10px', borderRadius: '6px', overflowX: 'auto' }}>
+                          {details.map(d => `${d.score}%`).join(' + ')} {count > 1 ? `) / ${count}` : ''} = {average}%
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#64748b', marginTop: '8px' }}>
+                          Average Score = (Sum of Rule Scores) / (Number of Rules)
+                        </div>
+                      </div>
+
+                      {/* Rules Table */}
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>Rule Executions Breakdown:</div>
+                        <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                            <thead>
+                              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 600 }}>
+                                <th style={{ padding: '8px 12px' }}>Column</th>
+                                <th style={{ padding: '8px 12px' }}>Rule Type</th>
+                                <th style={{ padding: '8px 12px', textAlign: 'right' }}>Passed Rows</th>
+                                <th style={{ padding: '8px 12px', textAlign: 'right' }}>Total Rows</th>
+                                <th style={{ padding: '8px 12px', textAlign: 'right' }}>Rule Score</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {details.map((item, idx) => (
+                                <tr key={idx} style={{ borderBottom: idx < details.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                                  <td style={{ padding: '8px 12px', fontWeight: 600 }}>{item.column}</td>
+                                  <td style={{ padding: '8px 12px' }}>{item.rule}</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right', color: '#16a34a', fontWeight: 500 }}>{item.passed.toLocaleString()}</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right', color: '#64748b' }}>{item.total.toLocaleString()}</td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: item.score >= 80 ? '#16a34a' : item.score >= 50 ? '#d97706' : '#dc2626' }}>
+                                    {item.score}%
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Summary stats */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#faf5ff', border: '1px solid #f3e8ff', borderRadius: '8px', padding: '12px 16px', marginTop: '8px' }}>
+                        <div>
+                          <div style={{ fontSize: '12px', color: '#6b21a8', fontWeight: 600 }}>Calculated score</div>
+                          <div style={{ fontSize: '20px', fontWeight: 800, color: '#581c87' }}>{average}%</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{ fontSize: '12px', color: '#6b21a8', display: 'block' }}>Sum: {totalScore}%</span>
+                          <span style={{ fontSize: '12px', color: '#6b21a8', display: 'block' }}>Rules Count: {count}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Close Button */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px', borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
+              <button
+                onClick={() => setCalculationModal(null)}
+                style={{
+                  padding: '8px 20px', borderRadius: '6px', border: 'none',
+                  background: '#6366f1', color: '#ffffff', fontSize: '13px', fontWeight: 600, cursor: 'pointer'
+                }}
+              >
+                Close
               </button>
             </div>
           </div>
