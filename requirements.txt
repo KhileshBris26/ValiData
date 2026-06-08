@@ -7,3 +7,4 @@ thefuzz==0.22.1
 python-Levenshtein==0.27.3
 sqlglot==23.11.0
 psycopg2-binary==2.9.9
+requests>=2.31.0

@@ -477,9 +477,7 @@ class ResetPasswordRequest(BaseModel):
 
 @app.post("/api/v1/auth/forgot-password")
 async def forgot_password(request: ForgotPasswordRequest):
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
+    import requests as http_requests
     import secrets
     from datetime import datetime, timedelta
     
@@ -499,20 +497,16 @@ async def forgot_password(request: ForgotPasswordRequest):
         cursor.execute(update_query, (otp, expires_at, request.email))
         conn.commit()
         
-        smtp_user = os.getenv("SMTP_USER", "validatasupport@gmail.com")
-        smtp_pass = os.getenv("SMTP_PASSWORD")
+        resend_api_key = os.getenv("RESEND_API_KEY")
+        from_email = os.getenv("RESEND_FROM_EMAIL", "ValiData <onboarding@resend.dev>")
         
-        if smtp_pass and smtp_pass != "your-16-char-app-password":
-            msg = MIMEMultipart()
-            msg['From'] = smtp_user
-            msg['To'] = request.email
-            msg['Subject'] = "ValiData - Password Reset OTP"
-            
-            body = f'''
+        if resend_api_key:
+            user_name = user['full_name'] or user['username']
+            html_body = f'''
             <html>
               <body style="font-family: sans-serif; padding: 20px;">
                 <h2>Password Reset Request</h2>
-                <p>Hello {user['full_name'] or user['username']},</p>
+                <p>Hello {user_name},</p>
                 <p>You requested to reset your password. Here is your One-Time Password (OTP):</p>
                 <h1 style="color: #4f46e5; letter-spacing: 5px;">{otp}</h1>
                 <p>This code will expire in 10 minutes.</p>
@@ -521,17 +515,35 @@ async def forgot_password(request: ForgotPasswordRequest):
               </body>
             </html>
             '''
-            msg.attach(MIMEText(body, 'html'))
             
-            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                server.login(smtp_user, smtp_pass)
-                server.send_message(msg)
+            # Use Resend HTTP API directly (no SDK dependency needed)
+            resp = http_requests.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {resend_api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "from": from_email,
+                    "to": [request.email],
+                    "subject": "ValiData - Password Reset OTP",
+                    "html": html_body,
+                }
+            )
+            
+            if resp.status_code in (200, 201):
+                print(f"Resend email sent successfully: {resp.json()}")
+            else:
+                print(f"Resend email failed (status {resp.status_code}): {resp.text}")
+                # Don't raise — OTP is already saved, user can still try again
         else:
-            print(f"MOCK EMAIL (No SMTP Password): OTP for {request.email} is {otp}")
+            print(f"MOCK EMAIL (No RESEND_API_KEY): OTP for {request.email} is {otp}")
             
         return {"status": "success", "message": "If that email is registered, an OTP has been sent."}
     except Exception as e:
+        import traceback
         print(f"Forgot password error: {e}")
+        print(f"Forgot password traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Failed to process request")
     finally:
         conn.close()
