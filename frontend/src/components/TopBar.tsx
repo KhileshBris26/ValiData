@@ -131,6 +131,53 @@ const TopBar: React.FC = () => {
   };
 
   useEffect(() => {
+    const adminToken = localStorage.getItem('robin_auth_token');
+    const roleType = localStorage.getItem('user_type');
+    const isConn = localStorage.getItem('is_connected') === 'true';
+
+    if (adminToken && roleType === 'admin' && !isConn) {
+      console.log('Self-healing admin session in TopBar');
+      
+      const savedCreds = localStorage.getItem('robin_credentials');
+      if (!savedCreds) {
+        const defaultCredentials = {
+          databricks: {
+            server_hostname: 'dbc-ff683f53-d730.cloud.databricks.com',
+            http_path: '/sql/1.0/warehouses/755e296acd2446b6',
+            access_token: 'dapia91ce03b26effdb0d8f98680724ab63c'
+          },
+          snowflake: {
+            account: 'CEDKVOT-PHB81098',
+            user: 'KHILESHKHUBNANI26',
+            password: 'Citius@Mar2026',
+            role: 'ACCOUNTADMIN',
+            warehouse: 'SMALL_WH',
+            database: 'UNICORN',
+            schema: 'DEV'
+          }
+        };
+        localStorage.setItem('robin_credentials', JSON.stringify(defaultCredentials));
+      }
+
+      localStorage.setItem('is_connected', 'true');
+      localStorage.setItem('selected_role', 'ACCOUNTADMIN');
+      localStorage.setItem('selected_platform', 'snowflake');
+
+      const adminSession = {
+        username: localStorage.getItem('robin_user') || 'Khilesh',
+        user_type: 'admin',
+        platform: 'snowflake',
+        credentials_encrypted: true,
+        selected_role: 'ACCOUNTADMIN',
+        is_connected: true
+      };
+      localStorage.setItem('robin_user_session', JSON.stringify(adminSession));
+
+      window.location.reload();
+    }
+  }, []);
+
+  useEffect(() => {
     if (isConnected) {
       fetchLiveRoles();
       fetchLiveWarehouses();
