@@ -14,6 +14,8 @@ from core.lineage_engine import LineageEngine
 from core.usage_analyzer import UsageAnalyzer
 from connectors.snowflake_connector import SnowflakeConnector
 from connectors.databricks_connector import DatabricksConnector
+from services.snowflake_service import SnowflakeService
+from services.databricks_service import DatabricksService
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -1066,9 +1068,11 @@ async def fetch_warehouses(request: FetchRolesRequest):
     finally:
         conn.close()
 
-# Initialize Connectors
+# Initialize Connectors and Services
 snowflake_engine = SnowflakeConnector()
 databricks_engine = DatabricksConnector()
+snowflake_svc = SnowflakeService(snowflake_engine)
+databricks_svc = DatabricksService(databricks_engine)
 
 @app.post("/api/v1/rules/execute")
 async def execute_rule(request: RuleExecutionRequest):
@@ -1080,18 +1084,12 @@ async def execute_rule(request: RuleExecutionRequest):
             rule_type=request.rule_type,
             rule_params=request.rule_params
         )
-        result = None
         if request.platform == "snowflake":
-            snowflake_engine.connect(request.credentials)
-            raw_result = snowflake_engine.execute_query(sql_query)
-            snowflake_engine.disconnect()
+            result = snowflake_svc.execute_dq_rule(request.credentials, sql_query)
         elif request.platform == "databricks":
-            databricks_engine.connect(request.credentials)
-            raw_result = databricks_engine.execute_query(sql_query)
-            databricks_engine.disconnect()
-            
-        # Convert rows to plain dicts and normalize keys to uppercase for cross-platform consistency
-        result = [{k.upper(): v for k, v in dict(row).items()} for row in raw_result] if raw_result else []
+            result = databricks_svc.execute_dq_rule(request.credentials, sql_query)
+        else:
+            result = []
 
         # Log rule execution in the database
         if result and isinstance(result, list) and len(result) > 0:
@@ -1178,16 +1176,14 @@ async def execute_rule(request: RuleExecutionRequest):
 @app.post("/api/v1/ai/suggest_rules")
 async def suggest_rules(request: AISuggestionRequest):
     try:
-        sql_query = QueryGenerator.generate_ai_suggestion_sql(request.platform, request.table_name, request.column_name)
-        result = None
         if request.platform == "snowflake":
-            snowflake_engine.connect(request.credentials)
-            result = snowflake_engine.execute_query(sql_query)
-            snowflake_engine.disconnect()
+            result = snowflake_svc.suggest_rules_ai(request.credentials, request.table_name, request.column_name)
         elif request.platform == "databricks":
-            databricks_engine.connect(request.credentials)
-            result = databricks_engine.execute_query(sql_query)
-            databricks_engine.disconnect()
+            result = databricks_svc.suggest_rules_ai(request.credentials, request.table_name, request.column_name)
+        else:
+            result = []
+            
+        sql_query = QueryGenerator.generate_ai_suggestion_sql(request.platform, request.table_name, request.column_name)
         return {"status": "success", "platform": request.platform, "executed_query": sql_query.strip(), "ai_suggestions": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1205,36 +1201,17 @@ async def suggest_rules_v2(request: SuggestRulesRequest):
     
     conn, cursor = get_db_connection()
     try:
-        if request.platform == "snowflake":
-            snowflake_engine.connect(request.credentials)
-            engine = snowflake_engine
-        elif request.platform == "databricks":
-            databricks_engine.connect(request.credentials)
-            engine = databricks_engine
-        else:
+        if request.platform not in ["snowflake", "databricks"]:
             raise Exception(f"Unsupported platform: {request.platform}")
 
         try:
-            # 1. Fetch Metadata — platform-specific query
-            col_list_str = ",".join([f"'{c}'" for c in request.selected_columns])
+            # 1. Fetch Metadata
             if request.platform == "snowflake":
-                meta_query = f'''
-                    SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
-                    FROM {request.database_name}.INFORMATION_SCHEMA.COLUMNS 
-                    WHERE TABLE_SCHEMA = '{request.schema_name}'
-                    AND TABLE_NAME = '{request.table_name}'
-                    AND COLUMN_NAME IN ({col_list_str})
-                '''
-            else:  # databricks
-                meta_query = f'''
-                    SELECT column_name AS COLUMN_NAME, data_type AS DATA_TYPE, is_nullable AS IS_NULLABLE
-                    FROM system.information_schema.columns 
-                    WHERE table_catalog = '{request.database_name}'
-                    AND table_schema = '{request.schema_name}'
-                    AND table_name = '{request.table_name}'
-                    AND column_name IN ({col_list_str})
-                '''
-            meta_res = engine.execute_query(meta_query)
+                meta_res = snowflake_svc.fetch_column_metadata(request.credentials, request.database_name, request.schema_name, request.table_name, request.selected_columns)
+            elif request.platform == "databricks":
+                meta_res = databricks_svc.fetch_column_metadata(request.credentials, request.database_name, request.schema_name, request.table_name, request.selected_columns)
+            else:
+                meta_res = []
             
             for row in meta_res:
                 col_name = row.get('COLUMN_NAME') or row.get('column_name')
@@ -1318,8 +1295,10 @@ async def suggest_rules_v2(request: SuggestRulesRequest):
                 traceback.print_exc()
                 error_message = f"AI fallback used: {str(ai_e)}"
                 failure_stage = "AI_INFERENCE"
-        finally:
-            engine.disconnect()
+        except Exception as e:
+            error_message = str(e)
+            failure_stage = "METADATA_FETCH"
+            status = "FAILED"
             
         # Ensure table exists before inserting
         create_log_table = """
@@ -1877,80 +1856,53 @@ async def get_column_profile(request: ProfileRequest):
 @app.post("/api/v1/lineage/infer")
 async def infer_lineage(request: LineageRequest):
     try:
-        if request.platform == "snowflake": snowflake_engine.connect(request.credentials)
-        elif request.platform == "databricks": databricks_engine.connect(request.credentials)
-        sql_query = QueryGenerator.generate_information_schema_sql(request.platform, request.database_name, request.schema_name)
-        result = snowflake_engine.execute_query(sql_query) if request.platform == "snowflake" else databricks_engine.execute_query(sql_query)
-        lineage_graph = LineageEngine.infer_relationships(result)
-        return {"status": "success", "nodes": lineage_graph["nodes"], "edges": lineage_graph["edges"]}
+        if request.platform == "snowflake":
+            lineage_graph = snowflake_svc.infer_lineage(request.credentials, request.database_name, request.schema_name)
+        elif request.platform == "databricks":
+            lineage_graph = databricks_svc.infer_lineage(request.credentials, request.database_name, request.schema_name)
+        else:
+            lineage_graph = {"nodes": [], "edges": []}
+            
+        return {"status": "success", "nodes": lineage_graph.get("nodes", []), "edges": lineage_graph.get("edges", [])}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if request.platform == "snowflake": snowflake_engine.disconnect()
-        elif request.platform == "databricks": databricks_engine.disconnect()
 
 @app.post("/api/v1/analytics/usage")
 async def get_usage_analytics(request: AnalyticsRequest):
     try:
-        if request.platform == "snowflake": snowflake_engine.connect(request.credentials)
-        elif request.platform == "databricks": databricks_engine.connect(request.credentials)
-        
-        sql_query = QueryGenerator.generate_query_history_sql(request.platform, request.days_back or 7)
-        result = snowflake_engine.execute_query(sql_query) if request.platform == "snowflake" else databricks_engine.execute_query(sql_query)
-        analytics = UsageAnalyzer.analyze_queries(result)
+        if request.platform == "snowflake":
+            analytics = snowflake_svc.get_usage_analytics(request.credentials, request.days_back or 7)
+        elif request.platform == "databricks":
+            analytics = databricks_svc.get_usage_analytics(request.credentials, request.days_back or 7)
+        else:
+            analytics = []
+            
         return {"status": "success", "analytics": analytics}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if request.platform == "snowflake": snowflake_engine.disconnect()
-        elif request.platform == "databricks": databricks_engine.disconnect()
 
 @app.post("/api/v1/ai/table_summary")
 async def generate_table_summary(request: TableSummaryRequest):
     try:
-        if request.platform == "snowflake": snowflake_engine.connect(request.credentials)
-        elif request.platform == "databricks": databricks_engine.connect(request.credentials)
-        
-        sql_query = QueryGenerator.generate_table_summary_sql(request.platform, request.table_name)
-        result = snowflake_engine.execute_query(sql_query) if request.platform == "snowflake" else databricks_engine.execute_query(sql_query)
-        summary = result[0].get('TABLE_SUMMARY') or result[0].get('table_summary') if result else ""
+        if request.platform == "snowflake":
+            summary = snowflake_svc.generate_table_summary(request.credentials, request.table_name)
+        elif request.platform == "databricks":
+            summary = databricks_svc.generate_table_summary(request.credentials, request.table_name)
+        else:
+            summary = ""
+            
         return {"status": "success", "summary": summary}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        if request.platform == "snowflake": snowflake_engine.disconnect()
-        elif request.platform == "databricks": databricks_engine.disconnect()
-
 @app.post("/api/v1/catalog/tables")
 async def get_catalog_tables(request: CatalogRequest):
     try:
-        sql_query = QueryGenerator.generate_catalog_sql(request.platform)
-        result = None
         if request.platform == "snowflake":
-            snowflake_engine.connect(request.credentials)
-            result = snowflake_engine.execute_query(sql_query)
-            mapped = []
-            if result:
-                for r in result:
-                    # DictCursor might return lowercase or uppercase keys
-                    kind = r.get("kind") or r.get("KIND") or r.get("TYPE")
-                    if kind == "TABLE":
-                        db = r.get("database_name") or r.get("DATABASE_NAME") or r.get("DATABASE")
-                        if db and db.upper() not in ('SNOWFLAKE', 'SNOWFLAKE_SAMPLE_DATA'):
-                            mapped.append({
-                                "DATABASE": db,
-                                "SCHEMA": r.get("schema_name") or r.get("SCHEMA_NAME") or r.get("SCHEMA"),
-                                "NAME": r.get("name") or r.get("NAME"),
-                                "TYPE": "TABLE",
-                                "RECORDS": r.get("rows") or r.get("ROWS") or r.get("RECORDS") or 0,
-                                "ATTRIBUTES": 0
-                            })
-            result = mapped
-            snowflake_engine.disconnect()
+            result = snowflake_svc.get_catalog_tables(request.credentials)
         elif request.platform == "databricks":
-            databricks_engine.connect(request.credentials)
-            result = databricks_engine.execute_query(sql_query)
-            databricks_engine.disconnect()
+            result = databricks_svc.get_catalog_tables(request.credentials)
+        else:
+            result = []
         return {"status": "success", "tables": result or []}
     except Exception as e:
         print(f"Catalog connection failed: {e}")
@@ -1961,15 +1913,11 @@ async def get_table_preview(request: LineageRequest):
     try:
         sql_query = QueryGenerator.generate_preview_sql(request.platform, request.database_name, request.schema_name, request.table_name)
         print(f"Executing preview query on {request.platform}: {sql_query}")
-        result = None
+        result = []
         if request.platform == "snowflake":
-            snowflake_engine.connect(request.credentials)
-            result = snowflake_engine.execute_query(sql_query)
-            snowflake_engine.disconnect()
+            result = snowflake_svc.get_table_preview(request.credentials, request.database_name, request.schema_name, request.table_name)
         elif request.platform == "databricks":
-            databricks_engine.connect(request.credentials)
-            result = databricks_engine.execute_query(sql_query)
-            databricks_engine.disconnect()
+            result = databricks_svc.get_table_preview(request.credentials, request.database_name, request.schema_name, request.table_name)
         
         serialized_rows = [{str(k): str(v) for k, v in row.items()} for row in result] if result else []
         return {"status": "success", "rows": serialized_rows}
@@ -2138,76 +2086,13 @@ async def sample_failed_records(request: SampleFailedRecordsRequest):
       ]
     }
     """
-    groups = []
-
     creds = request.credentials or {}
     if request.platform == "snowflake":
-        engine = snowflake_engine
+        groups = snowflake_svc.sample_failed_records(creds, request.table_name, request.failed_checks)
     elif request.platform == "databricks":
-        engine = databricks_engine
+        groups = databricks_svc.sample_failed_records(creds, request.table_name, request.failed_checks)
     else:
         return {"status": "success", "groups": []}
-
-    try:
-        engine.connect(creds)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Connection failed for {request.platform}: {e}")
-
-    try:
-        for check in request.failed_checks:
-            col = check.column_name
-            rule = check.rule_type.upper()
-
-            if "UNIQUE" in rule:
-                sql = f"""
-                    SELECT
-                        '{col}' AS ATTRIBUTE_NAME,
-                        'Unique Check' AS DQ_CHECK,
-                        a.*
-                    FROM {request.table_name} a
-                    JOIN (
-                        SELECT {col}
-                        FROM {request.table_name}
-                        GROUP BY {col}
-                        HAVING COUNT(*) > 1
-                    ) d
-                    ON a.{col} = d.{col}
-                    ORDER BY a.{col}
-                    LIMIT 5
-                """
-            elif "NULL" in rule:
-                sql = f"""
-                    SELECT
-                        '{col}' AS ATTRIBUTE_NAME,
-                        'Null Check' AS DQ_CHECK,
-                        *
-                    FROM {request.table_name}
-                    WHERE {col} IS NULL
-                    LIMIT 5
-                """
-            else:
-                # Skip unsupported rule types for now
-                continue
-
-            try:
-                raw_rows = engine.execute_query(sql)
-                if not raw_rows:
-                    continue
-                # DictCursor returns list of dicts – normalise to lower-case keys
-                columns = [k.lower() for k in raw_rows[0].keys()]
-                rows = [[str(row[k]) for k in raw_rows[0].keys()] for row in raw_rows]
-                groups.append({
-                    "column_name": col,
-                    "rule_type": "Unique Check" if "UNIQUE" in rule else "Null Check",
-                    "columns": columns,
-                    "rows": rows
-                })
-            except Exception as e:
-                print(f"Sample query failed for {col} / {rule}: {e}")
-                # Continue with remaining checks even if one fails
-                continue
-    finally:
-        engine.disconnect()
 
     return {"status": "success", "groups": groups}
 
@@ -2325,37 +2210,13 @@ async def get_dashboard_warehouse_analytics(request: DashboardRequest):
         platform = request.platform.lower()
         creds = request.credentials or {}
         
-        # Connect to the platform
+        queries = []
         if platform == "snowflake":
-            snowflake_engine.connect(creds)
+            queries = snowflake_svc.get_dashboard_warehouse_analytics_queries(creds)
         elif platform == "databricks":
-            databricks_engine.connect(creds)
+            queries = databricks_svc.get_dashboard_warehouse_analytics_queries(creds)
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
-        
-        queries = []
-        # Attempt to fetch query history
-        try:
-            if platform == "snowflake":
-                # Try table query history first
-                try:
-                    sql = "SELECT QUERY_TEXT FROM TABLE(INFORMATION_SCHEMA.QUERY_HISTORY(RESULT_LIMIT => 500)) ORDER BY START_TIME DESC"
-                    queries = snowflake_engine.execute_query(sql)
-                except Exception:
-                    sql = "SELECT QUERY_TEXT FROM TABLE(INFORMATION_SCHEMA.QUERY_HISTORY_BY_SESSION(RESULT_LIMIT => 500)) ORDER BY START_TIME DESC"
-                    queries = snowflake_engine.execute_query(sql)
-            elif platform == "databricks":
-                sql = "SELECT statement_text as QUERY_TEXT FROM system.query.history ORDER BY start_time DESC LIMIT 500"
-                queries = databricks_engine.execute_query(sql)
-        except Exception as q_err:
-            print(f"Query history retrieval failed, falling back: {q_err}")
-            queries = []
-            
-        # Disconnect engine
-        if platform == "snowflake":
-            snowflake_engine.disconnect()
-        elif platform == "databricks":
-            databricks_engine.disconnect()
             
         # Analyze queries if we found any
         top_table_name = None
