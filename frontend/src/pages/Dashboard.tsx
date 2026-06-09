@@ -6,14 +6,28 @@ import { API_BASE } from '../api';
 import { usePlatform } from '../context/PlatformContext';
 import './Dashboard.css';
 
-const StatCard = ({ icon: Icon, label, value, color }: any) => (
-  <div className="stat-card glass-panel">
-    <div className="stat-icon" style={{ backgroundColor: `${color}20`, color }}>
-      <Icon size={24} />
+const StatCard = ({ icon: Icon, label, value, color, sparkline }: any) => (
+  <div className="stat-card glass-panel" style={{ '--card-accent': color } as React.CSSProperties}>
+    <div className="stat-card-left">
+      <div className="stat-icon" style={{ backgroundColor: `${color}15`, color }}>
+        <Icon size={22} />
+      </div>
+      <div className="stat-info">
+        <div className="stat-value">{value}</div>
+        <div className="stat-label">{label}</div>
+      </div>
     </div>
-    <div className="stat-info">
-      <div className="stat-value">{value}</div>
-      <div className="stat-label">{label}</div>
+    <div className="stat-card-right">
+      <svg className="sparkline" viewBox="0 0 100 30" width="80" height="24">
+        <path
+          d={sparkline}
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
     </div>
   </div>
 );
@@ -226,14 +240,16 @@ const Dashboard: React.FC = () => {
       
       <div className="stats-grid">
         <div onClick={() => navigate('/connections')} style={{ cursor: 'pointer' }}>
-          <StatCard icon={Database} label="Connected Platforms" value={isLoadingWidgets ? '...' : metrics.platforms} color="#3b82f6" />
+          <StatCard icon={Database} label="Connected Platforms" value={isLoadingWidgets ? '...' : metrics.platforms} color="#3b82f6" sparkline="M 0 15 L 20 15 L 40 15 L 60 15 L 80 15 L 100 15" />
         </div>
         <div onClick={() => setShowRulesOverlay(true)} style={{ cursor: 'pointer' }}>
-          <StatCard icon={Activity} label="Active Rules" value={isLoadingWidgets ? '...' : metrics.rules} color="#8b5cf6" />
+          <StatCard icon={Activity} label="Active Rules" value={isLoadingWidgets ? '...' : metrics.rules} color="#8b5cf6" sparkline="M 0 25 Q 20 20 40 22 T 80 12 T 100 8" />
         </div>
-        <StatCard icon={CheckCircle} label="Passed Checks" value={isLoadingWidgets ? '...' : metrics.passed.toLocaleString()} color="#10b981" />
+        <div style={{ cursor: 'default' }}>
+          <StatCard icon={CheckCircle} label="Passed Checks" value={isLoadingWidgets ? '...' : metrics.passed.toLocaleString()} color="#10b981" sparkline="M 0 20 Q 25 30 50 15 T 100 5" />
+        </div>
         <div onClick={() => setShowAnomaliesOverlay(true)} style={{ cursor: 'pointer' }}>
-          <StatCard icon={AlertTriangle} label="Anomalies Detected" value={isLoadingWidgets ? '...' : metrics.anomalies} color="#ef4444" />
+          <StatCard icon={AlertTriangle} label="Anomalies Detected" value={isLoadingWidgets ? '...' : metrics.anomalies} color="#ef4444" sparkline="M 0 5 Q 25 25 50 12 T 100 20" />
         </div>
       </div>
 
@@ -247,14 +263,56 @@ const Dashboard: React.FC = () => {
             <button onClick={() => navigate('/catalog')} className="btn-small" style={{ fontSize: '0.75rem', padding: '4px 10px' }}>View Full Catalog</button>
           </div>
           
+          {(() => {
+            const passRate = metrics.rules > 0 ? Math.min(Math.round((metrics.passed / metrics.rules) * 100), 100) : 100;
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '14px', background: 'rgba(16, 185, 129, 0.03)', border: '1px solid rgba(16, 185, 129, 0.1)', borderRadius: '10px', marginBottom: '20px' }}>
+                <div style={{ position: 'relative', width: '56px', height: '56px', flexShrink: 0 }}>
+                  <svg width="56" height="56" viewBox="0 0 36 36">
+                    <path
+                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      fill="none"
+                      stroke="rgba(255, 255, 255, 0.05)"
+                      strokeWidth="3"
+                    />
+                    <path
+                      strokeDasharray={`${passRate}, 100`}
+                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      fill="none"
+                      stroke="#10b981"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      style={{ transition: 'stroke-dasharray 0.5s ease' }}
+                    />
+                  </svg>
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '0.8rem', fontWeight: 800, color: '#f8fafc' }}>
+                    {passRate}%
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f8fafc' }}>Global Check Success Rate</div>
+                  <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '2px', lineHeight: '1.3' }}>
+                    Overall check validation score based on {metrics.rules} rules actively executing pushdown.
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="health-metrics" style={{ marginBottom: '20px' }}>
             <div className="metric">
               <span>Snowflake Data Cloud</span>
-              <span className="status healthy">Operational</span>
+              <span className="status healthy-pulse">
+                <span className="pulse-dot"></span>
+                Operational
+              </span>
             </div>
             <div className="metric">
               <span>Databricks Intelligence</span>
-              <span className="status healthy">Operational</span>
+              <span className="status healthy-pulse">
+                <span className="pulse-dot"></span>
+                Operational
+              </span>
             </div>
           </div>
 
@@ -280,22 +338,21 @@ const Dashboard: React.FC = () => {
                   Analyzing lineage metadata...
                 </div>
               ) : lineageFlow.edges && lineageFlow.edges.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '160px', overflowY: 'auto', paddingRight: '4px' }}>
-                  {lineageFlow.edges.slice(0, 4).map((edge: any) => (
-                    <div key={edge.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', color: '#f8fafc' }}>
-                        <span style={{ fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }} title={edge.source}>{edge.source}</span>
-                        <span style={{ color: '#6366f1', fontWeight: 900 }}>→</span>
-                        <span style={{ fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }} title={edge.target}>{edge.target}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '170px', overflowY: 'auto', paddingRight: '4px' }}>
+                  {lineageFlow.edges.slice(0, 3).map((edge: any) => (
+                    <div key={edge.id} className="lineage-edge-card">
+                      <div className="lineage-node source" title={edge.source}>{edge.source}</div>
+                      <div className="lineage-connector">
+                        <span className="lineage-line"></span>
+                        <span className="lineage-label" title={edge.label}>{edge.label}</span>
+                        <span className="lineage-arrow">→</span>
                       </div>
-                      <span style={{ fontSize: '0.7rem', color: '#64748b', background: 'rgba(255,255,255,0.03)', padding: '2px 6px', borderRadius: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80px' }} title={edge.label}>
-                        {edge.label}
-                      </span>
+                      <div className="lineage-node target" title={edge.target}>{edge.target}</div>
                     </div>
                   ))}
-                  {lineageFlow.edges.length > 4 && (
+                  {lineageFlow.edges.length > 3 && (
                     <div style={{ fontSize: '0.7rem', color: '#64748b', textAlign: 'center', marginTop: '4px' }}>
-                      + {lineageFlow.edges.length - 4} more relationships in schema
+                      + {lineageFlow.edges.length - 3} more relationships in schema
                     </div>
                   )}
                 </div>
@@ -373,19 +430,33 @@ const Dashboard: React.FC = () => {
               </div>
             ) : queryLogs && queryLogs.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
-                {queryLogs.map((q: any, i: number) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', fontSize: '0.75rem', border: '1px solid rgba(255,255,255,0.03)' }}>
-                    <code style={{ color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '65%', fontFamily: 'monospace' }} title={q.query}>
-                      {q.query}
-                    </code>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ color: '#64748b', fontSize: '0.7rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80px' }} title={q.user}>by {q.user}</span>
-                      <span style={{ color: '#3b82f6', background: 'rgba(59, 130, 246, 0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                        {q.duration}
-                      </span>
+                {queryLogs.map((q: any, i: number) => {
+                  const getDurationStyle = (dur: string) => {
+                    const l = dur.toLowerCase();
+                    if (l.includes('ms') && parseFloat(l) < 300) {
+                      return { color: '#10b981', background: 'rgba(16, 185, 129, 0.1)' };
+                    }
+                    if (l.includes('s') || (l.includes('ms') && parseFloat(l) >= 800)) {
+                      return { color: '#ef4444', background: 'rgba(239, 68, 68, 0.1)' };
+                    }
+                    return { color: '#f59e0b', background: 'rgba(245, 158, 11, 0.1)' };
+                  };
+                  const durStyle = getDurationStyle(q.duration || '0ms');
+
+                  return (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', fontSize: '0.75rem', border: '1px solid rgba(255,255,255,0.03)' }}>
+                      <code style={{ color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '65%', fontFamily: 'monospace' }} title={q.query}>
+                        {q.query}
+                      </code>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ color: '#64748b', fontSize: '0.7rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80px' }} title={q.user}>by {q.user}</span>
+                        <span style={{ ...durStyle, padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                          {q.duration}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div style={{ padding: '20px 0', textAlign: 'center', color: '#64748b', fontSize: '0.8rem' }}>
