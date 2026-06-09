@@ -423,7 +423,7 @@ const Dashboard: React.FC = () => {
           </div>
 
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '10px', fontWeight: 600 }}>Recent Query Log</div>
+            <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: '10px', fontWeight: 600 }}>Recent Data Quality Runs</div>
             {isLoadingWidgets ? (
               <div style={{ color: '#64748b', fontSize: '0.8rem', padding: '20px 0', textAlign: 'center' }}>
                 Fetching execution history...
@@ -431,6 +431,16 @@ const Dashboard: React.FC = () => {
             ) : queryLogs && queryLogs.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
                 {queryLogs.map((q: any, i: number) => {
+                  const getScoreBadgeStyle = (score: number) => {
+                    if (score === 100) {
+                      return { color: '#10b981', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)' };
+                    }
+                    if (score >= 85) {
+                      return { color: '#f59e0b', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.2)' };
+                    }
+                    return { color: '#ef4444', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)' };
+                  };
+
                   const getDurationStyle = (dur: string) => {
                     const l = dur.toLowerCase();
                     if (l.includes('ms') && parseFloat(l) < 300) {
@@ -441,16 +451,49 @@ const Dashboard: React.FC = () => {
                     }
                     return { color: '#f59e0b', background: 'rgba(245, 158, 11, 0.1)' };
                   };
+                  const scoreStyle = getScoreBadgeStyle(q.dq_score);
                   const durStyle = getDurationStyle(q.duration || '0ms');
 
                   return (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '6px', fontSize: '0.75rem', border: '1px solid rgba(255,255,255,0.03)' }}>
-                      <code style={{ color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '65%', fontFamily: 'monospace' }} title={q.query}>
-                        {q.query}
-                      </code>
+                    <div 
+                      key={i} 
+                      className="dq-run-card"
+                      onClick={() => {
+                        const parts = (q.table_name || '').split('.');
+                        if (parts.length >= 3) {
+                          navigate(`/catalog/${parts[0]}/${parts[1]}/${parts[2]}`);
+                        } else {
+                          navigate('/catalog');
+                        }
+                      }}
+                      style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center', 
+                        padding: '10px 14px', 
+                        background: 'rgba(255,255,255,0.02)', 
+                        borderRadius: '8px', 
+                        fontSize: '0.75rem', 
+                        border: '1px solid rgba(255,255,255,0.03)',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxWidth: '60%' }}>
+                        <div style={{ color: '#e2e8f0', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={q.table_name}>
+                          {q.table_name}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '0.7rem' }}>
+                          <span>by {q.user}</span>
+                          <span>•</span>
+                          <span>{q.run_date}</span>
+                        </div>
+                      </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ color: '#64748b', fontSize: '0.7rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '80px' }} title={q.user}>by {q.user}</span>
-                        <span style={{ ...durStyle, padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                        <span style={{ ...scoreStyle, padding: '2px 8px', borderRadius: '12px', fontWeight: 700, fontSize: '0.7rem' }}>
+                          {q.dq_score}% DQ
+                        </span>
+                        <span style={{ ...durStyle, padding: '2px 6px', borderRadius: '4px', fontWeight: 600, fontSize: '0.7rem' }}>
                           {q.duration}
                         </span>
                       </div>
@@ -460,7 +503,7 @@ const Dashboard: React.FC = () => {
               </div>
             ) : (
               <div style={{ padding: '20px 0', textAlign: 'center', color: '#64748b', fontSize: '0.8rem' }}>
-                No recent query logs available in this Snowflake environment.
+                No recent data quality runs available. Run schema checks in Rule Studio to populate the feed.
               </div>
             )}
           </div>
