@@ -40,9 +40,9 @@ const DataQualityDetail: React.FC = () => {
   const [hasEvaluated, setHasEvaluated] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [hoveredRule, setHoveredRule] = useState<string | null>(null);
-  const [hoveredDim, setHoveredDim] = useState<'validity' | 'accuracy' | null>(null);
+  const [hoveredDim, setHoveredDim] = useState<'completeness' | 'accuracy' | null>(null);
   const [calculationModal, setCalculationModal] = useState<{
-    type: 'validity' | 'accuracy';
+    type: 'completeness' | 'accuracy';
     tableName: string;
   } | null>(null);
   const [selectedRuleForPanel, setSelectedRuleForPanel] = useState<string | null>(null);
@@ -113,7 +113,7 @@ const DataQualityDetail: React.FC = () => {
   const [evaluatedResults, setEvaluatedResults] = useState<{
     table?: string;
     overall: number;
-    validity: number;
+    completeness: number;
     accuracy: number;
     columns: Record<string, string>;
   } | null>(null);
@@ -135,10 +135,11 @@ const DataQualityDetail: React.FC = () => {
         setHasEvaluated(true);
         const backendExecs = res.data.executions || [];
         
-        const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Pattern Check', 'Freshness', 'Validity'];
-        const accuracyLabels = ['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY', 'Blank Check'];
+        const accuracyLabels = [
+          'Email Format', 'Date Format', 'Pattern Match', 'Pattern Check', 'Freshness', 'Validity',
+          'Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY', 'Blank Check'
+        ];
         
-        let valSum = 0; let valCount = 0;
         let accSum = 0; let accCount = 0;
 
         // Reconstruct ruleExecutionResults
@@ -159,19 +160,11 @@ const DataQualityDetail: React.FC = () => {
             
             const normalizedRule = ex.rule_type.replace(/_/g, ' ').toUpperCase();
             
-            const isValidity = validityLabels.some(lbl => {
-                const normalizedLabel = lbl.replace(/_/g, ' ').toUpperCase();
-                return normalizedRule.includes(normalizedLabel) || normalizedLabel.includes(normalizedRule);
-            });
             const isAccuracy = accuracyLabels.some(lbl => {
                 const normalizedLabel = lbl.replace(/_/g, ' ').toUpperCase();
                 return normalizedRule.includes(normalizedLabel) || normalizedLabel.includes(normalizedRule);
             });
             
-            if (isValidity) {
-                valSum += scoreVal;
-                valCount++;
-            }
             if (isAccuracy) {
                 accSum += scoreVal;
                 accCount++;
@@ -191,7 +184,7 @@ const DataQualityDetail: React.FC = () => {
         const newEval = {
             table: table,
             overall: res.data.overall || 100,
-            validity: valCount > 0 ? Math.round(valSum / valCount) : 100,
+            completeness: 100,
             accuracy: accCount > 0 ? Math.round(accSum / accCount) : 100,
             columns: columnsStatus
         };
@@ -924,10 +917,11 @@ const DataQualityDetail: React.FC = () => {
 
     let totalScoreSum = 0;
     let totalRuleCount = 0;
-    let valSum = 0; let valCount = 0;
     let accSum = 0; let accCount = 0;
-    const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Pattern Check', 'Freshness', 'Validity'];
-    const accuracyLabels = ['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY', 'Blank Check'];
+    const accuracyLabels = [
+      'Email Format', 'Date Format', 'Pattern Match', 'Pattern Check', 'Freshness', 'Validity',
+      'Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY', 'Blank Check'
+    ];
 
     const columnDQMap: Record<string, string> = {};
     activeColumnsList.forEach(col => {
@@ -941,19 +935,11 @@ const DataQualityDetail: React.FC = () => {
         totalRuleCount++;
         
         const normalizedRule = rule.label.replace(/_/g, ' ').toUpperCase();
-        
-        const isValidity = validityLabels.some(lbl => {
-            const normalizedLabel = lbl.replace(/_/g, ' ').toUpperCase();
-            return normalizedRule.includes(normalizedLabel) || normalizedLabel.includes(normalizedRule);
-        });
         const isAccuracy = accuracyLabels.some(lbl => {
             const normalizedLabel = lbl.replace(/_/g, ' ').toUpperCase();
             return normalizedRule.includes(normalizedLabel) || normalizedLabel.includes(normalizedRule);
         });
         
-        if (isValidity) {
-          valSum += s; valCount++;
-        }
         if (isAccuracy) {
           accSum += s; accCount++;
         }
@@ -964,7 +950,7 @@ const DataQualityDetail: React.FC = () => {
     const results = {
       table,
       overall: totalRuleCount > 0 ? Math.round(totalScoreSum / totalRuleCount) : 100,
-      validity: valCount > 0 ? Math.round(valSum / valCount) : 100,
+      completeness: 100,
       accuracy: accCount > 0 ? Math.round(accSum / accCount) : 100,
       columns: columnDQMap
     };
@@ -1046,11 +1032,93 @@ const DataQualityDetail: React.FC = () => {
     setRefreshTrigger(prev => prev + 1);
   };
 
-  const getCalculationDetails = (type: 'validity' | 'accuracy') => {
-    const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Pattern Check', 'Freshness', 'Validity'];
-    const accuracyLabels = ['Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY', 'Blank Check'];
+  // Checked completeness columns map
+  const [checkedCompletenessCols, setCheckedCompletenessCols] = useState<Record<string, boolean>>({});
+
+  // Initialize checked columns when columns are fetched
+  useEffect(() => {
+    if (dynamicColumns.length > 0 && table) {
+      const initial: Record<string, boolean> = {};
+      dynamicColumns.forEach(col => {
+        const key = `robin_comp_col_${table}_${col.attribute}`;
+        const val = localStorage.getItem(key);
+        initial[col.attribute] = val !== 'false'; // default to true
+      });
+      setCheckedCompletenessCols(initial);
+    }
+  }, [dynamicColumns, table]);
+
+  // Handle toggling checkbox
+  const handleToggleCompletenessCol = (colName: string) => {
+    const nextVal = !checkedCompletenessCols[colName];
+    setCheckedCompletenessCols(prev => ({ ...prev, [colName]: nextVal }));
+    if (table) {
+      localStorage.setItem(`robin_comp_col_${table}_${colName}`, String(nextVal));
+    }
+  };
+
+  // Helper: check if a record is completely filled
+  const isRecordCompletelyFilled = (row: any, checkedCols: string[]) => {
+    if (checkedCols.length === 0) return true;
+    return checkedCols.every(col => {
+      const val = row[col] ?? row[col.toLowerCase()] ?? row[col.toUpperCase()];
+      return val !== null && val !== undefined && String(val).trim() !== '';
+    });
+  };
+
+  // Fallback completeness calculation using column profiles
+  const fallbackCompleteness = useMemo(() => {
+    const checkedCols = Object.keys(checkedCompletenessCols).filter(k => checkedCompletenessCols[k]);
+    if (checkedCols.length === 0) return 100;
+
+    let totalExpectedValues = 0;
+    let totalNonNullValues = 0;
+
+    checkedCols.forEach(colName => {
+      const profile = colProfiles[colName];
+      const totalRaw = getProfileField(profile, 'total_rows');
+      if (profile && totalRaw != null) {
+        const total = parseInt(totalRaw as string) || 0;
+        const nulls = parseInt(getProfileField(profile, 'null_count') || '0') || 0;
+        totalExpectedValues += total;
+        totalNonNullValues += (total - nulls);
+      }
+    });
+
+    if (totalExpectedValues === 0) return 100;
+    return Math.round((totalNonNullValues / totalExpectedValues) * 100);
+  }, [colProfiles, checkedCompletenessCols]);
+
+  // Dynamically calculate completeness score
+  const displayCompleteness = useMemo(() => {
+    const checkedCols = Object.keys(checkedCompletenessCols).filter(k => checkedCompletenessCols[k]);
+    if (checkedCols.length === 0) return 100;
+
+    if (tablePreview && tablePreview.length > 0) {
+      let completelyFilled = 0;
+      tablePreview.forEach(row => {
+        if (isRecordCompletelyFilled(row, checkedCols)) {
+          completelyFilled++;
+        }
+      });
+      return Math.round((completelyFilled / tablePreview.length) * 100);
+    }
+
+    // Fallback if preview is empty
+    return fallbackCompleteness;
+  }, [tablePreview, checkedCompletenessCols, fallbackCompleteness]);
+
+  const displayAccuracy = (evaluatedResults && evaluatedResults.table === table) ? evaluatedResults.accuracy : 100;
+  const displayOverall = Math.round((displayCompleteness + displayAccuracy) / 2);
+
+  const getCalculationDetails = (type: 'completeness' | 'accuracy') => {
+    if (type === 'completeness') return [];
     
-    const targetLabels = type === 'validity' ? validityLabels : accuracyLabels;
+    const accuracyLabels = [
+      'Null Check', 'Unique Check', 'Range Check', 'Completeness', 'Value Range', 'Accuracy', 'EMPTY', 'Blank Check',
+      'Email Format', 'Date Format', 'Pattern Match', 'Pattern Check', 'Freshness', 'Validity'
+    ];
+    
     const details: { column: string; rule: string; score: number; passed: number; total: number }[] = [];
     
     Object.entries(ruleExecutionResults).forEach(([key, val]) => {
@@ -1059,7 +1127,7 @@ const DataQualityDetail: React.FC = () => {
       const rule = parts.slice(1).join('|');
       
       const normalizedRule = rule.replace(/_/g, ' ').toUpperCase();
-      const isMatched = targetLabels.some(lbl => {
+      const isMatched = accuracyLabels.some(lbl => {
         const normalizedLabel = lbl.replace(/_/g, ' ').toUpperCase();
         return normalizedRule.includes(normalizedLabel) || normalizedLabel.includes(normalizedRule);
       });
@@ -1077,11 +1145,6 @@ const DataQualityDetail: React.FC = () => {
     
     return details;
   };
-
-  // Scores used for UI rendering
-  const displayOverall = (evaluatedResults && evaluatedResults.table === table) ? evaluatedResults.overall : 100;
-  const displayValidity = (evaluatedResults && evaluatedResults.table === table) ? evaluatedResults.validity : 100;
-  const displayAccuracy = (evaluatedResults && evaluatedResults.table === table) ? evaluatedResults.accuracy : 100;
 
   
 
@@ -1165,16 +1228,16 @@ const DataQualityDetail: React.FC = () => {
               <div 
                 className="dim-row" 
                 style={{ position: 'relative', cursor: 'pointer' }}
-                onMouseEnter={() => setHoveredDim('validity')}
+                onMouseEnter={() => setHoveredDim('completeness')}
                 onMouseLeave={() => setHoveredDim(null)}
-                onClick={() => setCalculationModal({ type: 'validity', tableName: table || '' })}
-                title="Click to see Validity calculation breakdown"
+                onClick={() => setCalculationModal({ type: 'completeness', tableName: table || '' })}
+                title="Click to see Completeness calculation breakdown"
               >
                 <span className="dim-dot green"></span>
-                <span className="dim-pct" style={{ textDecoration: 'underline dashed rgba(255,255,255,0.4)' }}>{displayValidity}%</span>
-                <span className="dim-lbl">Validity</span>
+                <span className="dim-pct" style={{ textDecoration: 'underline dashed rgba(255,255,255,0.4)' }}>{displayCompleteness}%</span>
+                <span className="dim-lbl">Completeness</span>
                 
-                {hoveredDim === 'validity' && (
+                {hoveredDim === 'completeness' && (
                   <div 
                     onClick={(e) => e.stopPropagation()}
                     style={{
@@ -1196,22 +1259,17 @@ const DataQualityDetail: React.FC = () => {
                       cursor: 'default'
                     }}
                   >
-                    <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', margin: 0 }}>Validity Score Calculation</h4>
+                    <h4 style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', margin: 0 }}>Completeness Score Calculation</h4>
                     <p style={{ fontSize: '11px', color: '#475569', margin: 0, lineHeight: '1.4' }}>
-                      <strong>Formula:</strong> Average pass rate of all active Validity rules.
+                      <strong>Formula:</strong> Completely filled records divided by total expected records, multiplied by 100.
                     </p>
                     <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '6px' }}>
                       <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px' }}>
-                        Parameters included:
+                        Features:
                       </span>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                        {['Email Format', 'Date Format', 'Pattern Match', 'Freshness', 'Validity'].map(lbl => (
-                          <span key={lbl} style={{
-                            background: '#f1f5f9', color: '#475569', fontSize: '10px', 
-                            padding: '2px 6px', borderRadius: '4px', fontWeight: 500
-                          }}>{lbl}</span>
-                        ))}
-                      </div>
+                      <p style={{ fontSize: '11px', color: '#64748b', margin: 0 }}>
+                        Click to select which columns are expected or required for the completeness calculation.
+                      </p>
                     </div>
                     <div style={{ position: 'absolute', top: '-6px', left: '20px', transform: 'rotate(45deg)', width: '12px', height: '12px', background: '#ffffff', borderTop: '1px solid #e2e8f0', borderLeft: '1px solid #e2e8f0' }} />
                   </div>
@@ -1334,8 +1392,7 @@ const DataQualityDetail: React.FC = () => {
                   </thead>
                   <tbody>
                     {activeColumnsList.flatMap((col) => col.appliedRules.map((rule, ri) => {
-                      const validityLabels = ['Email Format', 'Date Format', 'Pattern Match', 'Freshness', 'Validity'];
-                      const isValidity = validityLabels.some(lbl => rule.label.includes(lbl));
+                      const isValidity = false; // All rules are Accuracy rules now
 
                       // --- Real execution data ---
                       const execKey = `${col.attribute}|${rule.label}`;
@@ -2399,6 +2456,115 @@ const DataQualityDetail: React.FC = () => {
 
             {/* Calculations Breakdown */}
             {(() => {
+              if (calculationModal.type === 'completeness') {
+                const totalRecords = tablePreview.length > 0 ? tablePreview.length : 100;
+                const checkedCols = Object.keys(checkedCompletenessCols).filter(k => checkedCompletenessCols[k]);
+                
+                let completelyFilled = 0;
+                if (tablePreview.length > 0) {
+                  tablePreview.forEach(row => {
+                    if (isRecordCompletelyFilled(row, checkedCols)) {
+                      completelyFilled++;
+                    }
+                  });
+                } else {
+                  completelyFilled = Math.round(totalRecords * (fallbackCompleteness / 100));
+                }
+
+                // Helper to get non-null percentage for a column
+                const getColNonNullPct = (colName: string) => {
+                  if (tablePreview && tablePreview.length > 0) {
+                    const nonNulls = tablePreview.filter(row => {
+                      const val = row[colName] ?? row[colName.toLowerCase()] ?? row[colName.toUpperCase()];
+                      return val !== null && val !== undefined && String(val).trim() !== '';
+                    }).length;
+                    return Math.round((nonNulls / tablePreview.length) * 100);
+                  }
+                  // Fallback from profile
+                  const profile = colProfiles[colName];
+                  const totalRaw = getProfileField(profile, 'total_rows');
+                  if (profile && totalRaw != null) {
+                    const total = parseInt(totalRaw as string) || 1;
+                    const nulls = parseInt(getProfileField(profile, 'null_count') || '0') || 0;
+                    return Math.round(((total - nulls) / total) * 100);
+                  }
+                  return 100;
+                };
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {/* Formula Box */}
+                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a', marginBottom: '8px' }}>Record-Level Completeness Formula:</div>
+                      <div style={{ fontFamily: 'monospace', fontSize: '13px', color: '#059669', background: '#ecfdf5', padding: '10px', borderRadius: '6px', overflowX: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span>Completeness = (Completely Filled Records / Total Records) * 100</span>
+                        <span style={{ fontWeight: 700, marginTop: '4px', borderTop: '1px solid #d1fae5', paddingTop: '4px' }}>
+                          Current: ({completelyFilled} / {totalRecords}) * 100 = {displayCompleteness}%
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '8px', lineHeight: '1.4' }}>
+                        A record is considered <strong>completely filled</strong> if all checked fields contain valid, non-null values. Excluded columns are ignored in this calculation.
+                      </div>
+                    </div>
+
+                    {/* Columns checklist */}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: '#475569' }}>Select expected/required columns:</span>
+                        <span style={{ fontSize: '11px', color: '#64748b' }}>{checkedCols.length} of {dynamicColumns.length} selected</span>
+                      </div>
+                      <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                          <thead>
+                            <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 600 }}>
+                              <th style={{ padding: '8px 12px', width: '40px' }}>Required</th>
+                              <th style={{ padding: '8px 12px' }}>Column Name</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'right' }}>Fill Rate</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dynamicColumns.map((col, idx) => {
+                              const isChecked = !!checkedCompletenessCols[col.attribute];
+                              const fillRate = getColNonNullPct(col.attribute);
+                              return (
+                                <tr key={idx} style={{ borderBottom: idx < dynamicColumns.length - 1 ? '1px solid #f1f5f9' : 'none', background: isChecked ? 'transparent' : '#f8fafc', opacity: isChecked ? 1 : 0.7 }}>
+                                  <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => handleToggleCompletenessCol(col.attribute)}
+                                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                    />
+                                  </td>
+                                  <td style={{ padding: '8px 12px', fontWeight: 600, color: isChecked ? '#1e293b' : '#64748b' }}>
+                                    {col.attribute}
+                                  </td>
+                                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, color: fillRate >= 90 ? '#16a34a' : fillRate >= 60 ? '#d97706' : '#dc2626' }}>
+                                    {fillRate}% Populated
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Summary stats */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#ecfdf5', border: '1px solid #d1fae5', borderRadius: '8px', padding: '12px 16px', marginTop: '8px' }}>
+                      <div>
+                        <div style={{ fontSize: '12px', color: '#065f46', fontWeight: 600 }}>Completeness Score</div>
+                        <div style={{ fontSize: '20px', fontWeight: 800, color: '#064e3b' }}>{displayCompleteness}%</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ fontSize: '12px', color: '#065f46', display: 'block' }}>Expected Records: {totalRecords}</span>
+                        <span style={{ fontSize: '12px', color: '#065f46', display: 'block' }}>Complete Records: {completelyFilled}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
               const details = getCalculationDetails(calculationModal.type);
               const totalScore = details.reduce((acc, curr) => acc + curr.score, 0);
               const count = details.length;
