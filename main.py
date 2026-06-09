@@ -79,11 +79,18 @@ def get_saved_credentials(platform: str) -> dict:
             return {}
         raw = row["credentials"] if isinstance(row, dict) else row[0]
         creds = _json.loads(raw) if raw else {}
-        # Decrypt sensitive fields
         if creds.get("password"):
             creds["password"] = _decrypt_credential(creds["password"])
         if creds.get("token"):
             creds["token"] = _decrypt_credential(creds["token"])
+        # Remap Databricks credential keys: frontend stores workspace_url/token/cluster_id
+        # but the DatabricksConnector expects server_hostname/access_token/http_path
+        if platform == "databricks":
+            mapped = {}
+            mapped["server_hostname"] = creds.get("server_hostname") or creds.get("workspace_url", "")
+            mapped["http_path"] = creds.get("http_path") or creds.get("cluster_id", "")
+            mapped["access_token"] = creds.get("access_token") or creds.get("token", "")
+            creds = mapped
         return creds
     except Exception as exc:
         print(f"get_saved_credentials({platform}) failed: {exc}")
@@ -1030,7 +1037,11 @@ async def fetch_warehouses(request: FetchRolesRequest):
                 error_message = str(conn_err)
                 raise conn_err
         elif request.platform == "databricks":
-            warehouses = ["MAIN_WH", "COMPUTE_WH"]
+            # For Databricks, the SQL warehouse is determined by the http_path.
+            # We extract a readable name from it or simply return the active one.
+            http_path = (request.credentials or {}).get("http_path") or ""
+            wh_name = f"Warehouse ({http_path.split('/')[-1]})" if http_path else "Default SQL Warehouse"
+            warehouses = [wh_name]
             status = "SUCCESS"
             
         warehouses = sorted(list(set(warehouses)))
@@ -1073,13 +1084,14 @@ async def execute_rule(request: RuleExecutionRequest):
         if request.platform == "snowflake":
             snowflake_engine.connect(request.credentials)
             raw_result = snowflake_engine.execute_query(sql_query)
-            # Convert DictCursor rows to plain dicts and normalize keys to uppercase
-            result = [{k.upper(): v for k, v in dict(row).items()} for row in raw_result] if raw_result else []
             snowflake_engine.disconnect()
         elif request.platform == "databricks":
             databricks_engine.connect(request.credentials)
-            result = databricks_engine.execute_query(sql_query)
+            raw_result = databricks_engine.execute_query(sql_query)
             databricks_engine.disconnect()
+            
+        # Convert rows to plain dicts and normalize keys to uppercase for cross-platform consistency
+        result = [{k.upper(): v for k, v in dict(row).items()} for row in raw_result] if raw_result else []
 
         # Log rule execution in the database
         if result and isinstance(result, list) and len(result) > 0:
@@ -1171,23 +1183,6 @@ async def suggest_rules(request: AISuggestionRequest):
         if request.platform == "snowflake":
             snowflake_engine.connect(request.credentials)
             result = snowflake_engine.execute_query(sql_query)
-            mapped = []
-            if result:
-                for r in result:
-                    # DictCursor might return lowercase or uppercase keys
-                    kind = r.get("kind") or r.get("KIND") or r.get("TYPE")
-                    if kind == "TABLE":
-                        db = r.get("database_name") or r.get("DATABASE_NAME") or r.get("DATABASE")
-                        if db and db.upper() not in ('SNOWFLAKE', 'SNOWFLAKE_SAMPLE_DATA'):
-                            mapped.append({
-                                "DATABASE": db,
-                                "SCHEMA": r.get("schema_name") or r.get("SCHEMA_NAME") or r.get("SCHEMA"),
-                                "NAME": r.get("name") or r.get("NAME"),
-                                "TYPE": "TABLE",
-                                "RECORDS": r.get("rows") or r.get("ROWS") or r.get("RECORDS") or 0,
-                                "ATTRIBUTES": 0
-                            })
-            result = mapped
             snowflake_engine.disconnect()
         elif request.platform == "databricks":
             databricks_engine.connect(request.credentials)
@@ -1212,17 +1207,34 @@ async def suggest_rules_v2(request: SuggestRulesRequest):
     try:
         if request.platform == "snowflake":
             snowflake_engine.connect(request.credentials)
-            
-            # 1. Fetch Metadata
+            engine = snowflake_engine
+        elif request.platform == "databricks":
+            databricks_engine.connect(request.credentials)
+            engine = databricks_engine
+        else:
+            raise Exception(f"Unsupported platform: {request.platform}")
+
+        try:
+            # 1. Fetch Metadata — platform-specific query
             col_list_str = ",".join([f"'{c}'" for c in request.selected_columns])
-            meta_query = f'''
-                SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
-                FROM {request.database_name}.INFORMATION_SCHEMA.COLUMNS 
-                WHERE TABLE_SCHEMA = '{request.schema_name}'
-                AND TABLE_NAME = '{request.table_name}'
-                AND COLUMN_NAME IN ({col_list_str})
-            '''
-            meta_res = snowflake_engine.execute_query(meta_query)
+            if request.platform == "snowflake":
+                meta_query = f'''
+                    SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
+                    FROM {request.database_name}.INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = '{request.schema_name}'
+                    AND TABLE_NAME = '{request.table_name}'
+                    AND COLUMN_NAME IN ({col_list_str})
+                '''
+            else:  # databricks
+                meta_query = f'''
+                    SELECT column_name AS COLUMN_NAME, data_type AS DATA_TYPE, is_nullable AS IS_NULLABLE
+                    FROM system.information_schema.columns 
+                    WHERE table_catalog = '{request.database_name}'
+                    AND table_schema = '{request.schema_name}'
+                    AND table_name = '{request.table_name}'
+                    AND column_name IN ({col_list_str})
+                '''
+            meta_res = engine.execute_query(meta_query)
             
             for row in meta_res:
                 col_name = row.get('COLUMN_NAME') or row.get('column_name')
@@ -1279,7 +1291,7 @@ async def suggest_rules_v2(request: SuggestRulesRequest):
                         "source": "RULE_BASED"
                     })
 
-                if 'NUMBER' in data_type or 'INT' in data_type or 'FLOAT' in data_type:
+                if 'NUMBER' in data_type or 'INT' in data_type or 'FLOAT' in data_type or 'DECIMAL' in data_type or 'DOUBLE' in data_type or 'BIGINT' in data_type or 'LONG' in data_type:
                     generated_rules.append({
                         "column_name": col_name,
                         "rule_type": "RANGE_CHECK",
@@ -1291,7 +1303,6 @@ async def suggest_rules_v2(request: SuggestRulesRequest):
 
             # AI Semantic Inferences based on column naming heuristics
             try:
-                # We can call the LLM for suggestions here if needed. For now, we simulate AI heuristics.
                 for col in request.selected_columns:
                     if 'STATUS' in col.upper() or 'STATE' in col.upper():
                          generated_rules.append({
@@ -1307,10 +1318,8 @@ async def suggest_rules_v2(request: SuggestRulesRequest):
                 traceback.print_exc()
                 error_message = f"AI fallback used: {str(ai_e)}"
                 failure_stage = "AI_INFERENCE"
-            
-            snowflake_engine.disconnect()
-        else:
-            raise Exception("Platform not implemented for rule suggestions")
+        finally:
+            engine.disconnect()
             
         # Ensure table exists before inserting
         create_log_table = """
@@ -1899,12 +1908,18 @@ async def get_usage_analytics(request: AnalyticsRequest):
 @app.post("/api/v1/ai/table_summary")
 async def generate_table_summary(request: TableSummaryRequest):
     try:
+        if request.platform == "snowflake": snowflake_engine.connect(request.credentials)
+        elif request.platform == "databricks": databricks_engine.connect(request.credentials)
+        
         sql_query = QueryGenerator.generate_table_summary_sql(request.platform, request.table_name)
         result = snowflake_engine.execute_query(sql_query) if request.platform == "snowflake" else databricks_engine.execute_query(sql_query)
-        summary = result[0].get('TABLE_SUMMARY') if result else ""
+        summary = result[0].get('TABLE_SUMMARY') or result[0].get('table_summary') if result else ""
         return {"status": "success", "summary": summary}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if request.platform == "snowflake": snowflake_engine.disconnect()
+        elif request.platform == "databricks": databricks_engine.disconnect()
 
 @app.post("/api/v1/catalog/tables")
 async def get_catalog_tables(request: CatalogRequest):
@@ -1950,23 +1965,6 @@ async def get_table_preview(request: LineageRequest):
         if request.platform == "snowflake":
             snowflake_engine.connect(request.credentials)
             result = snowflake_engine.execute_query(sql_query)
-            mapped = []
-            if result:
-                for r in result:
-                    # DictCursor might return lowercase or uppercase keys
-                    kind = r.get("kind") or r.get("KIND") or r.get("TYPE")
-                    if kind == "TABLE":
-                        db = r.get("database_name") or r.get("DATABASE_NAME") or r.get("DATABASE")
-                        if db and db.upper() not in ('SNOWFLAKE', 'SNOWFLAKE_SAMPLE_DATA'):
-                            mapped.append({
-                                "DATABASE": db,
-                                "SCHEMA": r.get("schema_name") or r.get("SCHEMA_NAME") or r.get("SCHEMA"),
-                                "NAME": r.get("name") or r.get("NAME"),
-                                "TYPE": "TABLE",
-                                "RECORDS": r.get("rows") or r.get("ROWS") or r.get("RECORDS") or 0,
-                                "ATTRIBUTES": 0
-                            })
-            result = mapped
             snowflake_engine.disconnect()
         elif request.platform == "databricks":
             databricks_engine.connect(request.credentials)
@@ -2142,15 +2140,18 @@ async def sample_failed_records(request: SampleFailedRecordsRequest):
     """
     groups = []
 
-    if request.platform != "snowflake":
-        # Databricks support can be added later
+    creds = request.credentials or {}
+    if request.platform == "snowflake":
+        engine = snowflake_engine
+    elif request.platform == "databricks":
+        engine = databricks_engine
+    else:
         return {"status": "success", "groups": []}
 
-    creds = request.credentials or {}
     try:
-        snowflake_engine.connect(creds)
+        engine.connect(creds)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Snowflake connection failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Connection failed for {request.platform}: {e}")
 
     try:
         for check in request.failed_checks:
@@ -2189,7 +2190,7 @@ async def sample_failed_records(request: SampleFailedRecordsRequest):
                 continue
 
             try:
-                raw_rows = snowflake_engine.execute_query(sql)
+                raw_rows = engine.execute_query(sql)
                 if not raw_rows:
                     continue
                 # DictCursor returns list of dicts – normalise to lower-case keys
@@ -2206,7 +2207,7 @@ async def sample_failed_records(request: SampleFailedRecordsRequest):
                 # Continue with remaining checks even if one fails
                 continue
     finally:
-        snowflake_engine.disconnect()
+        engine.disconnect()
 
     return {"status": "success", "groups": groups}
 
@@ -2420,8 +2421,9 @@ async def get_dashboard_warehouse_analytics(request: DashboardRequest):
             short_name = top_table_name.split('.')[-1]
             conn, cursor = get_db_connection()
             try:
+                ph = "%s" if DATABASE_URL else "?"
                 cursor.execute(
-                    "SELECT dq_score FROM dq_run_history WHERE LOWER(table_name) = ? OR LOWER(table_name) = ? ORDER BY id DESC LIMIT 1",
+                    f"SELECT dq_score FROM dq_run_history WHERE LOWER(table_name) = {ph} OR LOWER(table_name) = {ph} ORDER BY id DESC LIMIT 1",
                     (top_table_name.lower(), short_name.lower())
                 )
                 row = cursor.fetchone()
