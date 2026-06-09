@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import hashlib
+import base64
 from typing import List, Optional, Dict, Any
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Body
@@ -37,6 +38,58 @@ app.add_middleware(
 # Database Setup for Authentication
 DB_PATH = "users.db"
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+
+def _decrypt_credential(ciphertext: str) -> str:
+    """Decrypt a value encrypted by the frontend's mock encryption (reverse + base64)."""
+    if not ciphertext:
+        return ciphertext
+    prefix = "mock_enc_"
+    if not ciphertext.startswith(prefix):
+        return ciphertext  # not encrypted, return as-is
+    try:
+        raw = ciphertext[len(prefix):]
+        decoded = base64.b64decode(raw).decode("utf-8")
+        return decoded[::-1]  # reverse
+    except Exception:
+        return ciphertext
+
+
+def get_saved_credentials(platform: str) -> dict:
+    """Fetch the first available saved credentials for *platform* from the users table.
+    
+    Returns a plain dict suitable for passing to engine.connect(), with
+    password / token already decrypted.  Falls back to an empty dict if
+    nothing is found (which will cause the connector to try env vars).
+    """
+    import json as _json
+    conn, cursor = get_db_connection()
+    try:
+        # Pick the most-recently-logged-in user who has credentials saved for this platform
+        query = (
+            "SELECT credentials FROM users WHERE platform = %s AND credentials IS NOT NULL "
+            "AND credentials != '' AND status = 'APPROVED' ORDER BY last_login_at DESC LIMIT 1"
+        ) if DATABASE_URL else (
+            "SELECT credentials FROM users WHERE platform = ? AND credentials IS NOT NULL "
+            "AND credentials != '' AND status = 'APPROVED' ORDER BY last_login_at DESC LIMIT 1"
+        )
+        cursor.execute(query, (platform,))
+        row = cursor.fetchone()
+        if not row:
+            return {}
+        raw = row["credentials"] if isinstance(row, dict) else row[0]
+        creds = _json.loads(raw) if raw else {}
+        # Decrypt sensitive fields
+        if creds.get("password"):
+            creds["password"] = _decrypt_credential(creds["password"])
+        if creds.get("token"):
+            creds["token"] = _decrypt_credential(creds["token"])
+        return creds
+    except Exception as exc:
+        print(f"get_saved_credentials({platform}) failed: {exc}")
+        return {}
+    finally:
+        conn.close()
 
 def get_db_connection():
     if DATABASE_URL:
@@ -2776,8 +2829,9 @@ def execute_schedule_job(schedule_id: int):
     run_start = datetime.datetime.utcnow()
     
     try:
-        # Connect using env credentials
-        engine.connect(None)
+        # Connect using saved credentials from DB (fallback to env vars inside connector)
+        saved_creds = get_saved_credentials(platform)
+        engine.connect(saved_creds)
         
         if run_type == "profile":
             sql_query = QueryGenerator.generate_metadata_sql(platform, 'columns', db_name, sch_name, tbl_name)
@@ -3296,7 +3350,7 @@ async def trigger_schedule_now(schedule_id: int):
 @app.get("/api/v1/dq/runs")
 async def get_dq_runs():
     try:
-        snowflake_engine.connect(None)
+        snowflake_engine.connect(get_saved_credentials("snowflake"))
         query = "SELECT * FROM DQ_RUN_HISTORY ORDER BY start_time DESC LIMIT 100"
         runs = snowflake_engine.execute_query(query)
         if not runs:
@@ -3319,7 +3373,7 @@ async def get_dq_runs():
 @app.get("/api/v1/dq/runs/{run_id}")
 async def get_dq_run_details(run_id: str):
     try:
-        snowflake_engine.connect(None)
+        snowflake_engine.connect(get_saved_credentials("snowflake"))
         run_query = f"SELECT * FROM DQ_RUN_HISTORY WHERE run_id = '{run_id}'"
         steps_query = f"SELECT * FROM DQ_STEP_LOGS WHERE run_id = '{run_id}' ORDER BY start_time ASC"
         
