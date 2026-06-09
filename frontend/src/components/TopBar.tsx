@@ -29,7 +29,7 @@ const TopBar: React.FC = () => {
   const username = session?.username || localStorage.getItem('robin_user') || 'User';
   const activeRole = session?.selected_role || localStorage.getItem('selected_role') || 'PUBLIC';
   const activeWarehouse = session?.selected_warehouse || localStorage.getItem('selected_warehouse') || 'SMALL_WH';
-  const platformLabel = (session?.platform || platform || 'snowflake').toUpperCase();
+  const platformLabel = (platform || session?.platform || 'snowflake').toUpperCase();
 
   // Live roles state
   const [availableRoles, setAvailableRoles] = useState<string[]>([]);
@@ -42,7 +42,7 @@ const TopBar: React.FC = () => {
     setRoleError('');
     try {
       const saved = localStorage.getItem('robin_credentials');
-      const activePlat = (session?.platform || platform || 'snowflake').toLowerCase();
+      const activePlat = (platform || session?.platform || 'snowflake').toLowerCase();
       const credentials = saved ? JSON.parse(saved)[activePlat] : null;
 
       const payload: any = {
@@ -65,7 +65,14 @@ const TopBar: React.FC = () => {
         const roles: string[] = response.data.all_roles || response.data.roles || [];
         setAvailableRoles(roles);
         
-        if (activePlat === 'snowflake' && roles.length > 0 && !roles.includes(activeRole)) {
+        const currentRole = session?.selected_role || localStorage.getItem('selected_role');
+        if (roles.length > 0 && (!currentRole || !roles.includes(currentRole))) {
+          localStorage.setItem('selected_role', roles[0]);
+          if (session) {
+            session.selected_role = roles[0];
+            localStorage.setItem('robin_user_session', JSON.stringify(session));
+          }
+        } else if (activePlat === 'snowflake' && roles.length > 0 && currentRole && !roles.includes(currentRole)) {
           setRoleError('Selected role is invalid or not assigned in Snowflake');
         }
       }
@@ -86,7 +93,7 @@ const TopBar: React.FC = () => {
     setWarehouseError('');
     try {
       const saved = localStorage.getItem('robin_credentials');
-      const activePlat = (session?.platform || platform || 'snowflake').toLowerCase();
+      const activePlat = (platform || session?.platform || 'snowflake').toLowerCase();
       const credentials = saved ? JSON.parse(saved)[activePlat] : null;
 
       const payload: any = {
@@ -109,9 +116,8 @@ const TopBar: React.FC = () => {
         const warehouses: string[] = response.data.warehouses || [];
         setAvailableWarehouses(warehouses);
         
-        // Seed first warehouse if none is selected
-        const currentSelected = localStorage.getItem('selected_warehouse');
-        if (!currentSelected && warehouses.length > 0) {
+        const currentSelected = session?.selected_warehouse || localStorage.getItem('selected_warehouse');
+        if (warehouses.length > 0 && (!currentSelected || !warehouses.includes(currentSelected))) {
           localStorage.setItem('selected_warehouse', warehouses[0]);
           if (session) {
             session.selected_warehouse = warehouses[0];
@@ -231,7 +237,7 @@ const TopBar: React.FC = () => {
     if (saved) {
       try {
         const creds = JSON.parse(saved);
-        const activePlat = (session?.platform || platform || 'snowflake').toLowerCase();
+        const activePlat = (platform || session?.platform || 'snowflake').toLowerCase();
         if (creds[activePlat]) {
           creds[activePlat].role = newRole;
           localStorage.setItem('robin_credentials', JSON.stringify(creds));
@@ -264,7 +270,7 @@ const TopBar: React.FC = () => {
     if (saved) {
       try {
         const creds = JSON.parse(saved);
-        const activePlat = (session?.platform || platform || 'snowflake').toLowerCase();
+        const activePlat = (platform || session?.platform || 'snowflake').toLowerCase();
         if (creds[activePlat]) {
           creds[activePlat].warehouse = newWarehouse;
           localStorage.setItem('robin_credentials', JSON.stringify(creds));
