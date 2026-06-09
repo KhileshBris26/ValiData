@@ -123,6 +123,41 @@ const LoginPage: React.FC = () => {
       localStorage.setItem('robin_user', 'Khilesh');
       localStorage.setItem('is_authenticated', 'true');
       localStorage.setItem('user_type', 'admin');
+      
+      const savedCreds = localStorage.getItem('robin_credentials');
+      if (!savedCreds) {
+        const defaultCredentials = {
+          databricks: {
+            server_hostname: 'dbc-ff683f53-d730.cloud.databricks.com',
+            http_path: '/sql/1.0/warehouses/755e296acd2446b6',
+            access_token: 'dapia91ce03b26effdb0d8f98680724ab63c'
+          },
+          snowflake: {
+            account: 'CEDKVOT-PHB81098',
+            user: 'KHILESHKHUBNANI26',
+            password: 'Citius@Mar2026',
+            role: 'ACCOUNTADMIN',
+            warehouse: 'SMALL_WH',
+            database: 'UNICORN',
+            schema: 'DEV'
+          }
+        };
+        localStorage.setItem('robin_credentials', JSON.stringify(defaultCredentials));
+      }
+      localStorage.setItem('is_connected', 'true');
+      localStorage.setItem('selected_role', 'ACCOUNTADMIN');
+      localStorage.setItem('selected_platform', 'snowflake');
+
+      const adminSession = {
+        username: 'Khilesh',
+        user_type: 'admin',
+        platform: 'snowflake',
+        credentials_encrypted: true,
+        selected_role: 'ACCOUNTADMIN',
+        is_connected: true
+      };
+      localStorage.setItem('robin_user_session', JSON.stringify(adminSession));
+
       navigate('/admin-dashboard');
       setIsLoading(false);
       return;
@@ -145,6 +180,41 @@ const LoginPage: React.FC = () => {
           localStorage.setItem('robin_user', adminUsername);
           localStorage.setItem('is_authenticated', 'true');
           localStorage.setItem('user_type', 'admin');
+          
+          const savedCreds = localStorage.getItem('robin_credentials');
+          if (!savedCreds) {
+            const defaultCredentials = {
+              databricks: {
+                server_hostname: 'dbc-ff683f53-d730.cloud.databricks.com',
+                http_path: '/sql/1.0/warehouses/755e296acd2446b6',
+                access_token: 'dapia91ce03b26effdb0d8f98680724ab63c'
+              },
+              snowflake: {
+                account: 'CEDKVOT-PHB81098',
+                user: 'KHILESHKHUBNANI26',
+                password: 'Citius@Mar2026',
+                role: 'ACCOUNTADMIN',
+                warehouse: 'SMALL_WH',
+                database: 'UNICORN',
+                schema: 'DEV'
+              }
+            };
+            localStorage.setItem('robin_credentials', JSON.stringify(defaultCredentials));
+          }
+          localStorage.setItem('is_connected', 'true');
+          localStorage.setItem('selected_role', 'ACCOUNTADMIN');
+          localStorage.setItem('selected_platform', 'snowflake');
+
+          const adminSession = {
+            username: adminUsername,
+            user_type: 'admin',
+            platform: 'snowflake',
+            credentials_encrypted: true,
+            selected_role: 'ACCOUNTADMIN',
+            is_connected: true
+          };
+          localStorage.setItem('robin_user_session', JSON.stringify(adminSession));
+
           navigate('/admin-dashboard');
         } else {
           setError("You do not have administrative privileges.");

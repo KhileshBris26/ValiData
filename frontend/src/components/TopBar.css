@@ -239,6 +239,93 @@
   color: #f87171;
 }
 
+/* Warehouse Dropdown Selector styling */
+.warehouse-dropdown-container {
+  position: relative;
+}
+
+.warehouse-selector-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #38bdf8;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.88rem;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.warehouse-selector-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #7dd3fc;
+}
+
+.warehouse-db-icon {
+  color: #38bdf8;
+}
+
+.warehouse-menu-popup {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  background: rgba(15, 23, 42, 0.95) !important;
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 12px;
+  padding: 6px 0;
+  width: 180px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6) !important;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+}
+
+.warehouse-menu-header {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  color: #475569;
+  font-weight: 800;
+  padding: 8px 14px 6px 14px;
+  letter-spacing: 1px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  margin-bottom: 4px;
+}
+
+.warehouse-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.warehouse-menu-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #f8fafc;
+}
+
+.warehouse-menu-item.active {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.warehouse-selector-btn.warehouse-warning {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
 .spinner {
   animation: spin 1s linear infinite;
 }

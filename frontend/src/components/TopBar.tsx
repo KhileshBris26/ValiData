@@ -13,6 +13,12 @@ const TopBar: React.FC = () => {
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const [showWarehouseDropdown, setShowWarehouseDropdown] = useState(false);
+  const [availableWarehouses, setAvailableWarehouses] = useState<string[]>([]);
+  const [isFetchingWarehouses, setIsFetchingWarehouses] = useState(false);
+  const [warehouseError, setWarehouseError] = useState('');
+  const warehouseDropdownRef = useRef<HTMLDivElement>(null);
+
   // Retrieve user session
   const sessionStr = localStorage.getItem('robin_user_session');
   const session = sessionStr ? JSON.parse(sessionStr) : null;
@@ -22,6 +28,7 @@ const TopBar: React.FC = () => {
 
   const username = session?.username || localStorage.getItem('robin_user') || 'User';
   const activeRole = session?.selected_role || localStorage.getItem('selected_role') || 'PUBLIC';
+  const activeWarehouse = session?.selected_warehouse || localStorage.getItem('selected_warehouse') || 'SMALL_WH';
   const platformLabel = (session?.platform || platform || 'snowflake').toUpperCase();
 
   // Live roles state
@@ -73,17 +80,71 @@ const TopBar: React.FC = () => {
     }
   };
 
+  const fetchLiveWarehouses = async () => {
+    if (!isConnected) return;
+    setIsFetchingWarehouses(true);
+    setWarehouseError('');
+    try {
+      const saved = localStorage.getItem('robin_credentials');
+      const activePlat = (session?.platform || platform || 'snowflake').toLowerCase();
+      const credentials = saved ? JSON.parse(saved)[activePlat] : null;
+
+      const payload: any = {
+        platform: activePlat,
+        credentials: credentials ? {
+          account: credentials.account || '',
+          user: credentials.user || credentials.username || '',
+          password: credentials.password || '',
+          warehouse: credentials.warehouse || '',
+          database: credentials.database || '',
+          schema: credentials.schema || '',
+          workspace_url: credentials.server_hostname || credentials.workspace_url || '',
+          token: credentials.access_token || credentials.token || '',
+          cluster_id: credentials.http_path || credentials.cluster_id || ''
+        } : {}
+      };
+
+      const response = await axios.post(`${API_BASE}/auth/fetch-warehouses`, payload);
+      if (response.data && response.data.status === 'success') {
+        const warehouses: string[] = response.data.warehouses || [];
+        setAvailableWarehouses(warehouses);
+        
+        // Seed first warehouse if none is selected
+        const currentSelected = localStorage.getItem('selected_warehouse');
+        if (!currentSelected && warehouses.length > 0) {
+          localStorage.setItem('selected_warehouse', warehouses[0]);
+          if (session) {
+            session.selected_warehouse = warehouses[0];
+            localStorage.setItem('robin_user_session', JSON.stringify(session));
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch warehouses in TopBar:', err);
+      const errMsg = err.response?.data?.detail || err.message || '';
+      if (errMsg) {
+        setWarehouseError(`Warehouse fetch error: ${errMsg}`);
+      }
+    } finally {
+      setIsFetchingWarehouses(false);
+    }
+  };
+
   useEffect(() => {
     if (isConnected) {
       fetchLiveRoles();
+      fetchLiveWarehouses();
     }
   }, [isConnected, platformLabel]);
 
-  // Handle click outside to close dropdown
+  // Handle click outside to close dropdowns
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowRoleDropdown(false);
+      }
+      if (warehouseDropdownRef.current && !warehouseDropdownRef.current.contains(event.target as Node)) {
+        setShowWarehouseDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -95,6 +156,14 @@ const TopBar: React.FC = () => {
     setShowRoleDropdown(nextState);
     if (nextState) {
       fetchLiveRoles();
+    }
+  };
+
+  const handleWarehouseDropdownToggle = () => {
+    const nextState = !showWarehouseDropdown;
+    setShowWarehouseDropdown(nextState);
+    if (nextState) {
+      fetchLiveWarehouses();
     }
   };
 
@@ -131,11 +200,44 @@ const TopBar: React.FC = () => {
     window.location.reload();
   };
 
+  const handleWarehouseSelect = (newWarehouse: string) => {
+    if (newWarehouse === activeWarehouse) {
+      setShowWarehouseDropdown(false);
+      return;
+    }
+    // Update local storage
+    localStorage.setItem('selected_warehouse', newWarehouse);
+    if (session) {
+      session.selected_warehouse = newWarehouse;
+      localStorage.setItem('robin_user_session', JSON.stringify(session));
+    }
+
+    // ALSO update the warehouse inside the credentials object!
+    const saved = localStorage.getItem('robin_credentials');
+    if (saved) {
+      try {
+        const creds = JSON.parse(saved);
+        const activePlat = (session?.platform || platform || 'snowflake').toLowerCase();
+        if (creds[activePlat]) {
+          creds[activePlat].warehouse = newWarehouse;
+          localStorage.setItem('robin_credentials', JSON.stringify(creds));
+        }
+      } catch (e) {
+        console.error('Failed to update warehouse in credentials:', e);
+      }
+    }
+
+    setShowWarehouseDropdown(false);
+    // Reload page to propagate changes
+    window.location.reload();
+  };
+
   const handleLogout = () => {
     // Clear all session states completely
     localStorage.removeItem('robin_auth_token');
     localStorage.removeItem('robin_user');
     localStorage.removeItem('selected_role');
+    localStorage.removeItem('selected_warehouse');
     localStorage.removeItem('user_type');
     localStorage.removeItem('is_authenticated');
     localStorage.removeItem('is_connected');
@@ -160,6 +262,12 @@ const TopBar: React.FC = () => {
               <span className="role-warning-badge" title={roleError}>
                 <AlertTriangle size={14} color="#f87171" style={{ marginRight: '4px' }} />
                 <span className="warning-text">Invalid Role</span>
+              </span>
+            )}
+            {warehouseError && (
+              <span className="role-warning-badge" title={warehouseError}>
+                <AlertTriangle size={14} color="#f87171" style={{ marginRight: '4px' }} />
+                <span className="warning-text">WH Fetch Error</span>
               </span>
             )}
             <div className="connection-status-widget">
@@ -199,6 +307,45 @@ const TopBar: React.FC = () => {
                         >
                           <span>{role}</span>
                           {role === activeRole && <CheckCircle size={12} className="check-icon" />}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <span className="widget-divider">|</span>
+              <div className="warehouse-dropdown-container" ref={warehouseDropdownRef}>
+                <button 
+                  className={`warehouse-selector-btn ${warehouseError ? 'warehouse-warning' : ''}`}
+                  onClick={handleWarehouseDropdownToggle}
+                  disabled={isFetchingWarehouses}
+                >
+                  <Database size={13} className="warehouse-db-icon" />
+                  <span>WH: <strong className="warehouse-name">{activeWarehouse}</strong></span>
+                  {isFetchingWarehouses ? (
+                    <Loader2 size={14} className="spinner" />
+                  ) : (
+                    <ChevronDown size={14} className={`chevron-icon ${showWarehouseDropdown ? 'open' : ''}`} />
+                  )}
+                </button>
+                
+                {showWarehouseDropdown && (
+                  <div className="warehouse-menu-popup glass-panel">
+                    <div className="warehouse-menu-header">Switch Warehouse</div>
+                    {availableWarehouses.length === 0 ? (
+                      <div className="warehouse-menu-item" style={{ color: '#64748b', cursor: 'default' }}>
+                        No warehouses found
+                      </div>
+                    ) : (
+                      availableWarehouses.map(wh => (
+                        <button
+                          key={wh}
+                          className={`warehouse-menu-item ${wh === activeWarehouse ? 'active' : ''}`}
+                          onClick={() => handleWarehouseSelect(wh)}
+                        >
+                          <span>{wh}</span>
+                          {wh === activeWarehouse && <CheckCircle size={12} className="check-icon" />}
                         </button>
                       ))
                     )}

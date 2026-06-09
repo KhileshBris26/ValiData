@@ -948,6 +948,60 @@ async def fetch_roles(request: FetchRolesRequest):
     finally:
         conn.close()
 
+@app.post("/api/v1/auth/fetch-warehouses")
+async def fetch_warehouses(request: FetchRolesRequest):
+    import datetime
+    import json
+    current_time = datetime.datetime.utcnow().isoformat()
+    warehouses = []
+    username = (request.credentials or {}).get("user") or (request.credentials or {}).get("username") or "UNKNOWN"
+    query_executed = ""
+    error_message = None
+    status = "FAILED"
+    
+    conn, cursor = get_db_connection()
+    
+    try:
+        if request.platform == "snowflake":
+            try:
+                snowflake_engine.connect(request.credentials)
+                query_executed = "SHOW WAREHOUSES;"
+                res_wh = snowflake_engine.execute_query(query_executed)
+                for row in res_wh:
+                    wh_name = row.get('name') or row.get('NAME')
+                    if wh_name:
+                        warehouses.append(wh_name)
+                snowflake_engine.disconnect()
+                status = "SUCCESS"
+            except Exception as conn_err:
+                error_message = str(conn_err)
+                raise conn_err
+        elif request.platform == "databricks":
+            warehouses = ["MAIN_WH", "COMPUTE_WH"]
+            status = "SUCCESS"
+            
+        warehouses = sorted(list(set(warehouses)))
+        
+        log_query = "INSERT INTO dq_role_fetch_logs (user_name, query_executed, roles_returned, status, error_message, timestamp) VALUES (%s, %s, %s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO dq_role_fetch_logs (user_name, query_executed, roles_returned, status, error_message, timestamp) VALUES (?, ?, ?, ?, ?, ?)"
+        cursor.execute(log_query, (username, query_executed, json.dumps(warehouses), status, error_message, current_time))
+        conn.commit()
+        
+        return {
+            "status": "success",
+            "username": username,
+            "warehouses": warehouses,
+            "fetched_timestamp": current_time
+        }
+    except Exception as e:
+        log_query = "INSERT INTO dq_role_fetch_logs (user_name, query_executed, roles_returned, status, error_message, timestamp) VALUES (%s, %s, %s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO dq_role_fetch_logs (user_name, query_executed, roles_returned, status, error_message, timestamp) VALUES (?, ?, ?, ?, ?, ?)"
+        cursor.execute(log_query, (username, query_executed, "[]", "FAILED", str(e), current_time))
+        conn.commit()
+        
+        print(f"Fetch warehouses endpoint error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
 # Initialize Connectors
 snowflake_engine = SnowflakeConnector()
 databricks_engine = DatabricksConnector()
