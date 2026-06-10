@@ -51,13 +51,21 @@ class SnowflakeConnector(BaseConnector):
         if not self.conn:
             raise ConnectionError("Not connected to Snowflake. Call connect() first.")
         
+        import time
+        from core.query_logger import log_query
+        
+        start_time = time.time()
         try:
             # DictCursor returns rows as dictionaries
             with self.conn.cursor(snowflake.connector.DictCursor) as cur:
                 cur.execute(query)
                 results = cur.fetchall()
+                elapsed_ms = int((time.time() - start_time) * 1000)
+                log_query("snowflake", query, "SUCCESS", elapsed_ms)
                 return results
         except DatabaseError as e:
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            log_query("snowflake", query, "FAILED", elapsed_ms, str(e))
             print(f"Error executing Snowflake query: {e}")
             raise
 

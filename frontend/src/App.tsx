@@ -20,6 +20,7 @@ import ObservabilityConnectionDetail from './pages/ObservabilityConnectionDetail
 import ObservabilityAlerts from './pages/ObservabilityAlerts';
 import LoginPage from './pages/LoginPage';
 import AdminDashboard from './pages/AdminDashboard';
+import QueryHistory from './pages/QueryHistory';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const token = localStorage.getItem('robin_auth_token');
@@ -117,6 +118,7 @@ function AuthenticatedApp() {
             <Route path="/studio" element={<RuleStudio />} />
             <Route path="/lineage" element={<LineageStudio />} />
             <Route path="/analytics" element={<UsageAnalytics />} />
+            <Route path="/query-history" element={<QueryHistory />} />
             <Route path="/connections" element={<Connections />} />
             <Route path="/observability/connections" element={<ObservabilityConnections />} />
             <Route path="/observability/connections/:id" element={<ObservabilityConnectionDetail />} />

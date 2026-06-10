@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Wand2, Database, GitMerge, History, KeyRound, BookOpen, Sun, Moon, Sparkles, Radio, Bell, Users } from 'lucide-react';
+import { LayoutDashboard, Wand2, Database, GitMerge, History, KeyRound, BookOpen, Sun, Moon, Sparkles, Radio, Bell, Users, Terminal } from 'lucide-react';
 import './Sidebar.css';
 
 const Sidebar: React.FC = () => {
@@ -50,6 +50,11 @@ const Sidebar: React.FC = () => {
         <NavLink to="/analytics" className={({isActive}) => isActive ? "nav-item active" : "nav-item"}>
           <History size={20} />
           <span>Usage Analytics</span>
+        </NavLink>
+
+        <NavLink to="/query-history" className={({isActive}) => isActive ? "nav-item active" : "nav-item"}>
+          <Terminal size={20} />
+          <span>Query History</span>
         </NavLink>
 
         {userType === 'admin' && (

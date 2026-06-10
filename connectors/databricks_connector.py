@@ -29,15 +29,23 @@ class DatabricksConnector(BaseConnector):
         if not self.conn:
             raise ConnectionError("Not connected to Databricks. Call connect() first.")
         
+        import time
+        from core.query_logger import log_query
+        
+        start_time = time.time()
         try:
             with self.conn.cursor() as cur:
                 cur.execute(query)
-                columns = [desc[0] for desc in cur.description]
-                results = cur.fetchall()
+                columns = [desc[0] for desc in cur.description] if cur.description else []
+                results = cur.fetchall() if cur.description else []
                 # Convert list of rows to list of dicts to match Snowflake implementation
                 dict_results = [dict(zip(columns, row)) for row in results]
+                elapsed_ms = int((time.time() - start_time) * 1000)
+                log_query("databricks", query, "SUCCESS", elapsed_ms)
                 return dict_results
         except DatabricksError as e:
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            log_query("databricks", query, "FAILED", elapsed_ms, str(e))
             print(f"Error executing Databricks query: {e}")
             raise
 
