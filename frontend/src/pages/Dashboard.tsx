@@ -6,14 +6,17 @@ import { API_BASE } from '../api';
 import { usePlatform } from '../context/PlatformContext';
 import './Dashboard.css';
 
-const StatCard = ({ icon: Icon, label, value, color, sparkline }: any) => (
+const StatCard = ({ icon: Icon, label, value, color, sparkline, action }: any) => (
   <div className="stat-card glass-panel" style={{ '--card-accent': color } as React.CSSProperties}>
     <div className="stat-card-left">
       <div className="stat-icon" style={{ backgroundColor: `${color}15`, color }}>
         <Icon size={22} />
       </div>
       <div className="stat-info">
-        <div className="stat-value">{value}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="stat-value" style={{ margin: 0 }}>{value}</div>
+          {action}
+        </div>
         <div className="stat-label">{label}</div>
       </div>
     </div>
@@ -57,6 +60,36 @@ const Dashboard: React.FC = () => {
   const [isLoadingWidgets, setIsLoadingWidgets] = React.useState(false);
   const [lastRefreshed, setLastRefreshed] = React.useState<string>('');
 
+  const [isConnectionVerified, setIsConnectionVerified] = React.useState<boolean>(false);
+  const [isVerifyingConnection, setIsVerifyingConnection] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    setIsConnectionVerified(false);
+  }, [platform]);
+
+  const handleVerifyConnection = async () => {
+    setIsVerifyingConnection(true);
+    try {
+      const saved = localStorage.getItem('robin_credentials');
+      const credentials = saved ? JSON.parse(saved)[platform] : null;
+      const payload = {
+        platform,
+        entity_type: "databases",
+        credentials
+      };
+      const res = await axios.post(`${API_BASE}/auth/test-connection`, payload);
+      if (res.data && res.data.status === 'success') {
+        setIsConnectionVerified(true);
+      } else {
+        setIsConnectionVerified(false);
+      }
+    } catch (e) {
+      console.error("Connection verification failed:", e);
+      setIsConnectionVerified(false);
+    } finally {
+      setIsVerifyingConnection(false);
+    }
+  };
 
   const refreshDashboard = async () => {
     setIsLoadingWidgets(true);
@@ -243,7 +276,38 @@ const Dashboard: React.FC = () => {
       
       <div className="stats-grid">
         <div onClick={() => navigate('/connections')} style={{ cursor: 'pointer' }}>
-          <StatCard icon={Database} label="Connected Platforms" value={isLoadingWidgets ? '...' : metrics.platforms} color="#3b82f6" sparkline="M 0 15 L 20 15 L 40 15 L 60 15 L 80 15 L 100 15" />
+          <StatCard 
+            icon={Database} 
+            label="Connected Platforms" 
+            value={isLoadingWidgets ? '...' : (isConnectionVerified ? 1 : 0)} 
+            color="#3b82f6" 
+            sparkline="M 0 15 L 20 15 L 40 15 L 60 15 L 80 15 L 100 15" 
+            action={
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleVerifyConnection();
+                }}
+                disabled={isVerifyingConnection}
+                style={{
+                  background: 'rgba(59, 130, 246, 0.15)',
+                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                  color: '#3b82f6',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '6px',
+                  transition: 'all 0.2s',
+                  marginLeft: '4px'
+                }}
+                title="Verify connection status"
+              >
+                <RefreshCw size={12} className={isVerifyingConnection ? 'spin-animation' : ''} />
+              </button>
+            }
+          />
         </div>
         <div onClick={() => setShowRulesOverlay(true)} style={{ cursor: 'pointer' }}>
           <StatCard icon={Activity} label="Active Rules" value={isLoadingWidgets ? '...' : metrics.rules} color="#8b5cf6" sparkline="M 0 25 Q 20 20 40 22 T 80 12 T 100 8" />
@@ -306,19 +370,33 @@ const Dashboard: React.FC = () => {
             {platform === 'snowflake' && (
               <div className="metric">
                 <span>Snowflake Data Cloud</span>
-                <span className="status healthy-pulse">
-                  <span className="pulse-dot"></span>
-                  Operational
-                </span>
+                {isConnectionVerified ? (
+                  <span className="status healthy-pulse">
+                    <span className="pulse-dot"></span>
+                    Operational
+                  </span>
+                ) : (
+                  <span className="status" style={{ color: '#94a3b8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ display: 'block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#94a3b8' }}></span>
+                    Unverified
+                  </span>
+                )}
               </div>
             )}
             {platform === 'databricks' && (
               <div className="metric">
                 <span>Databricks Intelligence</span>
-                <span className="status healthy-pulse">
-                  <span className="pulse-dot"></span>
-                  Operational
-                </span>
+                {isConnectionVerified ? (
+                  <span className="status healthy-pulse">
+                    <span className="pulse-dot"></span>
+                    Operational
+                  </span>
+                ) : (
+                  <span className="status" style={{ color: '#94a3b8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ display: 'block', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#94a3b8' }}></span>
+                    Unverified
+                  </span>
+                )}
               </div>
             )}
           </div>

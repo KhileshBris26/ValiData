@@ -1121,13 +1121,14 @@ async def test_connection(request: MetadataRequest):
             snowflake_engine.disconnect()
         elif request.platform == "databricks":
             databricks_engine.connect(request.credentials)
-            databricks_engine.execute_query("SELECT 1")
+            databricks_engine.execute_query("SELECT current_timestamp()")
             databricks_engine.disconnect()
         return {"status": "success", "message": "Connection successful!"}
     except Exception as e:
         import traceback
         error_detail = f"{str(e)}\n{traceback.format_exc()}"
         print(f"Connection test failed: {error_detail}")
+        raise HTTPException(status_code=500, detail=str(e))
 @app.post("/api/v1/auth/fetch-roles")
 async def fetch_roles(request: FetchRolesRequest):
     import datetime
