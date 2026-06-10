@@ -185,6 +185,21 @@ const UsageAnalytics: React.FC = () => {
 
       {error && <div className="error-banner">Error: {error}</div>}
 
+      {analytics && analytics.warning && (
+        <div className="warning-banner" style={{
+          background: 'rgba(245, 158, 11, 0.1)',
+          border: '1px solid rgba(245, 158, 11, 0.3)',
+          color: '#f59e0b',
+          padding: '12px 16px',
+          borderRadius: '8px',
+          marginBottom: '20px',
+          fontSize: '0.85rem',
+          lineHeight: '1.4'
+        }}>
+          ⚠️ <strong>Notice:</strong> {analytics.warning}
+        </div>
+      )}
+
       {loading && !analytics ? (
         <div className="empty-state">
           <Loader2 className="spinner large" size={48} />

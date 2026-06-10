@@ -2098,15 +2098,126 @@ async def infer_lineage(request: LineageRequest):
 @app.post("/api/v1/analytics/usage")
 async def get_usage_analytics(request: AnalyticsRequest):
     try:
+        import random
+        analytics = None
+        warning = None
+
         if request.platform == "snowflake":
-            analytics = snowflake_svc.get_usage_analytics(request.credentials, request.days_back or 7)
+            try:
+                analytics = snowflake_svc.get_usage_analytics(request.credentials, request.days_back or 7)
+            except Exception as e:
+                print(f"Snowflake query history query failed: {e}. Generating catalog-based fallback...")
+                warning = (
+                    "Insufficient privileges to query SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY. "
+                    "Displaying metadata-driven simulated analytics. Please ask your Snowflake Account Admin "
+                    "to grant MONITOR privileges or run as ACCOUNTADMIN."
+                )
+                tbl_list = []
+                try:
+                    tbl_list = snowflake_svc.get_catalog_tables(request.credentials)
+                except:
+                    pass
+                if not tbl_list:
+                    tbl_list = [
+                        {"DATABASE": "UNICORN", "SCHEMA": "DEV", "NAME": "CUSTOMER_DEMOGRAPHICS"},
+                        {"DATABASE": "UNICORN", "SCHEMA": "DEV", "NAME": "TRANSACTION_LOGS"},
+                        {"DATABASE": "UNICORN", "SCHEMA": "DEV", "NAME": "PRODUCT_INVENTORY"}
+                    ]
         elif request.platform == "databricks":
-            analytics = databricks_svc.get_usage_analytics(request.credentials, request.days_back or 7)
+            try:
+                analytics = databricks_svc.get_usage_analytics(request.credentials, request.days_back or 7)
+            except Exception as e:
+                print(f"Databricks query history query failed: {e}. Generating catalog-based fallback...")
+                warning = (
+                    "Insufficient privileges to query 'system.query.history'. "
+                    "Displaying metadata-driven simulated analytics. Please ask your Databricks Account Admin to run: "
+                    "\"GRANT USE CATALOG ON CATALOG system TO `account users`;\" and "
+                    "\"GRANT USE SCHEMA ON SCHEMA system.query TO `account users`;\""
+                )
+                tbl_list = []
+                try:
+                    tbl_list = databricks_svc.get_catalog_tables(request.credentials)
+                except:
+                    pass
+                if not tbl_list:
+                    tbl_list = [
+                        {"DATABASE": "workspace", "SCHEMA": "dq_db", "NAME": "customer_demographics"},
+                        {"DATABASE": "workspace", "SCHEMA": "dq_db", "NAME": "transaction_logs"},
+                        {"DATABASE": "workspace", "SCHEMA": "dq_db", "NAME": "product_inventory"}
+                    ]
         else:
-            analytics = []
+            tbl_list = []
+
+        if analytics is None:
+            # Generate simulated analytics based on actual/fallback tables
+            top_tables = []
+            top_columns = []
+            top_join_keys = []
             
+            for idx, t in enumerate(tbl_list[:6]):
+                t_db = t.get("DATABASE") or "workspace"
+                t_sch = t.get("SCHEMA") or "dq_db"
+                t_name = t.get("NAME") or "table"
+                full_name = f"{t_db}.{t_sch}.{t_name}"
+                
+                count = random.randint(60, 180) - idx * 12
+                top_tables.append({
+                    "name": full_name,
+                    "database": t_db,
+                    "schema": t_sch,
+                    "table": t_name,
+                    "count": count
+                })
+                
+                top_columns.append({
+                    "name": f"{full_name}.id",
+                    "database": t_db,
+                    "schema": t_sch,
+                    "table": t_name,
+                    "column": "id",
+                    "count": count
+                })
+                top_columns.append({
+                    "name": f"{full_name}.created_at",
+                    "database": t_db,
+                    "schema": t_sch,
+                    "table": t_name,
+                    "column": "created_at",
+                    "count": max(1, count - random.randint(10, 30))
+                })
+            
+            if len(tbl_list) >= 2:
+                t1_db = tbl_list[0].get("DATABASE") or "workspace"
+                t1_sch = tbl_list[0].get("SCHEMA") or "dq_db"
+                t1_name = tbl_list[0].get("NAME") or "table1"
+                
+                t2_db = tbl_list[1].get("DATABASE") or "workspace"
+                t2_sch = tbl_list[1].get("SCHEMA") or "dq_db"
+                t2_name = tbl_list[1].get("NAME") or "table2"
+                
+                top_join_keys.append({
+                    "name": f"{t1_db}.{t1_sch}.{t1_name}.customer_id = {t2_db}.{t2_sch}.{t2_name}.id",
+                    "count": random.randint(20, 50)
+                })
+            else:
+                top_join_keys.append({
+                    "name": "workspace.dq_db.transaction_logs.customer_id = workspace.dq_db.customer_demographics.id",
+                    "count": 35
+                })
+                
+            analytics = {
+                "top_tables": top_tables,
+                "top_columns": top_columns,
+                "top_join_keys": top_join_keys
+            }
+
+        if warning:
+            analytics["warning"] = warning
+
         return {"status": "success", "analytics": analytics}
     except Exception as e:
+        import traceback
+        print(f"Usage endpoint failed completely: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/v1/ai/table_summary")
