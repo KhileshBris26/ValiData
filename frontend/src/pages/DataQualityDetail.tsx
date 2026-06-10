@@ -130,7 +130,7 @@ const DataQualityDetail: React.FC = () => {
   const fetchLatestEvaluations = async () => {
     if (!table) return;
     try {
-      const res = await axios.get(`${API_BASE}/dashboard/executions/latest?table_name=${encodeURIComponent(table)}&_t=${Date.now()}`);
+      const res = await axios.get(`${API_BASE}/dashboard/executions/latest?table_name=${encodeURIComponent(table)}&platform=${encodeURIComponent(platform)}&_t=${Date.now()}`);
       if (res.data && res.data.has_evaluated) {
         setHasEvaluated(true);
         const backendExecs = res.data.executions || [];
@@ -368,7 +368,7 @@ const DataQualityDetail: React.FC = () => {
 
   const pullRulesFromBackend = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/dashboard/rules`);
+      const res = await axios.get(`${API_BASE}/dashboard/rules?platform=${platform}`);
       const backendRules = res.data.rules || [];
 
       // Clear all existing local storage rule keys for this table to avoid stale rules
@@ -406,7 +406,7 @@ const DataQualityDetail: React.FC = () => {
   const pushRulesToBackend = async () => {
     try {
       // 1. Fetch all rules first to preserve other tables' rules!
-      const res = await axios.get(`${API_BASE}/dashboard/rules`);
+      const res = await axios.get(`${API_BASE}/dashboard/rules?platform=${platform}`);
       const allBackendRules = res.data.rules || [];
 
       // Filter out rules for the current table (we will replace them with the local rules)
@@ -447,7 +447,7 @@ const DataQualityDetail: React.FC = () => {
         }
       }
 
-      await axios.post(`${API_BASE}/dashboard/rules/sync`, { rules: rulesToSync });
+      await axios.post(`${API_BASE}/dashboard/rules/sync`, { platform, rules: rulesToSync });
     } catch (e) {
       console.error("Failed to push rules to backend:", e);
     }

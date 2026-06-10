@@ -41,6 +41,13 @@ app.add_middleware(
 DB_PATH = "users.db"
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+def get_platform_table(base_name: str, platform: Optional[str] = None) -> str:
+    """Route a generic database table name to its platform-specific version."""
+    plat = (platform or "snowflake").lower()
+    if plat not in ("snowflake", "databricks"):
+        plat = "snowflake"
+    return f"{plat}_{base_name}"
+
 
 def _decrypt_credential(ciphertext: str) -> str:
     """Decrypt a value encrypted by the frontend's mock encryption (reverse + base64)."""
@@ -272,6 +279,75 @@ def init_db():
                     status TEXT
                 )
             """)
+            # Create Snowflake and Databricks specific tables for PostgreSQL
+            for plat in ["snowflake", "databricks"]:
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {plat}_rules (
+                        id SERIAL PRIMARY KEY,
+                        platform TEXT,
+                        database_name TEXT,
+                        schema_name TEXT,
+                        table_name TEXT,
+                        column_name TEXT,
+                        rule_type TEXT,
+                        rule_params TEXT,
+                        status TEXT DEFAULT 'Active',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {plat}_rule_executions (
+                        id SERIAL PRIMARY KEY,
+                        platform TEXT,
+                        table_name TEXT,
+                        column_name TEXT,
+                        rule_type TEXT,
+                        executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        total_rows INTEGER,
+                        failed_rows INTEGER,
+                        status TEXT,
+                        error_message TEXT
+                    )
+                """)
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {plat}_anomalies (
+                        id SERIAL PRIMARY KEY,
+                        title TEXT,
+                        msg TEXT,
+                        type TEXT,
+                        platform TEXT,
+                        detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        status TEXT DEFAULT 'Active'
+                    )
+                """)
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {plat}_dq_run_history (
+                        id SERIAL PRIMARY KEY,
+                        platform TEXT,
+                        table_name TEXT NOT NULL,
+                        run_date TEXT NOT NULL,
+                        run_time TEXT NOT NULL,
+                        dq_score REAL NOT NULL,
+                        total_rows INTEGER NOT NULL,
+                        passed_rows INTEGER NOT NULL,
+                        failed_rows INTEGER NOT NULL,
+                        status TEXT NOT NULL,
+                        executed_by TEXT DEFAULT 'User',
+                        duration_ms INTEGER DEFAULT 0,
+                        executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {plat}_column_profiles (
+                        platform TEXT,
+                        database_name TEXT,
+                        schema_name TEXT,
+                        table_name TEXT,
+                        profile_data TEXT,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (platform, database_name, schema_name, table_name)
+                    )
+                """)
         else:
             # SQLite syntax
             cursor.execute("""
@@ -430,6 +506,75 @@ def init_db():
                     PRIMARY KEY (platform, database_name, schema_name, table_name)
                 )
             """)
+            # Create Snowflake and Databricks specific tables for SQLite
+            for plat in ["snowflake", "databricks"]:
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {plat}_rules (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        platform TEXT,
+                        database_name TEXT,
+                        schema_name TEXT,
+                        table_name TEXT,
+                        column_name TEXT,
+                        rule_type TEXT,
+                        rule_params TEXT,
+                        status TEXT DEFAULT 'Active',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {plat}_rule_executions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        platform TEXT,
+                        table_name TEXT,
+                        column_name TEXT,
+                        rule_type TEXT,
+                        executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        total_rows INTEGER,
+                        failed_rows INTEGER,
+                        status TEXT,
+                        error_message TEXT
+                    )
+                """)
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {plat}_anomalies (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title TEXT,
+                        msg TEXT,
+                        type TEXT,
+                        platform TEXT,
+                        detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        status TEXT DEFAULT 'Active'
+                    )
+                """)
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {plat}_dq_run_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        platform TEXT,
+                        table_name TEXT NOT NULL,
+                        run_date TEXT NOT NULL,
+                        run_time TEXT NOT NULL,
+                        dq_score REAL NOT NULL,
+                        total_rows INTEGER NOT NULL,
+                        passed_rows INTEGER NOT NULL,
+                        failed_rows INTEGER NOT NULL,
+                        status TEXT NOT NULL,
+                        executed_by TEXT DEFAULT 'User',
+                        duration_ms INTEGER DEFAULT 0,
+                        executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cursor.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {plat}_column_profiles (
+                        platform TEXT,
+                        database_name TEXT,
+                        schema_name TEXT,
+                        table_name TEXT,
+                        profile_data TEXT,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (platform, database_name, schema_name, table_name)
+                    )
+                """)
         # Commit table creations before potentially failing ALTER statements
         conn.commit()
         
@@ -475,16 +620,83 @@ def init_db():
                 ("Khilesh",)
             )
 
-        # One-time clean up of legacy mock data if present
-        cursor.execute("SELECT COUNT(*) as count FROM rules WHERE database_name = %s" if DATABASE_URL else "SELECT COUNT(*) as count FROM rules WHERE database_name = ?", ("UNICORN",))
-        row = cursor.fetchone()
-        has_mock_data = (row['count'] > 0) if row else False
-        if has_mock_data:
-            print("Legacy mock data detected. Cleaning up rules, executions, and anomalies...")
-            cursor.execute("DELETE FROM rules")
-            cursor.execute("DELETE FROM rule_executions")
-            cursor.execute("DELETE FROM anomalies")
-            print("Cleanup complete.")
+        # One-time migration to split existing data from generic tables into platform-specific tables
+        tables_to_migrate = ["rules", "rule_executions", "anomalies", "dq_run_history", "column_profiles"]
+        for tbl in tables_to_migrate:
+            try:
+                cursor.execute(f"SELECT COUNT(*) as count FROM {tbl}")
+                row = cursor.fetchone()
+                count = row['count'] if row else 0
+                if count > 0:
+                    print(f"Migrating {count} rows from legacy {tbl} to platform-specific tables...")
+                    cursor.execute(f"SELECT * FROM {tbl}")
+                    rows = cursor.fetchall()
+                    for r in rows:
+                        row_dict = dict(r)
+                        plat = row_dict.get('platform')
+                        if not plat:
+                            if tbl == 'anomalies':
+                                msg = str(row_dict.get('msg', '')).lower()
+                                if 'databricks' in msg:
+                                    plat = 'databricks'
+                                else:
+                                    plat = 'snowflake'
+                            else:
+                                plat = 'snowflake'
+                        plat = plat.lower()
+                        if plat not in ('snowflake', 'databricks'):
+                            plat = 'snowflake'
+                            
+                        if 'id' in row_dict:
+                            del row_dict['id']
+                            
+                        columns_list = list(row_dict.keys())
+                        placeholders = ",".join(["%s" if DATABASE_URL else "?" for _ in columns_list])
+                        col_names = ",".join(columns_list)
+                        values = [row_dict[k] for k in columns_list]
+                        
+                        already_exists = False
+                        try:
+                            if tbl == 'rules':
+                                check_query = f"SELECT 1 FROM {plat}_rules WHERE database_name = ? AND schema_name = ? AND table_name = ? AND column_name = ? AND rule_type = ?"
+                                if DATABASE_URL:
+                                    check_query = check_query.replace('?', '%s')
+                                cursor.execute(check_query, (row_dict.get('database_name'), row_dict.get('schema_name'), row_dict.get('table_name'), row_dict.get('column_name'), row_dict.get('rule_type')))
+                                if cursor.fetchone():
+                                    already_exists = True
+                            elif tbl == 'column_profiles':
+                                check_query = f"SELECT 1 FROM {plat}_column_profiles WHERE database_name = ? AND schema_name = ? AND table_name = ?"
+                                if DATABASE_URL:
+                                    check_query = check_query.replace('?', '%s')
+                                cursor.execute(check_query, (row_dict.get('database_name'), row_dict.get('schema_name'), row_dict.get('table_name')))
+                                if cursor.fetchone():
+                                    already_exists = True
+                        except Exception as e:
+                            print(f"Skipping duplicate check for {tbl} due to: {e}")
+                            
+                        if not already_exists:
+                            insert_sql = f"INSERT INTO {plat}_{tbl} ({col_names}) VALUES ({placeholders})"
+                            cursor.execute(insert_sql, values)
+                    
+                    cursor.execute(f"DELETE FROM {tbl}")
+                    print(f"Migration for {tbl} complete. Generic table cleared.")
+            except Exception as migrate_err:
+                print(f"Migration skipped for legacy table {tbl}: {migrate_err}")
+
+        # One-time clean up of legacy mock data if present in Snowflake tables
+        try:
+            cursor.execute("SELECT COUNT(*) as count FROM snowflake_rules WHERE database_name = %s" if DATABASE_URL else "SELECT COUNT(*) as count FROM snowflake_rules WHERE database_name = ?", ("UNICORN",))
+            row = cursor.fetchone()
+            has_mock_data = (row['count'] > 0) if row else False
+            if has_mock_data:
+                print("Legacy mock data detected. Cleaning up rules, executions, and anomalies...")
+                cursor.execute("DELETE FROM snowflake_rules")
+                cursor.execute("DELETE FROM snowflake_rule_executions")
+                cursor.execute("DELETE FROM snowflake_anomalies")
+                cursor.execute("DELETE FROM snowflake_dq_run_history")
+                print("Cleanup complete.")
+        except Exception as cleanup_err:
+            print(f"Cleanup of mock data skipped: {cleanup_err}")
 
         conn.commit()
     except Exception as e:
@@ -1106,22 +1318,22 @@ async def execute_rule(request: RuleExecutionRequest):
                 sch_name = parts[1] if len(parts) > 1 else 'UNKNOWN'
                 tbl_name = parts[2] if len(parts) > 2 else request.table_name
                 
-                check_rule_query = """
-                    SELECT id FROM rules 
+                check_rule_query = f"""
+                    SELECT id FROM {get_platform_table('rules', request.platform)} 
                     WHERE platform = %s AND database_name = %s AND schema_name = %s AND table_name = %s AND column_name = %s AND rule_type = %s
-                """ if DATABASE_URL else """
-                    SELECT id FROM rules 
+                """ if DATABASE_URL else f"""
+                    SELECT id FROM {get_platform_table('rules', request.platform)} 
                     WHERE platform = ? AND database_name = ? AND schema_name = ? AND table_name = ? AND column_name = ? AND rule_type = ?
                 """
                 cursor_log.execute(check_rule_query, (
                     request.platform, db_name, sch_name, tbl_name, request.column_name, request.rule_type
                 ))
                 if not cursor_log.fetchone():
-                    insert_rule_query = """
-                        INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
+                    insert_rule_query = f"""
+                        INSERT INTO {get_platform_table('rules', request.platform)} (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """ if DATABASE_URL else """
-                        INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
+                    """ if DATABASE_URL else f"""
+                        INSERT INTO {get_platform_table('rules', request.platform)} (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """
                     import json
@@ -1130,11 +1342,11 @@ async def execute_rule(request: RuleExecutionRequest):
                     ))
                 
                 # Log execution
-                exec_log_query = """
-                    INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
+                exec_log_query = f"""
+                    INSERT INTO {get_platform_table('rule_executions', request.platform)} (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """ if DATABASE_URL else """
-                    INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
+                """ if DATABASE_URL else f"""
+                    INSERT INTO {get_platform_table('rule_executions', request.platform)} (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """
                 cursor_log.execute(exec_log_query, (
@@ -1152,15 +1364,15 @@ async def execute_rule(request: RuleExecutionRequest):
                         title_text = "Uniqueness Violation"
                         msg_text = f"{request.table_name}: {request.column_name} column has duplicates."
                         
-                    check_anom = """
-                        SELECT id FROM anomalies WHERE title = %s AND msg = %s AND status = 'Active'
-                    """ if DATABASE_URL else """
-                        SELECT id FROM anomalies WHERE title = ? AND msg = ? AND status = 'Active'
+                    check_anom = f"""
+                        SELECT id FROM {get_platform_table('anomalies', request.platform)} WHERE title = %s AND msg = %s AND status = 'Active'
+                    """ if DATABASE_URL else f"""
+                        SELECT id FROM {get_platform_table('anomalies', request.platform)} WHERE title = ? AND msg = ? AND status = 'Active'
                     """
                     cursor_log.execute(check_anom, (title_text, msg_text))
                     if not cursor_log.fetchone():
                         cursor_log.execute(
-                            "INSERT INTO anomalies (title, msg, type, status) VALUES (%s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO anomalies (title, msg, type, status) VALUES (?, ?, ?, ?)",
+                            f"INSERT INTO {get_platform_table('anomalies', request.platform)} (title, msg, type, status) VALUES (%s, %s, %s, %s)" if DATABASE_URL else f"INSERT INTO {get_platform_table('anomalies', request.platform)} (title, msg, type, status) VALUES (?, ?, ?, ?)",
                             (title_text, msg_text, "null" if "null" in title_text.lower() else "uniqueness", "Active")
                         )
                 conn_log.commit()
@@ -1404,17 +1616,17 @@ async def apply_rules(request: ApplyRulesRequest):
     conn, cursor = get_db_connection()
     try:
         for rule in request.rules:
-            check_q = "SELECT id FROM rules WHERE platform = %s AND database_name = %s AND schema_name = %s AND table_name = %s AND column_name = %s AND rule_type = %s" if DATABASE_URL else "SELECT id FROM rules WHERE platform = ? AND database_name = ? AND schema_name = ? AND table_name = ? AND column_name = ? AND rule_type = ?"
+            check_q = f"SELECT id FROM {get_platform_table('rules', request.platform)} WHERE platform = %s AND database_name = %s AND schema_name = %s AND table_name = %s AND column_name = %s AND rule_type = %s" if DATABASE_URL else f"SELECT id FROM {get_platform_table('rules', request.platform)} WHERE platform = ? AND database_name = ? AND schema_name = ? AND table_name = ? AND column_name = ? AND rule_type = ?"
             cursor.execute(check_q, (request.platform, request.database_name, request.schema_name, request.table_name, rule.column_name, rule.rule_type))
             existing = cursor.fetchone()
             
             rule_params_str = json.dumps(rule.rule_params) if rule.rule_params else None
             
             if existing:
-                upd_q = "UPDATE rules SET rule_params = %s, status = 'Active' WHERE id = %s" if DATABASE_URL else "UPDATE rules SET rule_params = ?, status = 'Active' WHERE id = ?"
+                upd_q = f"UPDATE {get_platform_table('rules', request.platform)} SET rule_params = %s, status = 'Active' WHERE id = %s" if DATABASE_URL else f"UPDATE {get_platform_table('rules', request.platform)} SET rule_params = ?, status = 'Active' WHERE id = ?"
                 cursor.execute(upd_q, (rule_params_str, existing['id']))
             else:
-                ins_q = "INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status) VALUES (%s, %s, %s, %s, %s, %s, %s, 'Active')" if DATABASE_URL else "INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'Active')"
+                ins_q = f"INSERT INTO {get_platform_table('rules', request.platform)} (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status) VALUES (%s, %s, %s, %s, %s, %s, %s, 'Active')" if DATABASE_URL else f"INSERT INTO {get_platform_table('rules', request.platform)} (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'Active')"
                 cursor.execute(ins_q, (request.platform, request.database_name, request.schema_name, request.table_name, rule.column_name, rule.rule_type, rule_params_str))
                 
         conn.commit()
@@ -1927,27 +2139,34 @@ async def get_table_preview(request: LineageRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/v1/dashboard/metrics")
-async def get_dashboard_metrics():
+async def get_dashboard_metrics(platform: Optional[str] = None):
     conn, cursor = get_db_connection()
     try:
+        tbl_rules = get_platform_table('rules', platform)
+        tbl_executions = get_platform_table('rule_executions', platform)
+        tbl_anomalies = get_platform_table('anomalies', platform)
+
         # Active Rules Count
-        cursor.execute("SELECT COUNT(*) as count FROM rules WHERE status = 'Active'")
+        query = f"SELECT COUNT(*) as count FROM {tbl_rules} WHERE status = 'Active'"
+        cursor.execute(query)
         row = cursor.fetchone()
         active_rules_count = row['count'] if row else 0
 
         # Passed Checks Count (Latest execution status of each rule)
-        cursor.execute("""
-            SELECT COUNT(*) as count FROM rule_executions 
+        query = f"""
+            SELECT COUNT(*) as count FROM {tbl_executions} 
             WHERE id IN (
-                SELECT MAX(id) FROM rule_executions 
+                SELECT MAX(id) FROM {tbl_executions} 
                 GROUP BY platform, table_name, column_name, rule_type
             ) AND status = 'pass'
-        """)
+        """
+        cursor.execute(query)
         row = cursor.fetchone()
         passed_checks_count = row['count'] if row else 0
 
         # Active Anomalies Count
-        cursor.execute("SELECT COUNT(*) as count FROM anomalies WHERE status = 'Active'")
+        query = f"SELECT COUNT(*) as count FROM {tbl_anomalies} WHERE status = 'Active'"
+        cursor.execute(query)
         row = cursor.fetchone()
         anomalies_count = row['count'] if row else 0
 
@@ -1964,10 +2183,12 @@ async def get_dashboard_metrics():
 
 
 @app.get("/api/v1/dashboard/rules")
-async def get_dashboard_rules():
+async def get_dashboard_rules(platform: Optional[str] = None):
     conn, cursor = get_db_connection()
     try:
-        cursor.execute("SELECT * FROM rules ORDER BY created_at DESC")
+        tbl_rules = get_platform_table('rules', platform)
+        query = f"SELECT * FROM {tbl_rules} ORDER BY created_at DESC"
+        cursor.execute(query)
         rows = cursor.fetchall()
         rules = [dict(row) for row in rows]
         return {"status": "success", "rules": rules}
@@ -1979,10 +2200,12 @@ async def get_dashboard_rules():
 
 
 @app.get("/api/v1/dashboard/anomalies")
-async def get_dashboard_anomalies():
+async def get_dashboard_anomalies(platform: Optional[str] = None):
     conn, cursor = get_db_connection()
     try:
-        cursor.execute("SELECT * FROM anomalies WHERE status = 'Active' ORDER BY detected_at DESC")
+        tbl_anomalies = get_platform_table('anomalies', platform)
+        query = f"SELECT * FROM {tbl_anomalies} WHERE status = 'Active' ORDER BY detected_at DESC"
+        cursor.execute(query)
         rows = cursor.fetchall()
         anomalies = [dict(row) for row in rows]
         return {"status": "success", "anomalies": anomalies}
@@ -1992,6 +2215,7 @@ async def get_dashboard_anomalies():
     finally:
         conn.close()
 
+
 @app.post("/api/v1/dashboard/rules/sync")
 async def sync_dashboard_rules(request: RuleSyncRequest):
     conn, cursor = get_db_connection()
@@ -2000,29 +2224,36 @@ async def sync_dashboard_rules(request: RuleSyncRequest):
         # Determine distinct tables to clear existing rules for those tables only
         tables_to_clear = set()
         for r in request.rules:
-            tables_to_clear.add((r.database_name, r.schema_name, r.table_name))
-        for db_name, sch_name, tbl_name in tables_to_clear:
+            plat = r.platform or request.platform or 'snowflake'
+            tables_to_clear.add((plat, r.database_name, r.schema_name, r.table_name))
+            
+        for platform_name, db_name, sch_name, tbl_name in tables_to_clear:
+            tbl_rules = get_platform_table('rules', platform_name)
             cursor.execute(
-                "DELETE FROM rules WHERE database_name = %s AND schema_name = %s AND table_name = %s" if DATABASE_URL else
-                "DELETE FROM rules WHERE database_name = ? AND schema_name = ? AND table_name = ?",
+                f"DELETE FROM {tbl_rules} WHERE database_name = %s AND schema_name = %s AND table_name = %s" if DATABASE_URL else
+                f"DELETE FROM {tbl_rules} WHERE database_name = ? AND schema_name = ? AND table_name = ?",
                 (db_name, sch_name, tbl_name)
             )
         
         for r in request.rules:
+            plat = r.platform or request.platform or 'snowflake'
+            tbl_rules = get_platform_table('rules', plat)
             import json
             params_str = json.dumps(r.rule_params) if r.rule_params else "{}"
-            insert_query = """
-                INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
+            insert_query = f"""
+                INSERT INTO {tbl_rules} (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """ if DATABASE_URL else """
-                INSERT INTO rules (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
+            """ if DATABASE_URL else f"""
+                INSERT INTO {tbl_rules} (platform, database_name, schema_name, table_name, column_name, rule_type, rule_params, status)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """
             cursor.execute(insert_query, (
-                r.platform, r.database_name, r.schema_name, r.table_name, r.column_name, r.rule_type, params_str, r.status
+                plat, r.database_name, r.schema_name, r.table_name, r.column_name, r.rule_type, params_str, r.status
             ))
         conn.commit()
-        cursor.execute("SELECT * FROM rules ORDER BY created_at DESC")
+        
+        plat_to_fetch = request.platform or 'snowflake'
+        cursor.execute(f"SELECT * FROM {get_platform_table('rules', plat_to_fetch)} ORDER BY created_at DESC")
         rows = cursor.fetchall()
         rules = [dict(row) for row in rows]
         return {"status": "success", "rules": rules}
@@ -2036,13 +2267,14 @@ async def sync_dashboard_rules(request: RuleSyncRequest):
 
 # ── Lightweight summary endpoint (used by old code paths) ──────────────────
 @app.get("/api/v1/dashboard/invalid_records")
-async def get_invalid_records(table_name: str):
+async def get_invalid_records(table_name: str, platform: Optional[str] = None):
     """Return aggregated failed-rows counts from local DB."""
     conn, cursor = get_db_connection()
     try:
         ph = "%s" if DATABASE_URL else "?"
+        tbl_executions = get_platform_table('rule_executions', platform)
         cursor.execute(
-            f"SELECT column_name, rule_type, failed_rows, status FROM rule_executions WHERE table_name = {ph} AND failed_rows > 0",
+            f"SELECT column_name, rule_type, failed_rows, status FROM {tbl_executions} WHERE table_name = {ph} AND failed_rows > 0",
             (table_name,)
         )
         rows = cursor.fetchall()
@@ -2102,6 +2334,10 @@ async def log_dashboard_executions(request: ExecutionLogRequest):
     run_start = datetime.datetime.utcnow()
     conn, cursor = get_db_connection()
     try:
+        tbl_executions = get_platform_table('rule_executions', request.platform)
+        tbl_anomalies = get_platform_table('anomalies', request.platform)
+        tbl_history = get_platform_table('dq_run_history', request.platform)
+
         executions_data = []
         for ex in request.executions:
             executions_data.append((
@@ -2119,25 +2355,25 @@ async def log_dashboard_executions(request: ExecutionLogRequest):
                     title_text = "Uniqueness Violation"
                     msg_text = f"{request.table_name}: {ex.column_name} column has duplicates."
                 
-                check_anomaly_query = """
-                    SELECT id FROM anomalies 
+                check_anomaly_query = f"""
+                    SELECT id FROM {tbl_anomalies} 
                     WHERE title = %s AND msg = %s AND status = 'Active'
-                """ if DATABASE_URL else """
-                    SELECT id FROM anomalies 
+                """ if DATABASE_URL else f"""
+                    SELECT id FROM {tbl_anomalies} 
                     WHERE title = ? AND msg = ? AND status = 'Active'
                 """
                 cursor.execute(check_anomaly_query, (title_text, msg_text))
                 if not cursor.fetchone():
                     cursor.execute(
-                        "INSERT INTO anomalies (title, msg, type, status) VALUES (%s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO anomalies (title, msg, type, status) VALUES (?, ?, ?, ?)",
-                        (title_text, msg_text, "null" if "null" in title_text.lower() else "uniqueness", "Active")
+                        f"INSERT INTO {tbl_anomalies} (title, msg, type, platform, status) VALUES (%s, %s, %s, %s, %s)" if DATABASE_URL else f"INSERT INTO {tbl_anomalies} (title, msg, type, platform, status) VALUES (?, ?, ?, ?, ?)",
+                        (title_text, msg_text, "null" if "null" in title_text.lower() else "uniqueness", request.platform, "Active")
                     )
 
-        execs_query = """
-            INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
+        execs_query = f"""
+            INSERT INTO {tbl_executions} (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """ if DATABASE_URL else """
-            INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
+        """ if DATABASE_URL else f"""
+            INSERT INTO {tbl_executions} (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """
         cursor.executemany(execs_query, executions_data)
@@ -2166,17 +2402,17 @@ async def log_dashboard_executions(request: ExecutionLogRequest):
             run_date = run_end.strftime('%Y-%m-%d')
             run_time = run_end.strftime('%H:%M:%S UTC')
 
-            history_query = """
-                INSERT INTO dq_run_history
-                    (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """ if DATABASE_URL else """
-                INSERT INTO dq_run_history
-                    (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            history_query = f"""
+                INSERT INTO {tbl_history}
+                    (platform, table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """ if DATABASE_URL else f"""
+                INSERT INTO {tbl_history}
+                    (platform, table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             cursor.execute(history_query, (
-                request.table_name, run_date, run_time, dq_score,
+                request.platform, request.table_name, run_date, run_time, dq_score,
                 total_rows_agg, passed_rows_agg, failed_rows_agg,
                 run_status, request.executed_by or 'User', duration_ms
             ))
@@ -2193,8 +2429,10 @@ async def log_dashboard_executions(request: ExecutionLogRequest):
 async def resolve_dashboard_anomaly(request: AnomalyResolveRequest):
     conn, cursor = get_db_connection()
     try:
-        query = "UPDATE anomalies SET status = %s WHERE id = %s" if DATABASE_URL else "UPDATE anomalies SET status = ? WHERE id = ?"
-        cursor.execute(query, ("Resolved", request.id))
+        for plat in ["snowflake", "databricks"]:
+            tbl_anom = f"{plat}_anomalies"
+            query = f"UPDATE {tbl_anom} SET status = %s WHERE id = %s" if DATABASE_URL else f"UPDATE {tbl_anom} SET status = ? WHERE id = ?"
+            cursor.execute(query, ("Resolved", request.id))
         conn.commit()
         return {"status": "success", "message": f"Anomaly {request.id} resolved successfully."}
     except Exception as e:
@@ -2233,12 +2471,14 @@ async def get_dashboard_warehouse_analytics(request: DashboardRequest):
         if not top_table_name:
             conn, cursor = get_db_connection()
             try:
-                cursor.execute("SELECT table_name FROM dq_run_history ORDER BY id DESC LIMIT 1")
+                tbl_history = get_platform_table('dq_run_history', platform)
+                tbl_rules = get_platform_table('rules', platform)
+                cursor.execute(f"SELECT table_name FROM {tbl_history} ORDER BY id DESC LIMIT 1")
                 row = cursor.fetchone()
                 if row:
                     top_table_name = row['table_name']
                 else:
-                    cursor.execute("SELECT table_name FROM rules LIMIT 1")
+                    cursor.execute(f"SELECT table_name FROM {tbl_rules} LIMIT 1")
                     row = cursor.fetchone()
                     if row:
                         top_table_name = row['table_name']
@@ -2282,9 +2522,10 @@ async def get_dashboard_warehouse_analytics(request: DashboardRequest):
             short_name = top_table_name.split('.')[-1]
             conn, cursor = get_db_connection()
             try:
+                tbl_history = get_platform_table('dq_run_history', platform)
                 ph = "%s" if DATABASE_URL else "?"
                 cursor.execute(
-                    f"SELECT dq_score FROM dq_run_history WHERE LOWER(table_name) = {ph} OR LOWER(table_name) = {ph} ORDER BY id DESC LIMIT 1",
+                    f"SELECT dq_score FROM {tbl_history} WHERE (LOWER(table_name) = {ph} OR LOWER(table_name) = {ph}) ORDER BY id DESC LIMIT 1",
                     (top_table_name.lower(), short_name.lower())
                 )
                 row = cursor.fetchone()
@@ -2316,9 +2557,10 @@ async def get_dashboard_warehouse_analytics(request: DashboardRequest):
 async def get_dashboard_query_logs(request: DashboardRequest):
     try:
         conn, cursor = get_db_connection()
-        query = """
+        tbl_history = get_platform_table('dq_run_history', request.platform)
+        query = f"""
         SELECT id, table_name, run_date, run_time, dq_score, failed_rows, executed_by, duration_ms 
-        FROM dq_run_history 
+        FROM {tbl_history} 
         ORDER BY id DESC 
         LIMIT 10
         """
@@ -2490,17 +2732,32 @@ async def get_dashboard_lineage(request: DashboardRequest):
 
 
 @app.get("/api/v1/dashboard/run_history")
-async def get_run_history(table_name: str):
+async def get_run_history(table_name: str, platform: Optional[str] = None):
     """Return all historical DQ runs for a table, newest first."""
     conn, cursor = get_db_connection()
     try:
+        plat = platform
+        if not plat:
+            # check if table exists in snowflake history
+            ph = "%s" if DATABASE_URL else "?"
+            cursor.execute(f"SELECT 1 FROM snowflake_dq_run_history WHERE table_name = {ph} LIMIT 1", (table_name,))
+            if cursor.fetchone():
+                plat = 'snowflake'
+            else:
+                cursor.execute(f"SELECT 1 FROM databricks_dq_run_history WHERE table_name = {ph} LIMIT 1", (table_name,))
+                if cursor.fetchone():
+                    plat = 'databricks'
+                else:
+                    plat = 'snowflake'
+                    
+        tbl_history = get_platform_table('dq_run_history', plat)
         ph = "%s" if DATABASE_URL else "?"
         cursor.execute(
             f"""
             SELECT id, table_name, run_date, run_time, dq_score,
                    total_rows, passed_rows, failed_rows, status,
                    executed_by, duration_ms, executed_at
-            FROM dq_run_history
+            FROM {tbl_history}
             WHERE table_name = {ph}
             ORDER BY id DESC
             """,
@@ -2729,16 +2986,17 @@ def execute_schedule_job(schedule_id: int):
             conn_db, cursor_db = get_db_connection()
             try:
                 profiles_json = json.dumps(col_profiles)
+                tbl_profiles = get_platform_table('column_profiles', platform)
                 if DATABASE_URL:
-                    upsert_query = """
-                        INSERT INTO column_profiles (platform, database_name, schema_name, table_name, profile_data, updated_at)
+                    upsert_query = f"""
+                        INSERT INTO {tbl_profiles} (platform, database_name, schema_name, table_name, profile_data, updated_at)
                         VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                         ON CONFLICT (platform, database_name, schema_name, table_name)
                         DO UPDATE SET profile_data = EXCLUDED.profile_data, updated_at = CURRENT_TIMESTAMP
                     """
                 else:
-                    upsert_query = """
-                        INSERT OR REPLACE INTO column_profiles (platform, database_name, schema_name, table_name, profile_data, updated_at)
+                    upsert_query = f"""
+                        INSERT OR REPLACE INTO {tbl_profiles} (platform, database_name, schema_name, table_name, profile_data, updated_at)
                         VALUES (?, ?, ?, ?, ?, datetime('now'))
                     """
                 cursor_db.execute(upsert_query, (platform, db_name, sch_name, tbl_name, profiles_json))
@@ -2748,17 +3006,18 @@ def execute_schedule_job(schedule_id: int):
                 run_date = run_end.strftime('%Y-%m-%d')
                 run_time = run_end.strftime('%H:%M:%S UTC')
                 
-                history_query = """
-                    INSERT INTO dq_run_history
-                        (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """ if DATABASE_URL else """
-                    INSERT INTO dq_run_history
-                        (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                tbl_history = get_platform_table('dq_run_history', platform)
+                history_query = f"""
+                    INSERT INTO {tbl_history}
+                        (platform, table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """ if DATABASE_URL else f"""
+                    INSERT INTO {tbl_history}
+                        (platform, table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """
                 cursor_db.execute(history_query, (
-                    tbl_name, run_date, run_time, 100.0,
+                    platform, tbl_name, run_date, run_time, 100.0,
                     row_count, row_count, 0,
                     'Passed', 'Scheduled', duration_ms
                 ))
@@ -2770,11 +3029,12 @@ def execute_schedule_job(schedule_id: int):
             conn_db, cursor_db = get_db_connection()
             rules = []
             try:
-                query_rules = """
-                    SELECT * FROM rules 
+                tbl_rules = get_platform_table('rules', platform)
+                query_rules = f"""
+                    SELECT * FROM {tbl_rules} 
                     WHERE database_name = %s AND schema_name = %s AND table_name = %s AND status = 'Active'
-                """ if DATABASE_URL else """
-                    SELECT * FROM rules 
+                """ if DATABASE_URL else f"""
+                    SELECT * FROM {tbl_rules} 
                     WHERE database_name = ? AND schema_name = ? AND table_name = ? AND status = 'Active'
                 """
                 cursor_db.execute(query_rules, (db_name, sch_name, tbl_name))
@@ -2825,23 +3085,25 @@ def execute_schedule_job(schedule_id: int):
                                 title_text = "Uniqueness Violation"
                                 msg_text = f"{tbl_name}: {ex['column_name']} column has duplicates."
                                 
-                            check_anomaly = """
-                                SELECT id FROM anomalies WHERE title = %s AND msg = %s AND status = 'Active'
-                            """ if DATABASE_URL else """
-                                SELECT id FROM anomalies WHERE title = ? AND msg = ? AND status = 'Active'
+                            tbl_anomalies = get_platform_table('anomalies', platform)
+                            check_anomaly = f"""
+                                SELECT id FROM {tbl_anomalies} WHERE title = %s AND msg = %s AND status = 'Active'
+                            """ if DATABASE_URL else f"""
+                                SELECT id FROM {tbl_anomalies} WHERE title = ? AND msg = ? AND status = 'Active'
                             """
                             cursor_db.execute(check_anomaly, (title_text, msg_text))
                             if not cursor_db.fetchone():
                                 cursor_db.execute(
-                                    "INSERT INTO anomalies (title, msg, type, status) VALUES (%s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO anomalies (title, msg, type, status) VALUES (?, ?, ?, ?)",
-                                    (title_text, msg_text, "null" if "null" in title_text.lower() else "uniqueness", "Active")
+                                    f"INSERT INTO {tbl_anomalies} (title, msg, type, platform, status) VALUES (%s, %s, %s, %s, %s)" if DATABASE_URL else f"INSERT INTO {tbl_anomalies} (title, msg, type, platform, status) VALUES (?, ?, ?, ?, ?)",
+                                    (title_text, msg_text, "null" if "null" in title_text.lower() else "uniqueness", platform, "Active")
                                 )
                     
-                    execs_query = """
-                        INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
+                    tbl_executions = get_platform_table('rule_executions', platform)
+                    execs_query = f"""
+                        INSERT INTO {tbl_executions} (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
                         VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """ if DATABASE_URL else """
-                        INSERT INTO rule_executions (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
+                    """ if DATABASE_URL else f"""
+                        INSERT INTO {tbl_executions} (platform, table_name, column_name, rule_type, total_rows, failed_rows, status)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                     """
                     cursor_db.executemany(execs_query, executions_data)
@@ -2867,17 +3129,18 @@ def execute_schedule_job(schedule_id: int):
                     run_date = run_end.strftime('%Y-%m-%d')
                     run_time = run_end.strftime('%H:%M:%S UTC')
                     
-                    history_query = """
-                        INSERT INTO dq_run_history
-                            (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """ if DATABASE_URL else """
-                        INSERT INTO dq_run_history
-                            (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    tbl_history = get_platform_table('dq_run_history', platform)
+                    history_query = f"""
+                        INSERT INTO {tbl_history}
+                            (platform, table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """ if DATABASE_URL else f"""
+                        INSERT INTO {tbl_history}
+                            (platform, table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """
                     cursor_db.execute(history_query, (
-                        tbl_name, run_date, run_time, dq_score,
+                        platform, tbl_name, run_date, run_time, dq_score,
                         total_rows_agg, passed_rows_agg, failed_rows_agg,
                         run_status, 'Scheduled', duration_ms
                     ))
@@ -2929,29 +3192,31 @@ def execute_schedule_job(schedule_id: int):
             run_date = run_end.strftime('%Y-%m-%d')
             run_time = run_end.strftime('%H:%M:%S UTC')
             
-            history_query = """
-                INSERT INTO dq_run_history
-                    (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """ if DATABASE_URL else """
-                INSERT INTO dq_run_history
-                    (table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            tbl_history = get_platform_table('dq_run_history', platform)
+            history_query = f"""
+                INSERT INTO {tbl_history}
+                    (platform, table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """ if DATABASE_URL else f"""
+                INSERT INTO {tbl_history}
+                    (platform, table_name, run_date, run_time, dq_score, total_rows, passed_rows, failed_rows, status, executed_by, duration_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             cursor_db.execute(history_query, (
-                tbl_name, run_date, run_time, 0.0,
+                platform, tbl_name, run_date, run_time, 0.0,
                 0, 0, 0,
                 'Failed', 'Scheduled', duration_ms
             ))
             
+            tbl_anomalies = get_platform_table('anomalies', platform)
             anom_title = "Scheduled Run Failure"
             anom_msg = f"Scheduled {run_type} run failed for table {tbl_name}. Error: {str(e)}"
-            insert_anom = """
-                INSERT INTO anomalies (title, msg, type, status) VALUES (%s, %s, %s, %s)
-            """ if DATABASE_URL else """
-                INSERT INTO anomalies (title, msg, type, status) VALUES (?, ?, ?, ?)
+            insert_anom = f"""
+                INSERT INTO {tbl_anomalies} (title, msg, type, platform, status) VALUES (%s, %s, %s, %s, %s)
+            """ if DATABASE_URL else f"""
+                INSERT INTO {tbl_anomalies} (title, msg, type, platform, status) VALUES (?, ?, ?, ?, ?)
             """
-            cursor_db.execute(insert_anom, (anom_title, anom_msg, "failure", "Active"))
+            cursor_db.execute(insert_anom, (anom_title, anom_msg, "failure", platform, "Active"))
             
             conn_db.commit()
         finally:
@@ -3181,11 +3446,12 @@ async def patch_schedule(schedule_id: int, payload: Dict[str, Any] = Body(...)):
 async def get_column_profiles(platform: str, database_name: str, schema_name: str, table_name: str):
     conn, cursor = get_db_connection()
     try:
-        query = """
-            SELECT profile_data FROM column_profiles 
+        tbl_profiles = get_platform_table('column_profiles', platform)
+        query = f"""
+            SELECT profile_data FROM {tbl_profiles} 
             WHERE platform = %s AND database_name = %s AND schema_name = %s AND table_name = %s
-        """ if DATABASE_URL else """
-            SELECT profile_data FROM column_profiles 
+        """ if DATABASE_URL else f"""
+            SELECT profile_data FROM {tbl_profiles} 
             WHERE platform = ? AND database_name = ? AND schema_name = ? AND table_name = ?
         """
         cursor.execute(query, (platform, database_name, schema_name, table_name))
@@ -3262,28 +3528,31 @@ async def get_dq_run_details(run_id: str):
 async def get_catalog_quality_scores():
     conn, cursor = get_db_connection()
     try:
-        # Fetch the latest dq_score for each table
-        query = """
-            SELECT t1.table_name, t1.dq_score 
-            FROM dq_run_history t1
-            INNER JOIN (
-                SELECT table_name, MAX(executed_at) as max_executed_at
-                FROM dq_run_history
-                GROUP BY table_name
-            ) t2 ON t1.table_name = t2.table_name AND t1.executed_at = t2.max_executed_at
-        """ if DATABASE_URL else """
-            SELECT t1.table_name, t1.dq_score 
-            FROM dq_run_history t1
-            INNER JOIN (
-                SELECT table_name, MAX(id) as max_id
-                FROM dq_run_history
-                GROUP BY table_name
-            ) t2 ON t1.id = t2.max_id
-        """
-        cursor.execute(query)
-        rows = cursor.fetchall()
-        
-        scores_map = {row['table_name']: row['dq_score'] for row in rows}
+        scores_map = {}
+        for plat in ['snowflake', 'databricks']:
+            tbl = f"{plat}_dq_run_history"
+            query = f"""
+                SELECT t1.table_name, t1.dq_score 
+                FROM {tbl} t1
+                INNER JOIN (
+                    SELECT table_name, MAX(executed_at) as max_executed_at
+                    FROM {tbl}
+                    GROUP BY table_name
+                ) t2 ON t1.table_name = t2.table_name AND t1.executed_at = t2.max_executed_at
+            """ if DATABASE_URL else f"""
+                SELECT t1.table_name, t1.dq_score 
+                FROM {tbl} t1
+                INNER JOIN (
+                    SELECT table_name, MAX(id) as max_id
+                    FROM {tbl}
+                    GROUP BY table_name
+                ) t2 ON t1.id = t2.max_id
+            """
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            for row in rows:
+                scores_map[row['table_name']] = row['dq_score']
+                
         return {"status": "success", "scores": scores_map}
     except Exception as e:
         print(f"Error fetching catalog quality scores: {e}")
@@ -3292,11 +3561,29 @@ async def get_catalog_quality_scores():
         conn.close()
 
 @app.get("/api/v1/dashboard/executions/latest")
-async def get_latest_table_executions(table_name: str):
+async def get_latest_table_executions(table_name: str, platform: Optional[str] = None):
     conn, cursor = get_db_connection()
     try:
+        plat = platform
+        if not plat:
+            # check if table exists in snowflake history
+            ph = "%s" if DATABASE_URL else "?"
+            cursor.execute(f"SELECT 1 FROM snowflake_dq_run_history WHERE table_name = {ph} LIMIT 1", (table_name,))
+            if cursor.fetchone():
+                plat = 'snowflake'
+            else:
+                cursor.execute(f"SELECT 1 FROM databricks_dq_run_history WHERE table_name = {ph} LIMIT 1", (table_name,))
+                if cursor.fetchone():
+                    plat = 'databricks'
+                else:
+                    plat = 'snowflake'
+                    
+        tbl_history = get_platform_table('dq_run_history', plat)
+        tbl_executions = get_platform_table('rule_executions', plat)
+        
         # 1. Fetch latest overall run for this table
-        run_query = "SELECT * FROM dq_run_history WHERE table_name = %s ORDER BY id DESC LIMIT 1" if DATABASE_URL else "SELECT * FROM dq_run_history WHERE table_name = ? ORDER BY id DESC LIMIT 1"
+        ph = "%s" if DATABASE_URL else "?"
+        run_query = f"SELECT * FROM {tbl_history} WHERE table_name = {ph} ORDER BY id DESC LIMIT 1"
         cursor.execute(run_query, (table_name,))
         latest_run = cursor.fetchone()
         
@@ -3304,22 +3591,13 @@ async def get_latest_table_executions(table_name: str):
             return {"status": "success", "has_evaluated": False, "overall": 100, "executions": []}
             
         # 2. Fetch the most recent execution for each column/rule combination
-        exec_query = """
+        exec_query = f"""
             SELECT t1.* 
-            FROM rule_executions t1
+            FROM {tbl_executions} t1
             INNER JOIN (
                 SELECT column_name, rule_type, MAX(id) as max_id
-                FROM rule_executions
-                WHERE table_name = %s
-                GROUP BY column_name, rule_type
-            ) t2 ON t1.id = t2.max_id
-        """ if DATABASE_URL else """
-            SELECT t1.* 
-            FROM rule_executions t1
-            INNER JOIN (
-                SELECT column_name, rule_type, MAX(id) as max_id
-                FROM rule_executions
-                WHERE table_name = ?
+                FROM {tbl_executions}
+                WHERE table_name = {ph}
                 GROUP BY column_name, rule_type
             ) t2 ON t1.id = t2.max_id
         """

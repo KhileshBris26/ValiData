@@ -147,7 +147,7 @@ const TableDetail: React.FC = () => {
     if (!table) return;
     setIsRefreshingScore(true);
     try {
-      const res = await axios.get(`${API_BASE}/dashboard/executions/latest?table_name=${encodeURIComponent(table)}&_t=${Date.now()}`);
+      const res = await axios.get(`${API_BASE}/dashboard/executions/latest?table_name=${encodeURIComponent(table)}&platform=${platform}&_t=${Date.now()}`);
       if (res.data && res.data.has_evaluated) {
         setQualityBase(res.data.overall || 100);
         // Determine last run date from executions if possible, otherwise use a generic "Recently"

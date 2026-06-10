@@ -70,6 +70,7 @@ class RuleSyncItem(BaseModel):
     status: Optional[str] = "Active"
 
 class RuleSyncRequest(BaseModel):
+    platform: Optional[str] = None
     rules: list[RuleSyncItem]
 
 class ExecutionLogItem(BaseModel):
