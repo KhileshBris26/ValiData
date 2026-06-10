@@ -356,7 +356,7 @@ class QueryGenerator:
                 t.table_schema AS SCHEMA,
                 t.table_name AS NAME,
                 'TABLE' AS TYPE,
-                COALESCE(t.row_count, 0) AS RECORDS,
+                0 AS RECORDS,
                 COALESCE(c.ATTR_COUNT, 0) AS ATTRIBUTES
             FROM system.information_schema.tables t
             LEFT JOIN (
