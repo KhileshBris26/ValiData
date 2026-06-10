@@ -1994,22 +1994,37 @@ async def get_metadata_entities(request: MetadataRequest):
             if request.platform == "snowflake":
                 key = 'column_name' if request.entity_type == 'columns' else 'name'
                 for row in result:
+                    row_lower = {k.lower(): v for k, v in row.items()}
                     if request.entity_type == 'columns':
-                        col_name = row.get('name') or row.get('NAME')
-                        col_type = row.get('type') or row.get('TYPE')
-                        is_null = row.get('null?') or row.get('NULL?')
-                        entities.append({"name": col_name, "type": col_type, "nullable": is_null == 'Y'})
+                        col_name = row_lower.get('column_name') or row_lower.get('name')
+                        col_type = row_lower.get('type') or row_lower.get('data_type')
+                        is_null = row_lower.get('null?') or row_lower.get('nullable') or row_lower.get('is_nullable')
+                        entities.append({"name": col_name, "type": col_type, "nullable": is_null == 'Y' or is_null == 'YES' or is_null is True})
                     else:
-                        val = row.get(key) or row.get(key.upper())
+                        val = row_lower.get(key.lower()) or row_lower.get('name')
                         if val: entities.append(val)
             elif request.platform == "databricks":
                 key_map = {"databases": "catalog", "schemas": "databaseName", "tables": "tableName", "columns": "col_name"}
                 key = key_map.get(request.entity_type, "name")
                 for row in result:
+                    row_lower = {k.lower(): v for k, v in row.items()}
                     if request.entity_type == 'columns':
-                        entities.append({"name": row.get(key), "type": row.get('data_type'), "nullable": True})
+                        col_name = row_lower.get('col_name') or row_lower.get('column_name') or row_lower.get('name')
+                        col_type = row_lower.get('data_type') or row_lower.get('type')
+                        is_null = row_lower.get('nullable') or row_lower.get('null?') or row_lower.get('is_nullable')
+                        is_nullable = True
+                        if is_null is not None:
+                            is_nullable = is_null is True or str(is_null).lower() in ('true', 'y', 'yes')
+                        entities.append({"name": col_name, "type": col_type, "nullable": is_nullable})
                     else:
-                        val = row.get(key) or row.get(key.upper())
+                        val = None
+                        for cand in (key, key.lower(), key.upper(), 'name', 'tablename', 'table_name', 'databasename', 'database_name', 'catalog', 'catalog_name', 'schema', 'schema_name', 'namespace'):
+                            if cand in row:
+                                val = row[cand]
+                                break
+                            if cand.lower() in row_lower:
+                                val = row_lower[cand.lower()]
+                                break
                         if val: entities.append(val)
         return {"status": "success", "platform": request.platform, "entities": entities}
     except Exception as e:
@@ -2962,11 +2977,13 @@ def execute_schedule_job(schedule_id: int):
             if result:
                 if platform == "snowflake":
                     for row in result:
-                        val = row.get('column_name') or row.get('COLUMN_NAME')
+                        row_lower = {k.lower(): v for k, v in row.items()}
+                        val = row_lower.get('column_name') or row_lower.get('name')
                         if val: columns.append(val)
                 elif platform == "databricks":
                     for row in result:
-                        val = row.get('col_name') or row.get('COL_NAME')
+                        row_lower = {k.lower(): v for k, v in row.items()}
+                        val = row_lower.get('col_name') or row_lower.get('column_name') or row_lower.get('name')
                         if val: columns.append(val)
             
             col_profiles = {}
