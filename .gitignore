@@ -35,4 +35,5 @@ Thumbs.db
 
 # Local data
 database.db
+users.db
 *.sqlite3
