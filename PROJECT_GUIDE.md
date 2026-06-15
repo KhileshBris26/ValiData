@@ -124,4 +124,23 @@ For a step-by-step "First Hour" setup, see the [ONBOARDING.md](./ONBOARDING.md) 
 
 ---
 
+## 🔒 8. Third-Party Integrations & Shared Accounts
+
+### Email Integration (Resend)
+For forgot-password OTP emails, ValiData uses **Resend** (`https://resend.com`). 
+- **Endpoint / Console**: `https://resend.com/onboarding`
+- **Authentication Providers**: Logged in using the following linked accounts:
+  - **Google**: `khileshdummy@gmail.com`
+  - **GitHub**: `@KhileshBris26`
+- **Usage**: Stored as `RESEND_API_KEY` in environment variables.
+
+### Data Warehouse Accounts (Shared Environment)
+For local development and initial staging deployments:
+- **Snowflake**: Both Developer 1 and Developer 2 share the same Snowflake account.
+- **Databricks**: Both Developer 1 and Developer 2 share the same Databricks account/workspace.
+- Credentials should be filled in the local `.env` file copied from `.env.example`.
+
+---
+
 *ValiData: Enterprise Trust, Native Performance.*
+
