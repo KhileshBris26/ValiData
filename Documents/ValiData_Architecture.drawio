@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1200" math="0" shadow="0">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- TITLE -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <mxCell id="title" value="ValiData Architecture" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1;fontColor=#1e3a5f;" vertex="1" parent="1">
+      <mxGeometry x="150" y="20" width="520" height="40" as="geometry" />
+    </mxCell>
+
+    <!-- Divider line under title -->
+    <mxCell id="title_line" value="" style="endArrow=none;html=1;strokeColor=#1e3a5f;strokeWidth=2;" edge="1" parent="1">
+      <mxGeometry x="150" y="62" width="100" as="geometry">
+        <mxPoint x="150" y="62" as="sourcePoint" />
+        <mxPoint x="670" y="62" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- LAYER 1 — USER LAYER -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <mxCell id="user_box" value="👥  USER LAYER" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e3a5f;strokeColor=#1e3a5f;fontColor=#ffffff;fontSize=13;fontStyle=1;arcSize=8;" vertex="1" parent="1">
+      <mxGeometry x="150" y="80" width="520" height="50" as="geometry" />
+    </mxCell>
+
+    <!-- Arrow: User -> Frontend -->
+    <mxCell id="arr1" value="" style="endArrow=block;endFill=1;html=1;strokeColor=#555555;strokeWidth=2;" edge="1" parent="1">
+      <mxGeometry x="410" y="130" width="100" as="geometry">
+        <mxPoint x="410" y="130" as="sourcePoint" />
+        <mxPoint x="410" y="155" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- LAYER 2 — REACT FRONTEND -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <mxCell id="frontend_header" value="React Frontend (Vercel)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#2d5fa1;strokeColor=#2d5fa1;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="150" y="155" width="520" height="30" as="geometry" />
+    </mxCell>
+    <mxCell id="frontend_body" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dce9f8;strokeColor=#2d5fa1;" vertex="1" parent="1">
+      <mxGeometry x="150" y="185" width="520" height="40" as="geometry" />
+    </mxCell>
+
+    <!-- Frontend pills -->
+    <mxCell id="fe_dash"    value="📊 Dashboard"   style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d5fa1;strokeColor=#2d5fa1;fontColor=#ffffff;fontSize=10;" vertex="1" parent="1"><mxGeometry x="162" y="193" width="88" height="24" as="geometry" /></mxCell>
+    <mxCell id="fe_cat"     value="🗂 Data Catalog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d5fa1;strokeColor=#2d5fa1;fontColor=#ffffff;fontSize=10;" vertex="1" parent="1"><mxGeometry x="258" y="193" width="90" height="24" as="geometry" /></mxCell>
+    <mxCell id="fe_rule"    value="📋 Rule Studio"  style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d5fa1;strokeColor=#2d5fa1;fontColor=#ffffff;fontSize=10;" vertex="1" parent="1"><mxGeometry x="356" y="193" width="86" height="24" as="geometry" /></mxCell>
+    <mxCell id="fe_ai"      value="🤖 AI Agent"     style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d5fa1;strokeColor=#2d5fa1;fontColor=#ffffff;fontSize=10;" vertex="1" parent="1"><mxGeometry x="450" y="193" width="76" height="24" as="geometry" /></mxCell>
+    <mxCell id="fe_admin"   value="🔒 Admin"        style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d5fa1;strokeColor=#2d5fa1;fontColor=#ffffff;fontSize=10;" vertex="1" parent="1"><mxGeometry x="534" y="193" width="60" height="24" as="geometry" /></mxCell>
+
+    <!-- Arrow: Frontend -> Backend -->
+    <mxCell id="arr2" value="" style="endArrow=block;endFill=1;html=1;strokeColor=#555555;strokeWidth=2;" edge="1" parent="1">
+      <mxGeometry x="410" y="225" width="100" as="geometry">
+        <mxPoint x="410" y="225" as="sourcePoint" />
+        <mxPoint x="410" y="250" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- LAYER 3 — FASTAPI BACKEND -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <mxCell id="backend_header" value="FastAPI Backend (Render)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1e3a5f;strokeColor=#1e3a5f;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="150" y="250" width="520" height="30" as="geometry" />
+    </mxCell>
+    <mxCell id="backend_body" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ccd9eb;strokeColor=#1e3a5f;" vertex="1" parent="1">
+      <mxGeometry x="150" y="280" width="520" height="70" as="geometry" />
+    </mxCell>
+
+    <!-- Backend pills — Row 1 -->
+    <mxCell id="be_auth"    value="🔐 Auth Service"      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e3a5f;strokeColor=#1e3a5f;fontColor=#ffffff;fontSize=10;" vertex="1" parent="1"><mxGeometry x="162" y="288" width="110" height="24" as="geometry" /></mxCell>
+    <mxCell id="be_rule"    value="📝 Rule Management"   style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e3a5f;strokeColor=#1e3a5f;fontColor=#ffffff;fontSize=10;" vertex="1" parent="1"><mxGeometry x="282" y="288" width="120" height="24" as="geometry" /></mxCell>
+    <mxCell id="be_meta"    value="📦 Metadata Service"  style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e3a5f;strokeColor=#1e3a5f;fontColor=#ffffff;fontSize=10;" vertex="1" parent="1"><mxGeometry x="412" y="288" width="118" height="24" as="geometry" /></mxCell>
+    <!-- Backend pills — Row 2 -->
+    <mxCell id="be_ana"     value="📈 Analytics Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e3a5f;strokeColor=#1e3a5f;fontColor=#ffffff;fontSize=10;" vertex="1" parent="1"><mxGeometry x="162" y="318" width="120" height="24" as="geometry" /></mxCell>
+    <mxCell id="be_ai"      value="⚙️ AI Agent Service"  style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e3a5f;strokeColor=#1e3a5f;fontColor=#ffffff;fontSize=10;" vertex="1" parent="1"><mxGeometry x="292" y="318" width="120" height="24" as="geometry" /></mxCell>
+    <mxCell id="be_sched"   value="🗓 Scheduler Service" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e3a5f;strokeColor=#1e3a5f;fontColor=#ffffff;fontSize=10;" vertex="1" parent="1"><mxGeometry x="422" y="318" width="116" height="24" as="geometry" /></mxCell>
+
+    <!-- Arrow: Backend -> Middle layer -->
+    <mxCell id="arr3" value="" style="endArrow=block;endFill=1;html=1;strokeColor=#555555;strokeWidth=2;" edge="1" parent="1">
+      <mxGeometry x="410" y="350" width="100" as="geometry">
+        <mxPoint x="410" y="350" as="sourcePoint" />
+        <mxPoint x="410" y="375" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- LAYER 4 — METADATA REPO + CORE ENGINE (side by side) -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+
+    <!-- Metadata Repository (left) -->
+    <mxCell id="meta_header" value="🗄️  Metadata Repository" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#4a7c3f;strokeColor=#4a7c3f;fontColor=#ffffff;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="150" y="375" width="225" height="30" as="geometry" />
+    </mxCell>
+    <mxCell id="meta_body"   value="• Users&#xa;• Rules&#xa;• Schedules&#xa;• Anomalies&#xa;• Audit Logs&#xa;• DQ Results" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dff0d8;strokeColor=#4a7c3f;fontSize=11;align=left;spacingLeft=40;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+      <mxGeometry x="150" y="405" width="225" height="120" as="geometry" />
+    </mxCell>
+    <!-- Neon badge -->
+    <mxCell id="neon_badge"  value="Neon (PostgreSQL / SQLite)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4a7c3f;strokeColor=#4a7c3f;fontColor=#ffffff;fontSize=9;" vertex="1" parent="1">
+      <mxGeometry x="158" y="498" width="180" height="20" as="geometry" />
+    </mxCell>
+
+    <!-- Double-headed arrow between meta and core -->
+    <mxCell id="arr_meta_core" value="" style="endArrow=block;startArrow=block;startFill=1;endFill=1;html=1;strokeColor=#555555;strokeWidth=2;" edge="1" parent="1">
+      <mxGeometry x="375" y="455" width="100" as="geometry">
+        <mxPoint x="375" y="455" as="sourcePoint" />
+        <mxPoint x="445" y="455" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- Core Processing Engine (right) -->
+    <mxCell id="core_header" value="🧠  Core Processing Engine" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1e3a5f;strokeColor=#1e3a5f;fontColor=#ffffff;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="445" y="375" width="225" height="30" as="geometry" />
+    </mxCell>
+    <mxCell id="core_body"   value="• Query Generator&#xa;• DQ Rule Engine&#xa;• Profiling Engine&#xa;• Lineage Engine&#xa;• Usage Analyzer&#xa;• AI Prompt Builder" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dce9f8;strokeColor=#1e3a5f;fontSize=11;align=left;spacingLeft=20;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+      <mxGeometry x="445" y="405" width="225" height="120" as="geometry" />
+    </mxCell>
+
+    <!-- Arrow: Core Engine -> Connectors -->
+    <mxCell id="arr4" value="" style="endArrow=block;endFill=1;html=1;strokeColor=#555555;strokeWidth=2;" edge="1" parent="1">
+      <mxGeometry x="410" y="525" width="100" as="geometry">
+        <mxPoint x="410" y="525" as="sourcePoint" />
+        <mxPoint x="410" y="550" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- LAYER 5 — WAREHOUSE CONNECTORS -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <mxCell id="conn_header" value="Warehouse Connectors" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#888888;strokeColor=#888888;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="150" y="550" width="520" height="30" as="geometry" />
+    </mxCell>
+    <mxCell id="conn_body"   value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#888888;" vertex="1" parent="1">
+      <mxGeometry x="150" y="580" width="520" height="40" as="geometry" />
+    </mxCell>
+    <mxCell id="conn_sf"  value="❄️  Snowflake Connector"   style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0077b6;strokeColor=#0077b6;fontColor=#ffffff;fontSize=11;" vertex="1" parent="1"><mxGeometry x="168" y="588" width="190" height="24" as="geometry" /></mxCell>
+    <mxCell id="conn_dbx" value="🧱  Databricks Connector"  style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e63946;strokeColor=#e63946;fontColor=#ffffff;fontSize=11;" vertex="1" parent="1"><mxGeometry x="372" y="588" width="190" height="24" as="geometry" /></mxCell>
+
+    <!-- Arrow + label: Pushdown SQL -->
+    <mxCell id="arr5" value="" style="endArrow=block;endFill=1;html=1;strokeColor=#555555;strokeWidth=2;" edge="1" parent="1">
+      <mxGeometry x="410" y="620" width="100" as="geometry">
+        <mxPoint x="410" y="620" as="sourcePoint" />
+        <mxPoint x="410" y="648" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="pushdown_label" value="Pushdown SQL" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#555555;" vertex="1" parent="1">
+      <mxGeometry x="430" y="623" width="100" height="20" as="geometry" />
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- LAYER 6 — CUSTOMER DATA PLATFORM -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <mxCell id="cdp_header" value="CUSTOMER DATA PLATFORM" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1e3a5f;strokeColor=#1e3a5f;fontColor=#ffffff;fontSize=12;fontStyle=1;spacingTop=0;" vertex="1" parent="1">
+      <mxGeometry x="150" y="648" width="520" height="30" as="geometry" />
+    </mxCell>
+
+    <!-- Snowflake box -->
+    <mxCell id="sf_header" value="❄️  Snowflake" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#0077b6;strokeColor=#0077b6;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="150" y="678" width="255" height="30" as="geometry" />
+    </mxCell>
+    <mxCell id="sf_body"   value="• Data Tables&#xa;• Views&#xa;• Information Schema&#xa;• Cortex AI (Mistral-large)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e8f4fc;strokeColor=#0077b6;fontSize=11;align=left;spacingLeft=16;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+      <mxGeometry x="150" y="708" width="255" height="90" as="geometry" />
+    </mxCell>
+
+    <!-- Databricks box -->
+    <mxCell id="dbx_header" value="🧱  Databricks" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e63946;strokeColor=#e63946;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="415" y="678" width="255" height="30" as="geometry" />
+    </mxCell>
+    <mxCell id="dbx_body"   value="• Delta Tables&#xa;• SQL Warehouse&#xa;• Unity Catalog&#xa;• AI Functions (Llama 3)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fceaea;strokeColor=#e63946;fontSize=11;align=left;spacingLeft=16;verticalAlign=top;spacingTop=6;" vertex="1" parent="1">
+      <mxGeometry x="415" y="708" width="255" height="90" as="geometry" />
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- LAYER 7 — VALIDATA PRINCIPLE (footer) -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <mxCell id="principle_box" value="ValiData Principle&#xa;&#xa;• Raw data NEVER leaves Snowflake / Databricks&#xa;• SQL is executed within the warehouse&#xa;• Only metadata, counts, and anomalies are returned" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#888888;fontSize=11;align=left;spacingLeft=20;verticalAlign=top;spacingTop=10;" vertex="1" parent="1">
+      <mxGeometry x="150" y="815" width="520" height="80" as="geometry" />
+    </mxCell>
+
+  </root>
+</mxGraphModel>
