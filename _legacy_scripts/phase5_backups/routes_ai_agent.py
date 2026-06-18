@@ -5,8 +5,8 @@ import uuid
 import datetime
 import json
 
-from app.shared_resources.database.connection import get_db_connection, DATABASE_URL, get_platform_table
-from app.shared_resources.database.connection import snowflake_engine, databricks_engine, snowflake_svc, databricks_svc
+from db.connection import get_db_connection, DATABASE_URL, get_platform_table
+from db.connection import snowflake_engine, databricks_engine, snowflake_svc, databricks_svc
 from core.query_generator import QueryGenerator
 from models.rules import AISuggestionRequest, SuggestRulesRequest, ApplyRulesRequest, AIChatRequest, TableSummaryRequest, CatalogRequest
 
@@ -363,4 +363,3 @@ async def generate_table_summary(request: TableSummaryRequest):
         return {"status": "success", "summary": summary}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
