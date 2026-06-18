@@ -384,6 +384,25 @@ async def get_query_history_api(request: DashboardRequest):
                 curr_user_res = snowflake_engine.execute_query("SELECT current_user() AS cur_user")
                 curr_user = curr_user_res[0].get("cur_user") if curr_user_res else None
                 
+                # Ensure database context is active for INFORMATION_SCHEMA queries
+                import os
+                curr_db_res = snowflake_engine.execute_query("SELECT current_database() AS cur_db")
+                curr_db = curr_db_res[0].get("cur_db") if curr_db_res else None
+                if not curr_db:
+                    db_name = creds.get("database") or os.getenv("SNOWFLAKE_DATABASE")
+                    if not db_name:
+                        try:
+                            db_list = snowflake_engine.execute_query("SHOW DATABASES LIMIT 1")
+                            if db_list:
+                                db_name = db_list[0].get("NAME") or db_list[0].get("name")
+                        except Exception:
+                            pass
+                    if db_name:
+                        try:
+                            snowflake_engine.execute_query(f"USE DATABASE {db_name}")
+                        except Exception:
+                            pass
+
                 rows = []
                 try:
                     sql = """
