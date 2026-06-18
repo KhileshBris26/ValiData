@@ -140,7 +140,6 @@ const TableDetail: React.FC = () => {
   
   // Quality and execution state from backend
   const [qualityBase, setQualityBase] = useState<number>(100);
-  const [lastRunDate, setLastRunDate] = useState<string>('Never');
   const [isRefreshingScore, setIsRefreshingScore] = useState<boolean>(false);
 
   const fetchQualityScore = useCallback(async () => {
@@ -150,17 +149,8 @@ const TableDetail: React.FC = () => {
       const res = await axios.get(`${API_BASE}/dashboard/executions/latest?table_name=${encodeURIComponent(table)}&platform=${platform}&_t=${Date.now()}`);
       if (res.data && res.data.has_evaluated) {
         setQualityBase(res.data.overall || 100);
-        // Determine last run date from executions if possible, otherwise use a generic "Recently"
-        // Wait, since we don't have run_date, let's look at the first execution's executed_at if it exists
-        if (res.data.executions && res.data.executions.length > 0 && res.data.executions[0].executed_at) {
-          const date = new Date(res.data.executions[0].executed_at + 'Z');
-          setLastRunDate(date.toLocaleString());
-        } else {
-          setLastRunDate(new Date().toLocaleString());
-        }
       } else {
         setQualityBase(100);
-        setLastRunDate('Never');
       }
     } catch (e) {
       console.error('Failed to fetch quality score from backend:', e);
