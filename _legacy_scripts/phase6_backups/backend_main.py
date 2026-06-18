@@ -46,7 +46,7 @@ app.add_middleware(
 # Middleware to capture logged-in user context
 @app.middleware("http")
 async def add_current_user_to_context(request, call_next):
-    from app.shared_resources.core.context import current_user_var
+    from core.context import current_user_var
     username = request.headers.get("x-robin-user", "System")
     token = current_user_var.set(username)
     try:
@@ -77,5 +77,4 @@ app.include_router(ai_agent_router)
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
-
 

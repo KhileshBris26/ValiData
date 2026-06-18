@@ -1,47 +1,31 @@
-from app.shared_resources.core.query_generator import QueryGenerator
-from app.shared_resources.core.lineage_engine import LineageEngine
-from app.shared_resources.core.usage_analyzer import UsageAnalyzer
+from core.query_generator import QueryGenerator
+from core.lineage_engine import LineageEngine
+from core.usage_analyzer import UsageAnalyzer
 
-class SnowflakeService:
+class DatabricksService:
     def __init__(self, engine):
         """
-        Initialize with the Snowflake connector engine.
+        Initialize with the Databricks connector engine.
         """
         self.engine = engine
 
     def get_catalog_tables(self, credentials: dict) -> list:
         """
-        Fetch and map catalog tables for Snowflake.
+        Fetch and map catalog tables for Databricks.
         """
-        sql_query = QueryGenerator.generate_catalog_sql("snowflake")
+        sql_query = QueryGenerator.generate_catalog_sql("databricks")
         try:
             self.engine.connect(credentials)
             result = self.engine.execute_query(sql_query)
-            mapped = []
-            if result:
-                for r in result:
-                    # snowflake returns dict cursor
-                    kind = r.get("kind") or r.get("KIND") or r.get("TYPE")
-                    if kind == "TABLE":
-                        db = r.get("database_name") or r.get("DATABASE_NAME") or r.get("DATABASE")
-                        if db and db.upper() not in ('SNOWFLAKE', 'SNOWFLAKE_SAMPLE_DATA'):
-                            mapped.append({
-                                "DATABASE": db,
-                                "SCHEMA": r.get("schema_name") or r.get("SCHEMA_NAME") or r.get("SCHEMA"),
-                                "NAME": r.get("name") or r.get("NAME"),
-                                "TYPE": "TABLE",
-                                "RECORDS": r.get("rows") or r.get("ROWS") or r.get("RECORDS") or 0,
-                                "ATTRIBUTES": 0
-                            })
-            return mapped
+            return result or []
         finally:
             self.engine.disconnect()
 
     def get_table_preview(self, credentials: dict, db: str, schema: str, table: str) -> list:
         """
-        Fetch table preview for Snowflake.
+        Fetch table preview for Databricks.
         """
-        sql_query = QueryGenerator.generate_preview_sql("snowflake", db, schema, table)
+        sql_query = QueryGenerator.generate_preview_sql("databricks", db, schema, table)
         try:
             self.engine.connect(credentials)
             result = self.engine.execute_query(sql_query)
@@ -51,9 +35,9 @@ class SnowflakeService:
 
     def infer_lineage(self, credentials: dict, db: str, schema: str) -> dict:
         """
-        Infer lineage graph for Snowflake.
+        Infer lineage graph for Databricks.
         """
-        sql_query = QueryGenerator.generate_information_schema_sql("snowflake", db, schema)
+        sql_query = QueryGenerator.generate_information_schema_sql("databricks", db, schema)
         try:
             self.engine.connect(credentials)
             result = self.engine.execute_query(sql_query)
@@ -63,9 +47,9 @@ class SnowflakeService:
 
     def get_usage_analytics(self, credentials: dict, days_back: int) -> dict:
         """
-        Get usage analytics for Snowflake.
+        Get usage analytics for Databricks.
         """
-        sql_query = QueryGenerator.generate_query_history_sql("snowflake", days_back)
+        sql_query = QueryGenerator.generate_query_history_sql("databricks", days_back)
         try:
             self.engine.connect(credentials)
             result = self.engine.execute_query(sql_query)
@@ -75,9 +59,9 @@ class SnowflakeService:
 
     def generate_table_summary(self, credentials: dict, table_name: str) -> str:
         """
-        Generate table summary for Snowflake.
+        Generate table summary for Databricks.
         """
-        sql_query = QueryGenerator.generate_table_summary_sql("snowflake", table_name)
+        sql_query = QueryGenerator.generate_table_summary_sql("databricks", table_name)
         try:
             self.engine.connect(credentials)
             result = self.engine.execute_query(sql_query)
@@ -87,9 +71,9 @@ class SnowflakeService:
 
     def suggest_rules_ai(self, credentials: dict, table: str, column: str) -> list:
         """
-        Suggest rules via AI for Snowflake.
+        Suggest rules via AI for Databricks.
         """
-        sql_query = QueryGenerator.generate_ai_suggestion_sql("snowflake", table, column)
+        sql_query = QueryGenerator.generate_ai_suggestion_sql("databricks", table, column)
         try:
             self.engine.connect(credentials)
             result = self.engine.execute_query(sql_query)
@@ -99,7 +83,7 @@ class SnowflakeService:
 
     def execute_dq_rule(self, credentials: dict, sql_query: str) -> list:
         """
-        Execute Data Quality rule on Snowflake.
+        Execute Data Quality rule on Databricks.
         """
         try:
             self.engine.connect(credentials)
@@ -110,15 +94,16 @@ class SnowflakeService:
 
     def fetch_column_metadata(self, credentials: dict, db: str, schema: str, table: str, columns: list) -> list:
         """
-        Fetch column metadata for Snowflake.
+        Fetch column metadata for Databricks.
         """
         col_list_str = ",".join([f"'{c}'" for c in columns])
         meta_query = f'''
-            SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
-            FROM {db}.INFORMATION_SCHEMA.COLUMNS 
-            WHERE TABLE_SCHEMA = '{schema}'
-            AND TABLE_NAME = '{table}'
-            AND COLUMN_NAME IN ({col_list_str})
+            SELECT column_name AS COLUMN_NAME, data_type AS DATA_TYPE, is_nullable AS IS_NULLABLE
+            FROM system.information_schema.columns 
+            WHERE table_catalog = '{db}'
+            AND table_schema = '{schema}'
+            AND table_name = '{table}'
+            AND column_name IN ({col_list_str})
         '''
         try:
             self.engine.connect(credentials)
@@ -128,7 +113,7 @@ class SnowflakeService:
 
     def sample_failed_records(self, credentials: dict, table_name: str, failed_checks: list) -> list:
         """
-        Fetch sample failed records for Snowflake.
+        Fetch sample failed records for Databricks.
         """
         groups = []
         try:
@@ -173,19 +158,18 @@ class SnowflakeService:
 
     def get_dashboard_warehouse_analytics_queries(self, credentials: dict) -> list:
         """
-        Fetch query history for warehouse analytics on Snowflake.
+        Fetch query history for warehouse analytics on Databricks.
         """
         try:
             self.engine.connect(credentials)
             try:
-                sql = "SELECT QUERY_TEXT FROM TABLE(INFORMATION_SCHEMA.QUERY_HISTORY(RESULT_LIMIT => 500)) ORDER BY START_TIME DESC"
+                sql = "SELECT statement_text as QUERY_TEXT FROM system.query.history ORDER BY start_time DESC LIMIT 500"
                 return self.engine.execute_query(sql)
-            except Exception:
-                sql = "SELECT QUERY_TEXT FROM TABLE(INFORMATION_SCHEMA.QUERY_HISTORY_BY_SESSION(RESULT_LIMIT => 500)) ORDER BY START_TIME DESC"
-                return self.engine.execute_query(sql)
+            except Exception as e:
+                print(f"Query history retrieval failed: {e}")
+                return []
         except Exception as e:
-            print(f"Query history retrieval failed: {e}")
+            print(f"Connection failed: {e}")
             return []
         finally:
             self.engine.disconnect()
-

@@ -5,8 +5,8 @@ import datetime
 
 from app.shared_resources.database.connection import get_db_connection, DATABASE_URL, get_platform_table
 from app.shared_resources.database.connection import snowflake_engine, databricks_engine, snowflake_svc, databricks_svc
-from app.shared_resources.core.usage_analyzer import UsageAnalyzer
-from app.shared_resources.core.context import current_user_var
+from core.usage_analyzer import UsageAnalyzer
+from core.context import current_user_var
 from models.rules import AnalyticsRequest, DashboardRequest
 
 router = APIRouter()
@@ -542,5 +542,4 @@ async def get_query_history_api(request: DashboardRequest):
         "warning": warning or "No query history found in system logs. Showing simulated query log trail.",
         "queries": mock_queries
     }
-
 
