@@ -1,0 +1,64 @@
+========================================================================
+LEGACY SCRIPTS INVENTORY & DELETION SAFETY REPORT
+========================================================================
+Generated on: June 18, 2026
+Location: _legacy_scripts/
+
+This document provides an analysis of all files stored in the `_legacy_scripts` folder, explaining their original purpose and indicating whether they are safe to delete now that the enterprise architecture refactoring is underway.
+
+------------------------------------------------------------------------
+1. HOTFIX / PATCH SCRIPTS (Obsolete & Safe to Delete)
+------------------------------------------------------------------------
+Files: 
+- patch.py, patch2.py, patch3.py
+- patch_cache.py, patch_datacatalog.py, patch_dq_detail.py
+- patch_frontend.py, patch_glossary.py, patch_main.py
+- patch_role_fix.py, patch_suggest.py, patch_table_detail.py
+
+Analysis:
+These files are ad-hoc Python scripts written specifically to perform one-off regex replacements or hotfixes on various frontend `.tsx` files and backend routes (e.g., injecting credential logic or patching specific bugs). Because these scripts permanently altered the source code files and the fixes are already embedded in the live codebase, running them again would be redundant or destructive. 
+
+Deletion Safety: ✅ SAFE TO DELETE. They hold no value for the ongoing application architecture.
+
+------------------------------------------------------------------------
+2. AD-HOC TEST SCRIPTS (Obsolete & Safe to Delete)
+------------------------------------------------------------------------
+Files: 
+- test_api.py, test_connections.py, test_cte.py
+- test_dbx.py, test_persistence.py, test_profile.py
+- test_real_usage.py, test_sf.py, test_smtp.py
+- test_tables.py, test_usage.py
+
+Analysis:
+These are small, manual test scripts (mostly under 2KB) that developers used to quickly verify specific components like Snowflake connections (`test_sf.py`), Databricks connections (`test_dbx.py`), or SMTP email sending (`test_smtp.py`) outside of the main application context. In our new enterprise architecture, testing is formalized under the `backend/tests/` directory using standard testing frameworks (pytest). 
+
+Deletion Safety: ✅ SAFE TO DELETE. If any of the connection logic needs to be tested again, it should be migrated into formal unit or integration tests inside `backend/tests/`.
+
+------------------------------------------------------------------------
+3. REFACTORING ROLLBACK SCRIPTS (Do Not Delete Yet)
+------------------------------------------------------------------------
+Files: 
+- _rollback_phase3.py
+- _rollback_phase4.py
+- _rollback_phase5.py
+- _rollback_phase6.py
+
+Analysis:
+These scripts were explicitly generated during the recent architectural refactoring phases. They contain the logic required to reverse the folder movements and import changes if the application experiences catastrophic failures during the transition.
+
+Deletion Safety: ❌ DO NOT DELETE YET. Keep these scripts until the entire enterprise refactoring process is completed, tested in staging, and verified to be 100% stable. Once the new architecture is fully adopted, they can be safely removed.
+
+------------------------------------------------------------------------
+4. REFACTORING BACKUPS (Do Not Delete Yet)
+------------------------------------------------------------------------
+Files/Folders:
+- main_phase3.py.bak
+- requirements_phase3.txt.bak
+- phase5_backups/ (Directory)
+- phase6_backups/ (Directory)
+
+Analysis:
+These are raw copies of the monolithic route files, `main.py`, and other configuration files taken right before they were modified during the refactoring phases. They are utilized by the rollback scripts mentioned above.
+
+Deletion Safety: ❌ DO NOT DELETE YET. Retain these alongside the rollback scripts until the architectural transition is finalized.
+========================================================================

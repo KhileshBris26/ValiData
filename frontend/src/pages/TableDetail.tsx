@@ -684,9 +684,9 @@ const TableDetail: React.FC = () => {
             style={{ cursor: isEvaluating ? 'not-allowed' : 'pointer', opacity: isEvaluating ? 0.7 : 1 }}
           >
             <span>{isEvaluating ? 'Evaluating...' : 'Profile and evaluate'}</span>
-            <ChevronDown size={16} />
+            {/* ChevronDown icon removed per request */}
           </div>
-          <button className="btn-edit">Edit</button>
+          {/* Edit button removed per request */}
         </div>
       </div>
 
@@ -1802,43 +1802,7 @@ const TableDetail: React.FC = () => {
               <p className="card-footer-text">The reliability index is a weighted score of Accuracy (40%), Freshness (20%), and Governance (40%).</p>
             </div>
 
-            {/* Validation Monitors */}
-            <div className="card glass-panel">
-              <div className="card-header-with-btn">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <h3>Validation Monitors</h3>
-                  <button 
-                    onClick={fetchQualityScore} 
-                    disabled={isRefreshingScore}
-                    title="Refresh score from backend"
-                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px', borderRadius: '4px' }}
-                  >
-                    <svg style={{ animation: isRefreshingScore ? 'spin 1s linear infinite' : 'none', transformOrigin: 'center' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.92-10.44l5.67 5.67"/></svg>
-                  </button>
-                </div>
-                <button className="btn-outline">Create</button>
-              </div>
-              <div className="dq-table">
-                <div className="dq-row header">
-                  <span>Name</span>
-                  <span>Validation Rate</span>
-                  <span>Last run</span>
-                </div>
-                <div className="dq-row">
-                  <Link to={`/catalog/${database}/${schema}/${table}/dq/primary`} className="dq-link">
-                    <span className="dq-name clickable">Primary</span>
-                  </Link>
-                  <div className="dq-progress">
-                    <div className="dq-progress-track">
-                      <div className="dq-bar" style={{ width: `${qualityBase}%` }}></div>
-                    </div>
-                    <span>{qualityBase}%</span>
-                  </div>
-                  <span className="dq-date">{lastRunDate}</span>
-                </div>
-              </div>
-            </div>
-
+            {/* Validation Monitors section removed per request */}
 
             {/* Columns */}
             <div className="card glass-panel">
