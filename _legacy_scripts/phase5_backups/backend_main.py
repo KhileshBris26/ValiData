@@ -13,7 +13,7 @@ env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
 load_dotenv(dotenv_path=env_path)
 
 # Import database, connection, and engines from the db package
-from app.shared_resources.database import (
+from db import (
     get_db_connection,
     get_saved_credentials,
     get_platform_table,
@@ -77,4 +77,3 @@ app.include_router(ai_agent_router)
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
-

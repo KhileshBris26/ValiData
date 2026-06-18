@@ -6,8 +6,8 @@ import json
 import traceback
 import threading
 
-from app.shared_resources.database.connection import get_db_connection, DATABASE_URL, get_platform_table, get_saved_credentials
-from app.shared_resources.database.connection import snowflake_engine, databricks_engine, snowflake_svc, databricks_svc
+from db.connection import get_db_connection, DATABASE_URL, get_platform_table, get_saved_credentials
+from db.connection import snowflake_engine, databricks_engine, snowflake_svc, databricks_svc
 from core.query_generator import QueryGenerator
 from models.rules import RuleExecutionRequest, ExecutionLogRequest, AnomalyResolveRequest, ScheduleCreateUpdate, RuleSyncRequest, DashboardRequest
 
@@ -1117,4 +1117,3 @@ async def get_latest_table_executions(table_name: str, platform: Optional[str] =
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
-
