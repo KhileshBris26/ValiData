@@ -5,7 +5,7 @@ import json
 from app.shared_resources.database.connection import get_db_connection, DATABASE_URL, get_platform_table
 from app.shared_resources.database.connection import snowflake_engine, databricks_engine, snowflake_svc, databricks_svc
 
-from app.shared_resources.core.query_generator import QueryGenerator
+from core.query_generator import QueryGenerator
 from models.rules import CatalogRequest, LineageRequest, TableSummaryRequest, MetadataRequest, ProfileRequest
 from models.catalog_metadata import SaveMetadataRequest, FetchMetadataRequest, FetchAllMetadataRequest
 
@@ -410,5 +410,4 @@ async def get_catalog_quality_scores():
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
-
 

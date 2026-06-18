@@ -2,8 +2,8 @@ from fastapi import APIRouter, HTTPException
 from typing import Optional
 
 from app.shared_resources.database.connection import snowflake_engine, databricks_engine, snowflake_svc, databricks_svc
-from app.shared_resources.core.query_generator import QueryGenerator
-from app.shared_resources.core.lineage_engine import LineageEngine
+from core.query_generator import QueryGenerator
+from core.lineage_engine import LineageEngine
 from models.rules import LineageRequest, DashboardRequest
 
 router = APIRouter()
@@ -99,5 +99,4 @@ async def get_dashboard_lineage(request: DashboardRequest):
             snowflake_engine.disconnect()
         elif platform == "databricks":
             databricks_engine.disconnect()
-
 
