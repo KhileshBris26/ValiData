@@ -6,9 +6,9 @@ from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 
 # Import connectors and services
-from connectors.snowflake_connector import SnowflakeConnector
+from app.platforms.snowflake.snowflake_connector import SnowflakeConnector
 from connectors.databricks_connector import DatabricksConnector
-from services.snowflake_service import SnowflakeService
+from app.platforms.snowflake.snowflake_service import SnowflakeService
 from services.databricks_service import DatabricksService
 
 load_dotenv()
