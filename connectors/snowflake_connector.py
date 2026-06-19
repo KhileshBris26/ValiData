@@ -2,7 +2,7 @@ import os
 import snowflake.connector
 from snowflake.connector.errors import DatabaseError
 from typing import Any, List, Dict
-from connectors.base import BaseConnector
+from .base import BaseConnector
 
 class SnowflakeConnector(BaseConnector):
     def __init__(self):
@@ -52,7 +52,7 @@ class SnowflakeConnector(BaseConnector):
             raise ConnectionError("Not connected to Snowflake. Call connect() first.")
         
         import time
-        from app.shared_resources.core.query_logger import log_query
+        from core.query_logger import log_query
         
         start_time = time.time()
         try:
