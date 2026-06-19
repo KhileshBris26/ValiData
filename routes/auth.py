@@ -6,8 +6,8 @@ from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException
 import requests as http_requests
 
-from db.connection import get_db_connection, DATABASE_URL
-from db.connection import snowflake_engine, databricks_engine
+from app.shared_resources.database.connection import get_db_connection, DATABASE_URL
+from app.shared_resources.database.connection import snowflake_engine, databricks_engine
 from models.rules import FetchRolesRequest, MetadataRequest
 
 router = APIRouter()
@@ -558,3 +558,4 @@ async def fetch_warehouses(request: FetchRolesRequest):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
+

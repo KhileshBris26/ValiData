@@ -1,6 +1,6 @@
-from core.query_generator import QueryGenerator
-from core.lineage_engine import LineageEngine
-from core.usage_analyzer import UsageAnalyzer
+from app.shared_resources.core.query_generator import QueryGenerator
+from app.shared_resources.core.lineage_engine import LineageEngine
+from app.shared_resources.core.usage_analyzer import UsageAnalyzer
 
 class SnowflakeService:
     def __init__(self, engine):
@@ -188,3 +188,4 @@ class SnowflakeService:
             return []
         finally:
             self.engine.disconnect()
+
