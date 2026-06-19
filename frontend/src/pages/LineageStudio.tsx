@@ -276,12 +276,7 @@ const LineageStudio: React.FC = () => {
       </div>
 
       <div className="lineage-content glass-panel">
-        {loadingInfer ? (
-          <div className="empty-state">
-            <Loader2 className="spinner" size={48} style={{ color: 'var(--accent-primary)' }} />
-            <p>Creating Lineage...</p>
-          </div>
-        ) : viewMode === 'graph' ? (
+        {viewMode === 'graph' ? (
           <div className="react-flow-wrapper">
             {nodes.length > 0 ? (
               <ReactFlow

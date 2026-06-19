@@ -140,6 +140,7 @@ const TableDetail: React.FC = () => {
   
   // Quality and execution state from backend
   const [qualityBase, setQualityBase] = useState<number>(100);
+  const [lastRunDate, setLastRunDate] = useState<string>('Never');
   const [isRefreshingScore, setIsRefreshingScore] = useState<boolean>(false);
 
   const fetchQualityScore = useCallback(async () => {
@@ -149,8 +150,17 @@ const TableDetail: React.FC = () => {
       const res = await axios.get(`${API_BASE}/dashboard/executions/latest?table_name=${encodeURIComponent(table)}&platform=${platform}&_t=${Date.now()}`);
       if (res.data && res.data.has_evaluated) {
         setQualityBase(res.data.overall || 100);
+        // Determine last run date from executions if possible, otherwise use a generic "Recently"
+        // Wait, since we don't have run_date, let's look at the first execution's executed_at if it exists
+        if (res.data.executions && res.data.executions.length > 0 && res.data.executions[0].executed_at) {
+          const date = new Date(res.data.executions[0].executed_at + 'Z');
+          setLastRunDate(date.toLocaleString());
+        } else {
+          setLastRunDate(new Date().toLocaleString());
+        }
       } else {
         setQualityBase(100);
+        setLastRunDate('Never');
       }
     } catch (e) {
       console.error('Failed to fetch quality score from backend:', e);
@@ -674,9 +684,9 @@ const TableDetail: React.FC = () => {
             style={{ cursor: isEvaluating ? 'not-allowed' : 'pointer', opacity: isEvaluating ? 0.7 : 1 }}
           >
             <span>{isEvaluating ? 'Evaluating...' : 'Profile and evaluate'}</span>
-            {/* ChevronDown icon removed per request */}
+            <ChevronDown size={16} />
           </div>
-          {/* Edit button removed per request */}
+          <button className="btn-edit">Edit</button>
         </div>
       </div>
 
@@ -1792,7 +1802,43 @@ const TableDetail: React.FC = () => {
               <p className="card-footer-text">The reliability index is a weighted score of Accuracy (40%), Freshness (20%), and Governance (40%).</p>
             </div>
 
-            {/* Validation Monitors section removed per request */}
+            {/* Validation Monitors */}
+            <div className="card glass-panel">
+              <div className="card-header-with-btn">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3>Validation Monitors</h3>
+                  <button 
+                    onClick={fetchQualityScore} 
+                    disabled={isRefreshingScore}
+                    title="Refresh score from backend"
+                    style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px', borderRadius: '4px' }}
+                  >
+                    <svg style={{ animation: isRefreshingScore ? 'spin 1s linear infinite' : 'none', transformOrigin: 'center' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.92-10.44l5.67 5.67"/></svg>
+                  </button>
+                </div>
+                <button className="btn-outline">Create</button>
+              </div>
+              <div className="dq-table">
+                <div className="dq-row header">
+                  <span>Name</span>
+                  <span>Validation Rate</span>
+                  <span>Last run</span>
+                </div>
+                <div className="dq-row">
+                  <Link to={`/catalog/${database}/${schema}/${table}/dq/primary`} className="dq-link">
+                    <span className="dq-name clickable">Primary</span>
+                  </Link>
+                  <div className="dq-progress">
+                    <div className="dq-progress-track">
+                      <div className="dq-bar" style={{ width: `${qualityBase}%` }}></div>
+                    </div>
+                    <span>{qualityBase}%</span>
+                  </div>
+                  <span className="dq-date">{lastRunDate}</span>
+                </div>
+              </div>
+            </div>
+
 
             {/* Columns */}
             <div className="card glass-panel">
