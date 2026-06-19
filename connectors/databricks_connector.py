@@ -30,7 +30,7 @@ class DatabricksConnector(BaseConnector):
             raise ConnectionError("Not connected to Databricks. Call connect() first.")
         
         import time
-        from core.query_logger import log_query
+        from app.shared_resources.core.query_logger import log_query
         
         start_time = time.time()
         try:
