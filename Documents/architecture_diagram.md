@@ -1,3 +1,5 @@
+## This is the test change
+
 # ValiData Component Architecture & System Flow Diagram
 
 This document contains the visual blueprint of ValiData's component-based architecture, detailing layers, interactions, and security boundaries.
