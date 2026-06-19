@@ -188,3 +188,4 @@ class SnowflakeService:
             return []
         finally:
             self.engine.disconnect()
+

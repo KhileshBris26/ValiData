@@ -2,7 +2,7 @@ import os
 import snowflake.connector
 from snowflake.connector.errors import DatabaseError
 from typing import Any, List, Dict
-from connectors.base import BaseConnector
+from .base import BaseConnector
 
 class SnowflakeConnector(BaseConnector):
     def __init__(self):
